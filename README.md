@@ -4,7 +4,7 @@
 
 1. Your agent calls its tools through Gate. Before anything runs, Gate checks a signed rulebook and answers **allow**, **ask a person**, or **refuse**. Anything no rule allows is refused, and if Gate itself fails, it refuses.
 2. Every decision becomes a **receipt**: hash-chained and signed, so any later edit is detectable. An auditor can check an exported bundle offline with one command, no account needed.
-3. A **registry** of agents, owners, risk tiers and rulebooks, mapped to frameworks (EU AI Act, NIST AI RMF, ISO/IEC 42001, India DPDP, RBI FREE-AI). The auditor pack is generated from real receipts, not written by hand.
+3. A **registry** of agents, owners, risk tiers and rulebooks, mapped to a library of ten frameworks (EU AI Act, NIST AI RMF, ISO/IEC 42001, GDPR, HIPAA, SOC 2, India DPDP, RBI FREE-AI and more). The auditor pack is generated from real receipts, not written by hand.
 4. One rulebook both **blocks** actions and **produces the compliance proof**. It works with any MCP agent or through a tiny SDK.
 5. The first use case runs end to end: an accounts-payable agent that reads vendor invoices in Gmail, creates bills in Zoho Books and records payments. Small payments go through, large ones wait for approval, and changing a vendor's bank details is always refused.
 
@@ -152,12 +152,39 @@ Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); th
 
 ---
 
+## Frameworks and industry packs
+
+Gate is not only for accounts payable. The demo is one example; the same rules, approvals and receipts work for any agent.
+
+**Framework library.** Ten frameworks, each with its official link and a list of requirements at the level of an article, section, function or pillar: EU AI Act, NIST AI RMF 1.0, ISO/IEC 42001:2023, India's DPDP Act 2023, RBI FREE-AI (August 2025 report), GDPR, HIPAA Privacy and Security Rules, SOC 2 (2017 Trust Services Criteria), Colorado AI Act (SB 24-205) and NYC Local Law 144. Thirteen controls (things Gate actually does, each backed by a kind of receipt) map to those requirements.
+
+**Compliance** (in the sidebar) shows the frameworks you have turned on, with coverage: the share of requirements that have at least one control with live evidence on your chain. Open one to see each requirement, the controls behind it, their evidence counts, and the gaps, called out as "No control covers this yet". **Download framework report** gets a PDF built by the gate service from the same numbers (like the auditor pack, and logged as an evidence export). The compliance map on the Evidence page and in the auditor pack show only the frameworks you have turned on.
+
+**Industry packs.** Finance and accounting (the Gmail and Zoho Books demo), healthcare, HR and recruiting, customer support, sales and marketing, engineering and DevOps, and general. Each has typical risks, recommended frameworks for where you operate, the controls that matter most, wording for the risk questions, and a starter rulebook written mostly as **tag rules**, so it works with any tool a connector offers:
+
+```yaml
+rules:
+  - { id: read-data, tag: reads_data, decide: allow }
+  - { id: refund-small, tag: moves_money, when: { amount: { lte: 500 } }, decide: allow }
+  - { id: refund-large, tag: moves_money, when: { amount: { gt: 500 } }, decide: ask, approver: support-leads }
+  - { id: no-deletes, tag: deletes, decide: refuse }
+  - { id: production-changes, tag: changes_production, decide: ask, approver: engineering }
+quotas:
+  - { id: replies-per-hour, tag: sends_external, window: 1h, max_count: 50, approver: support-leads }
+```
+
+Onboarding asks for the kind of work and where you operate (India, EU, US, UK, other), records both on the organisation and turns on the recommended frameworks. You can change them later under Compliance. The add-agent wizard starts from your pack's rules, merged with the suggestions from the risk questions.
+
+Everything here is labelled **Draft — needs legal review**, on screen and in every export. The library lives in `packages/core/src/frameworks` (`@gate/core/frameworks`).
+
+---
+
 ## What's inside
 
 ```
 apps/web            Next.js console (App Router, Tailwind, shadcn-style components, lucide)
 apps/gate           Fastify service: MCP server, REST Event API, approvals, evidence export
-packages/core       Rule engine, receipt chain, crypto, bundle verifier (pure, no I/O)
+packages/core       Rule engine, receipt chain, crypto, bundle verifier, framework library and industry packs (pure, no I/O)
 packages/db         Prisma schema, tenant-scoped client (forOrg), serialized chain writer
 packages/connectors Gmail, Zoho Books (zoho.in) and mock connectors
 packages/sdk        gate.check() / gate.record() / gate.waitForApproval()
