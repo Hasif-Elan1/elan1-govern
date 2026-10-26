@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  admin
+  approver
+  viewer
+  auditor
+}
+
+enum AgentStatus {
+  active
+  paused
+}
+
+enum RiskTier {
+  low
+  medium
+  high
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+// ---- Global (not tenant-scoped) ----
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  totpSecret   String? // AES-GCM encrypted
+  totpEnabled  Boolean      @default(false)
+  failedLogins Int          @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+  sessions     Session[]
+}
+
+model Session {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrgId String?
+  csrfToken   String
+  lastAuthAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  role      Role
+  createdAt DateTime @default(now())
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+model Org {
+  id            String       @id @default(cuid())
+  name          String
+  publicKey     String
+  privateKeyEnc String // AES-GCM, key only in the gate service env
+  notifyEmail   String?
+  retentionDays Int          @default(2555)
+  createdAt     DateTime     @default(now())
+  memberships   Membership[]
+  agents        Agent[]
+}
+
+// ---- Tenant-scoped (every row has orgId; access only through forOrg()) ----
+
+model Invite {
+  id         String    @id @default(cuid())
+  orgId      String
+  email      String
+  role       Role
+  tokenHash  String    @unique
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([orgId])
+}
+
+model Agent {
+  id               String      @id @default(cuid())
+  orgId            String
+  org              Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  slug             String
+  name             String
+  purpose          String
+  ownerEmail       String
+  createdById      String?
+  riskTier         RiskTier    @default(medium)
+  riskAnswers      Json?
+  status           AgentStatus @default(active)
+  activeRulebookId String?
+  lastActionAt     DateTime?
+  createdAt        DateTime    @default(now())
+  apiKeys          ApiKey[]
+  rulebooks        Rulebook[]
+
+  @@unique([orgId, slug])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  orgId      String
+  agentId    String
+  agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  label      String    @default("Default")
+  prefix     String
+  keyHash    String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([orgId])
+}
+
+model Rulebook {
+  id         String   @id @default(cuid())
+  orgId      String
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  version    Int
+  yaml       String
+  hash       String
+  signedBy   String
+  createdAt  DateTime @default(now())
+
+  @@unique([agentId, version])
+  @@index([orgId])
+}
+
+model Connector {
+  id           String    @id @default(cuid())
+  orgId        String
+  kind         String // gmail | zoho
+  mode         String    @default("mock") // mock | live
+  status       String    @default("connected") // connected | disconnected
+  tokensEnc    String? // AES-GCM, key only in the gate service env
+  accountLabel String?
+  meta         Json?
+  connectedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([orgId, kind])
+}
+
+model Approval {
+  id            String         @id @default(cuid())
+  orgId         String
+  agentId       String
+  tool          String
+  argsEnc       String? // full arguments, encrypted, wiped after the decision
+  argsSummary   Json
+  ruleId        String
+  reason        String
+  approverGroup String
+  approvers     String[]
+  evidence      Json?
+  status        ApprovalStatus @default(pending)
+  heldSeq       Int
+  resolvedBy    String?
+  note          String?
+  selfApproval  Boolean        @default(false)
+  result        Json?
+  expiresAt     DateTime
+  resolvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  links         ApprovalLink[]
+
+  @@index([orgId, status])
+}
+
+model ApprovalLink {
+  id         String    @id @default(cuid())
+  orgId      String
+  approvalId String
+  approval   Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  email      String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([orgId])
+}
+
+model Receipt {
+  id        String   @id @default(cuid())
+  orgId     String
+  seq       Int
+  ts        DateTime
+  kind      String
+  agent     String?
+  tool      String?
+  decision  String?
+  amountInr Float?
+  outcome   String?
+  body      Json
+  hash      String
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, seq])
+  @@index([orgId, ts])
+  @@index([orgId, agent])
+}
+
+model Checkpoint {
+  id    String   @id @default(cuid())
+  orgId String
+  seq   Int
+  hash  String
+  ts    DateTime
+  sig   String
+
+  @@index([orgId, seq])
+}
+
+model Control {
+  id          String @id @default(cuid())
+  orgId       String
+  code        String
+  title       String
+  description String
+  evidence    String // which receipts count as evidence, e.g. "decision:refuse"
+  mappings    Json // [{ framework, clause, note }]
+  status      String @default("draft")
+
+  @@unique([orgId, code])
+}
+
+model HealthAlert {
+  id         String    @id @default(cuid())
+  orgId      String?
+  kind       String
+  message    String
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+}
