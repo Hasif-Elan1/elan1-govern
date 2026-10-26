@@ -1,4 +1,3 @@
-import type { ToolName } from "@gate/core";
 import { authedJson } from "./http";
 import type { Fetch, ProviderConfig } from "./oauth";
 import { ConnectorError, type Connector, type ConnectorContext } from "./types";
@@ -67,7 +66,7 @@ export function gmailConnector(cfg: ProviderConfig, f: Fetch = fetch): Connector
 
   return {
     kind: "gmail",
-    async call(tool: ToolName, args, ctx) {
+    async call(tool: string, args, ctx) {
       switch (tool) {
         case "gmail.search": {
           const q = new URLSearchParams({ q: String(args.query ?? ""), maxResults: String(args.max_results ?? 10) });

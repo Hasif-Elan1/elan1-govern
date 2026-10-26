@@ -18,6 +18,9 @@ import {
   type Rulebook,
   type RiskTier,
   type ToolName,
+  RISK_TAGS,
+  RISK_TAG_LABELS,
+  type RiskTag,
 } from "@gate/core/browser";
 import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -68,6 +71,7 @@ function condKind(rule: Rule): CondKind {
 function Condition({ rule, onChange, disabled }: { rule: Rule; onChange: (when: Rule["when"]) => void; disabled: boolean }) {
   const tool = rule.tool as ToolName;
   const kind = condKind(rule);
+  if (rule.tool === undefined) return kind === "always" ? <span className="text-sm text-ink-3">every time</span> : <span className="text-sm text-ink-3">when a condition holds (edit it in YAML)</span>;
   if (kind === "custom") return <span className="text-sm text-ink-3">a custom condition (edit it in YAML)</span>;
 
   if (AMOUNT_TOOLS.includes(tool)) {
@@ -148,16 +152,29 @@ function RuleRow({ rule, groups, onChange, onRemove, disabled, index }: { rule: 
         <Select
           aria-label="Tool"
           className="h-9 w-auto"
-          value={rule.tool}
+          value={rule.tool ?? `tag:${rule.tag}`}
           disabled={disabled}
-          onChange={(e) => set({ tool: e.target.value, when: undefined })}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v.startsWith("tag:")) set({ tool: undefined, tag: v.slice(4) as RiskTag, when: undefined });
+            else set({ tool: v, tag: undefined, when: undefined });
+          }}
         >
-          {TOOL_NAMES.map((t) => (
-            <option key={t} value={t}>
-              {TOOLS[t].label.toLowerCase()} ({TOOLS[t].connector === "gmail" ? "Gmail" : "Zoho"})
-            </option>
-          ))}
-          {!isKnownTool(rule.tool) ? <option value={rule.tool}>{rule.tool}</option> : null}
+          <optgroup label="One tool">
+            {TOOL_NAMES.map((t) => (
+              <option key={t} value={t}>
+                {TOOLS[t].label.toLowerCase()} ({TOOLS[t].connector === "gmail" ? "Gmail" : "Zoho"})
+              </option>
+            ))}
+            {rule.tool !== undefined && !isKnownTool(rule.tool) ? <option value={rule.tool}>{rule.tool}</option> : null}
+          </optgroup>
+          <optgroup label="Any action that…">
+            {RISK_TAGS.map((t) => (
+              <option key={t} value={`tag:${t}`}>
+                {RISK_TAG_LABELS[t]}
+              </option>
+            ))}
+          </optgroup>
         </Select>
         <Condition rule={rule} disabled={disabled} onChange={(when) => set({ when })} />
       </div>

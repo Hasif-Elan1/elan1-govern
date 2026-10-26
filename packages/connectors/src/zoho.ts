@@ -1,4 +1,3 @@
-import type { ToolName } from "@gate/core";
 import { authedJson } from "./http";
 import type { Fetch, ProviderConfig } from "./oauth";
 import { ConnectorError, type Connector, type ConnectorContext, type Evidence } from "./types";
@@ -65,7 +64,7 @@ export function zohoConnector(cfg: ZohoConfig, f: Fetch = fetch): Connector {
 
   return {
     kind: "zoho",
-    async call(tool: ToolName, args, ctx) {
+    async call(tool: string, args, ctx) {
       switch (tool) {
         case "zoho.list_bills": {
           const q = new URLSearchParams();

@@ -81,6 +81,9 @@ model Org {
   privateKeyEnc String // AES-GCM, key only in the gate service env
   notifyEmail   String?
   retentionDays Int          @default(2555)
+  timezone      String       @default("Asia/Kolkata") // IANA zone; "day" quotas and Today reset at local midnight
+  currency      String       @default("INR") // ISO 4217
+  locale        String       @default("en-IN") // BCP 47, for number and date formatting
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]

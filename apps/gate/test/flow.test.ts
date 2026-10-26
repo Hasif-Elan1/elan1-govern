@@ -107,6 +107,22 @@ describe("decisions", () => {
   });
 });
 
+describe("quotas", () => {
+  it("a count quota on any tool turns the next allowed call into an ask", async () => {
+    const d = await demoOrg(ctx.deps);
+    const agent = await d.db.agent.findFirstOrThrow({ where: { id: d.agentId } });
+    const rb = await d.db.rulebook.findFirstOrThrow({ where: { id: agent.activeRulebookId! } });
+    const yaml = rb.yaml.replace("rules:\n", "quotas:\n  - id: reads-per-hour\n    tag: reads_data\n    window: 1h\n    max_count: 2\nrules:\n");
+    const res = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/agents/${d.agentId}/rulebooks`, { yaml, actor: d.owner.email });
+    expect(res.statusCode, res.body).toBe(200);
+    // The demo run already did reads in this org? No: demoOrg does not run the agent.
+    for (let i = 0; i < 2; i++) expect(gateMeta(await tool(ctx.app, d.apiKey, "gmail.read_message", { message_id: "m_101" }))).toMatchObject({ decision: "allow" });
+    const third = await tool(ctx.app, d.apiKey, "gmail.read_message", { message_id: "m_102" });
+    expect(gateMeta(third)).toMatchObject({ decision: "ask", rule_id: "read-mail", status: "pending" });
+    expect(third.content[0]!.text).toMatch(/limit of 2 per 1h/);
+  });
+});
+
 describe("approvals", () => {
   async function held() {
     const d = await demoOrg(ctx.deps);

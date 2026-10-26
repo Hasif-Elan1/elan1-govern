@@ -6,7 +6,7 @@ export function connectorsOf(yaml: string | undefined): ("gmail" | "zoho")[] {
   if (!yaml) return [];
   const p = parseRulebookYaml(yaml);
   if (!p.ok) return [];
-  return [...new Set(p.rulebook.rules.filter((r) => r.decide !== "refuse" && isKnownTool(r.tool)).map((r) => TOOLS[r.tool as keyof typeof TOOLS].connector))];
+  return [...new Set(p.rulebook.rules.filter((r) => r.decide !== "refuse" && r.tool !== undefined && isKnownTool(r.tool)).map((r) => TOOLS[r.tool as keyof typeof TOOLS].connector))];
 }
 
 export function ConnectorIcons({ kinds }: { kinds: ("gmail" | "zoho")[] }) {

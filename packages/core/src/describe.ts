@@ -1,4 +1,4 @@
-import { TOOLS, isKnownTool } from "./tools";
+import { RISK_TAG_LABELS, TOOLS, isKnownTool, type RiskTag } from "./tools";
 
 /** Indian digit grouping: 200000 -> "₹2,00,000", 1234.5 -> "₹1,234.50". */
 export function formatINR(amount: number): string {
@@ -66,7 +66,7 @@ function conditionWords(field: string, cond: unknown): string {
     return typeof cond === "string" ? `to someone at a ${cond === "vendor_domains" ? "known vendor" : cond.replace(/_/g, " ")}` : `to ${(cond as string[]).join(", ")}`;
   }
   if (field === "fields_include") return `it changes the ${listWords((cond as string[]).map((f) => FIELD_LABELS[f] ?? f))}`;
-  const name = field === "amount_inr" ? "the amount" : field.replace(/_/g, " ");
+  const name = /^amount($|_)/.test(field) ? "the amount" : field.replace(/_/g, " ");
   const c = (cond ?? {}) as Record<string, unknown>;
   const parts = Object.entries(c).map(([op, v]) => {
     const value = field === "amount_inr" && typeof v === "number" ? formatINR(v) : Array.isArray(v) ? v.join(", ") : String(v);
@@ -76,9 +76,9 @@ function conditionWords(field: string, cond: unknown): string {
 }
 
 /** "Ask finance before: Record a payment, when the amount is over ₹50,000" */
-export function describeRule(rule: { tool: string; decide: string; approver?: string; when?: Record<string, unknown> }): string {
-  const label = isKnownTool(rule.tool) ? TOOLS[rule.tool].label : rule.tool;
+export function describeRule(rule: { tool?: string; tag?: RiskTag; decide: string; approver?: string; when?: Record<string, unknown> }): string {
+  const label = rule.tool === undefined ? `any action that ${RISK_TAG_LABELS[rule.tag as RiskTag] ?? rule.tag}` : isKnownTool(rule.tool) ? TOOLS[rule.tool].label : rule.tool;
   const when = Object.entries(rule.when ?? {}).map(([k, v]) => conditionWords(k, v));
   const verb = rule.decide === "allow" ? "Allow" : rule.decide === "ask" ? `Ask ${rule.approver ?? "a person"} before` : "Never allow";
-  return `${verb}: ${label.toLowerCase()}${when.length ? `, when ${when.join(" and ")}` : ""}`;
+  return `${verb}: ${rule.tool === undefined ? label : label.toLowerCase()}${when.length ? `, when ${when.join(" and ")}` : ""}`;
 }

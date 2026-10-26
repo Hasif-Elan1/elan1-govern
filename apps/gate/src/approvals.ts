@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { TOOLS, decrypt, describeAction, encrypt, hmacSign, type DecisionResult, type Receipt, type ReceiptInput, type ToolName } from "@gate/core";
+import { decrypt, describeAction, encrypt, hmacSign, type DecisionResult, type Receipt, type ReceiptInput } from "@gate/core";
 import { dueApprovals, forOrg, withChain } from "@gate/db";
-import { publicError, resolveConnector, type Resolved } from "./connectors";
+import { publicError, resolveConnectorFor, type Resolved } from "./connectors";
+import { registryFor } from "./registry";
 import { orgKey, raiseAlert, type Deps } from "./deps";
 import type { GuardResult } from "./guard";
 import { approvalEmail } from "./mailer";
@@ -38,7 +39,7 @@ export async function holdForApproval(
   const expiresAt = new Date(Date.now() + (d.expiresInMs ?? 86_400_000));
   const approvers = (d.approvers ?? []).map((e) => e.toLowerCase());
   const evidence = input.connector?.ok
-    ? await input.connector.connector.evidence(input.tool as ToolName, input.args, input.connector.ctx).catch(() => ({}))
+    ? await input.connector.connector.evidence(input.tool, input.args, input.connector.ctx).catch(() => ({}))
     : {};
 
   const { receipt, links } = await withChain(
@@ -165,12 +166,12 @@ export async function resolveApproval(
   let data: unknown;
   if (input.result === "approved" && approval.executor === "gate" && approval.argsEnc) {
     const args = JSON.parse(decrypt(deps.env.GATE_MASTER_KEY, approval.argsEnc, argsAad(approvalId))) as Record<string, unknown>;
-    const tool = approval.tool as ToolName;
-    const conn = await resolveConnector(deps, orgId, TOOLS[tool].connector);
+    const spec = (await registryFor(deps, orgId)).get(approval.tool);
+    const conn: Resolved = spec ? await resolveConnectorFor(deps, orgId, spec) : { ok: false, reason: `${approval.tool} is no longer available` };
     if (!conn.ok) outcome = { status: "error", error: conn.reason };
     else {
       try {
-        const res = await conn.connector.call(tool, args, conn.ctx);
+        const res = await conn.connector.call(approval.tool, args, conn.ctx);
         outcome = { status: "ok", ...(res.ref ? { ref: res.ref } : {}) };
         data = res.data;
       } catch (e) {

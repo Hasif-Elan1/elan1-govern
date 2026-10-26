@@ -1,14 +1,24 @@
-import { ConditionSchema, durationMs, type Condition, type Decision, type Rule, type Rulebook } from "./rulebook";
-import { LIMIT_TOOLS, TOOLS, isKnownTool } from "./tools";
+import { ConditionSchema, durationMs, quotasOf, ruleTargets, type Condition, type Decision, type Quota, type Rule, type Rulebook } from "./rulebook";
+import { builtinRegistry, type ToolRegistry } from "./tools";
 
 export const DEFAULT_ASK_EXPIRY = "24h";
 const RANK: Record<Decision, number> = { allow: 0, ask: 1, refuse: 2 };
 
+export interface QuotaUsage {
+  count: number;
+  sum: number;
+}
+
 export interface DecideContext {
-  /** Running totals for today, used for limits. */
-  usage?: { daily_payments_inr?: number };
+  /**
+   * What has already been used in each quota's current window, keyed by quota id.
+   * (The legacy shape `{ daily_payments_inr: number }` is still accepted.)
+   */
+  usage?: Record<string, QuotaUsage | number | undefined>;
   /** Lists Gate knows about at decision time (e.g. vendor_domains). */
   lists?: Record<string, string[]>;
+  /** Tools beyond the built-in Gmail and Zoho Books ones. */
+  registry?: ToolRegistry;
 }
 
 export interface DecisionResult {
@@ -20,6 +30,8 @@ export interface DecisionResult {
   approverGroup?: string;
   approvers?: string[];
   expiresInMs?: number;
+  /** A quota that turned an allow into an ask. */
+  quotaId?: string;
   /** Only the arguments the rules looked at plus display identifiers. Safe to store. */
   argsSummary: Record<string, unknown>;
 }
@@ -54,7 +66,8 @@ function resolveList(ref: unknown, rb: Rulebook, ctx: DecideContext): string[] {
 }
 
 export function ruleMatches(rule: Rule, tool: string, args: Args, rb: Rulebook, ctx: DecideContext = {}): boolean {
-  if (rule.tool !== tool) return false;
+  const registry = ctx.registry ?? builtinRegistry;
+  if (!ruleTargets(rule, registry.get(tool), tool)) return false;
   for (const [key, cond] of Object.entries(rule.when ?? {})) {
     if (key === "to_domain_in") {
       const domain = domainOf(args.to);
@@ -72,17 +85,24 @@ export function ruleMatches(rule: Rule, tool: string, args: Args, rb: Rulebook, 
   return true;
 }
 
-/** Build the privacy-safe summary: display identifiers plus whatever the tool's rules inspect. */
-export function summarizeArgs(tool: string, args: Args, rb: Rulebook): Record<string, unknown> {
+/** Quotas that apply to this tool. */
+export function quotasFor(rb: Rulebook, tool: string, registry: ToolRegistry = builtinRegistry): Quota[] {
+  const spec = registry.get(tool);
+  return quotasOf(rb).filter((q) => ruleTargets(q, spec, tool));
+}
+
+/** Build the privacy-safe summary: display identifiers plus whatever the tool's rules and quotas inspect. */
+export function summarizeArgs(tool: string, args: Args, rb: Rulebook, registry: ToolRegistry = builtinRegistry): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (!isKnownTool(tool)) return out;
+  const spec = registry.get(tool);
+  if (!spec) return out;
   const keep = (k: string) => {
     const v = args[k];
     if (v === undefined) return;
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[k] = v;
   };
-  TOOLS[tool].summaryFields.forEach(keep);
-  for (const rule of rb.rules.filter((r) => r.tool === tool)) {
+  spec.summaryFields.forEach(keep);
+  for (const rule of rb.rules.filter((r) => ruleTargets(r, spec, tool))) {
     for (const key of Object.keys(rule.when ?? {})) {
       if (key === "to_domain_in") {
         const d = domainOf(args.to);
@@ -93,8 +113,7 @@ export function summarizeArgs(tool: string, args: Args, rb: Rulebook): Record<st
       } else keep(key);
     }
   }
-  const limit = Object.values(LIMIT_TOOLS).find((l) => l.tool === tool);
-  if (limit) keep(limit.field);
+  for (const q of quotasFor(rb, tool, registry)) if (q.max_sum) keep(q.max_sum.field);
   return out;
 }
 
@@ -106,16 +125,15 @@ function plainReason(rule: Rule, decision: Decision): string {
 }
 
 export function decide(rb: Rulebook, tool: string, args: Args, ctx: DecideContext = {}): DecisionResult {
-  const argsSummary = summarizeArgs(tool, args, rb);
+  const registry = ctx.registry ?? builtinRegistry;
+  const argsSummary = summarizeArgs(tool, args, rb, registry);
   const matched = rb.rules.filter((r) => ruleMatches(r, tool, args, rb, ctx));
 
   if (matched.length === 0) {
     return {
       decision: "refuse",
       ruleId: "default",
-      reason: isKnownTool(tool)
-        ? "No rule allows this action, so it is refused by default."
-        : `"${tool}" is not a tool Gate knows, so it is refused by default.`,
+      reason: registry.get(tool) ? "No rule allows this action, so it is refused by default." : `"${tool}" is not a tool Gate knows, so it is refused by default.`,
       matched: [],
       argsSummary,
     };
@@ -133,13 +151,11 @@ export function decide(rb: Rulebook, tool: string, args: Args, ctx: DecideContex
   };
 
   if (winner.decide === "allow") {
-    const breach = limitBreach(rb, tool, args, ctx);
+    const breach = quotaBreach(rb, tool, args, ctx, registry);
     if (breach) {
-      const group = Object.keys(rb.approvers)[0];
-      if (!group) {
-        return { ...result, decision: "refuse", reason: `${breach} No approvers are set, so it is refused.` };
-      }
-      return withApprovers({ ...result, decision: "ask", reason: `${breach} A person needs to approve it.` }, rb, group, DEFAULT_ASK_EXPIRY);
+      const group = breach.quota.approver ?? Object.keys(rb.approvers)[0];
+      if (!group) return { ...result, decision: "refuse", quotaId: breach.quota.id, reason: `${breach.message} No approvers are set, so it is refused.` };
+      return withApprovers({ ...result, decision: "ask", quotaId: breach.quota.id, reason: `${breach.message} A person needs to approve it.` }, rb, group, DEFAULT_ASK_EXPIRY);
     }
   }
   if (winner.decide === "ask") {
@@ -152,13 +168,25 @@ function withApprovers(r: DecisionResult, rb: Rulebook, group: string, expires: 
   return { ...r, approverGroup: group, approvers: rb.approvers[group] ?? [], expiresInMs: durationMs(expires) };
 }
 
-function limitBreach(rb: Rulebook, tool: string, args: Args, ctx: DecideContext): string | null {
-  const limit = rb.limits?.daily_payments_inr;
-  const spec = LIMIT_TOOLS.daily_payments_inr;
-  if (limit === undefined || tool !== spec.tool) return null;
-  const amount = args[spec.field];
-  if (typeof amount !== "number") return null;
-  const used = ctx.usage?.daily_payments_inr ?? 0;
-  if (used + amount <= limit) return null;
-  return `This would take today's payments past the daily limit.`;
+function usageOf(ctx: DecideContext, q: Quota): QuotaUsage {
+  const legacy = q.id === "daily-payments" ? ctx.usage?.daily_payments_inr : undefined;
+  const u = ctx.usage?.[q.id] ?? legacy;
+  if (typeof u === "number") return { count: 0, sum: u };
+  return u ?? { count: 0, sum: 0 };
+}
+
+function quotaBreach(rb: Rulebook, tool: string, args: Args, ctx: DecideContext, registry: ToolRegistry): { quota: Quota; message: string } | null {
+  for (const q of quotasFor(rb, tool, registry)) {
+    const used = usageOf(ctx, q);
+    if (q.max_count !== undefined && used.count + 1 > q.max_count) {
+      return { quota: q, message: `This would go over the limit of ${q.max_count} per ${q.window === "day" ? "day" : q.window} ("${q.id}").` };
+    }
+    if (q.max_sum) {
+      const value = args[q.max_sum.field];
+      if (typeof value === "number" && used.sum + value > q.max_sum.value) {
+        return { quota: q, message: q.id === "daily-payments" ? "This would take today's payments past the daily limit." : `This would go over the "${q.id}" limit.` };
+      }
+    }
+  }
+  return null;
 }

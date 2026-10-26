@@ -1,5 +1,5 @@
 import { CONNECTOR_LABELS, ConnectorError, type Connector, type ConnectorContext, type ConnectorKind, type ConnectorMode, type OAuthTokens } from "@gate/connectors";
-import { decrypt, encrypt } from "@gate/core";
+import { decrypt, encrypt, type ToolSpec } from "@gate/core";
 import { forOrg } from "@gate/db";
 import type { Deps } from "./deps";
 
@@ -34,4 +34,10 @@ export async function resolveConnector(deps: Deps, orgId: string, kind: Connecto
 /** Connector errors are written for people; anything else stays generic so internals never leak to agents. */
 export function publicError(e: unknown): string {
   return e instanceof ConnectorError ? e.message : "the connector did not respond as expected";
+}
+
+/** The connector behind a tool from the registry. */
+export async function resolveConnectorFor(deps: Deps, orgId: string, spec: ToolSpec): Promise<Resolved> {
+  if (spec.connector === "gmail" || spec.connector === "zoho") return resolveConnector(deps, orgId, spec.connector);
+  return { ok: false, reason: `No connector is set up for ${spec.connector}` };
 }

@@ -106,3 +106,27 @@ describe("receipt chain", () => {
     expect(startOfDayIST(new Date("2026-10-26T10:00:00Z")).toISOString()).toBe("2026-10-25T18:30:00.000Z");
   });
 });
+
+describe("quotas and time zones", () => {
+  it("finds local midnight in any time zone", async () => {
+    const { startOfDayIn } = await import("../src");
+    expect(startOfDayIn("Asia/Kolkata", new Date("2026-10-26T20:00:00Z")).toISOString()).toBe("2026-10-26T18:30:00.000Z");
+    expect(startOfDayIn("America/New_York", new Date("2026-10-26T03:00:00Z")).toISOString()).toBe("2026-10-25T04:00:00.000Z");
+    expect(startOfDayIn("UTC", new Date("2026-10-26T23:59:59Z")).toISOString()).toBe("2026-10-26T00:00:00.000Z");
+  });
+  it("counts successful calls and sums a numeric field inside the window", async () => {
+    const { quotaUsage } = await import("../src");
+    const org = await newOrg();
+    const add = (tool: string, amount: unknown, status: "ok" | "error") =>
+      appendReceipt(org.id, keys.privateKeyPem, { kind: "decision", tool, decision: "allow", args_summary: { amount }, outcome: { status } });
+    await add("crm.issue_refund", 100, "ok");
+    await add("crm.issue_refund", 50.5, "ok");
+    await add("crm.issue_refund", "not a number", "ok");
+    await add("crm.issue_refund", 999, "error");
+    await add("crm.other", 7, "ok");
+    expect(await quotaUsage(org.id, ["crm.issue_refund"], new Date(Date.now() - 60_000), "amount")).toEqual({ count: 3, sum: 150.5 });
+    expect(await quotaUsage(org.id, ["crm.issue_refund", "crm.other"], new Date(Date.now() - 60_000))).toEqual({ count: 4, sum: 0 });
+    expect(await quotaUsage(org.id, ["crm.issue_refund"], new Date(Date.now() + 60_000), "amount")).toEqual({ count: 0, sum: 0 });
+    expect(await quotaUsage(org.id, [], new Date(0))).toEqual({ count: 0, sum: 0 });
+  });
+});

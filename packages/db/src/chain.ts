@@ -81,6 +81,35 @@ export function toCheckpoint(row: { orgId: string; seq: number; hash: string; ts
   return { org: row.orgId, seq: row.seq, hash: row.hash, ts: row.ts.toISOString(), sig: row.sig };
 }
 
+/** Midnight today in an IANA time zone. */
+export function startOfDayIn(timeZone: string, now = new Date()): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+  const offset = asUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) - offset);
+}
+
+/**
+ * How much of a quota is used: successful calls of these tools since `since`,
+ * and the sum of one numeric summary field. One parameterised query; scoped by orgId.
+ */
+export async function quotaUsage(orgId: string, tools: string[], since: Date, field?: string, client: PrismaClient = defaultClient): Promise<{ count: number; sum: number }> {
+  if (!tools.length) return { count: 0, sum: 0 };
+  const f = field ?? "";
+  const rows = await client.$queryRaw<{ count: number; sum: number }[]>`
+    SELECT COUNT(*)::int AS count,
+           COALESCE(SUM(CASE WHEN (body->'args_summary'->>${f}) ~ '^-?[0-9]+([.][0-9]+)?$'
+                             THEN (body->'args_summary'->>${f})::numeric ELSE 0 END), 0)::float AS sum
+    FROM "Receipt"
+    WHERE "orgId" = ${orgId} AND tool = ANY(${tools}) AND outcome = 'ok'
+      AND ts >= (${since}::timestamptz AT TIME ZONE 'UTC')`; // Prisma stores DateTime as UTC in a plain "timestamp"
+  return rows[0] ?? { count: 0, sum: 0 };
+}
+
 /** Start of "today" in India (IST, UTC+05:30), used for daily limits and the Today screen. */
 export function startOfDayIST(now = new Date()): Date {
   const offset = 330 * 60_000;

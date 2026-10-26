@@ -1,4 +1,3 @@
-import type { ToolName } from "@gate/core";
 import { seedMockState, type MockState, type MockVendor } from "./mock-data";
 import { ConnectorError, type Connector, type ConnectorContext, type Evidence } from "./types";
 
@@ -47,7 +46,7 @@ function publicVendor(v: MockVendor) {
 
 export const mockGmail: Connector = {
   kind: "gmail",
-  async call(tool: ToolName, args, ctx) {
+  async call(tool: string, args, ctx) {
     const s = mockState(ctx.orgId);
     switch (tool) {
       case "gmail.search": {
@@ -112,7 +111,7 @@ export const mockGmail: Connector = {
 
 export const mockZoho: Connector = {
   kind: "zoho",
-  async call(tool: ToolName, args, ctx) {
+  async call(tool: string, args, ctx) {
     const s = mockState(ctx.orgId);
     switch (tool) {
       case "zoho.list_bills": {

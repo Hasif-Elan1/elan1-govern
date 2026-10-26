@@ -1,5 +1,3 @@
-import type { ToolName } from "@gate/core";
-
 export type ConnectorKind = "gmail" | "zoho";
 
 export interface OAuthTokens {
@@ -46,10 +44,10 @@ export interface InvoiceDoc {
 
 export interface Connector {
   kind: ConnectorKind;
-  call(tool: ToolName, args: Record<string, unknown>, ctx: ConnectorContext): Promise<ToolResult>;
+  call(tool: string, args: Record<string, unknown>, ctx: ConnectorContext): Promise<ToolResult>;
   /** Display names for a receipt summary (vendor and bill numbers, never bodies). */
-  describe(tool: ToolName, args: Record<string, unknown>, ctx: ConnectorContext): Promise<Record<string, string>>;
-  evidence(tool: ToolName, args: Record<string, unknown>, ctx: ConnectorContext): Promise<Evidence>;
+  describe(tool: string, args: Record<string, unknown>, ctx: ConnectorContext): Promise<Record<string, string>>;
+  evidence(tool: string, args: Record<string, unknown>, ctx: ConnectorContext): Promise<Evidence>;
   /** Domains of known vendors, for `to_domain_in: vendor_domains`. */
   vendorDomains(ctx: ConnectorContext): Promise<string[]>;
 }

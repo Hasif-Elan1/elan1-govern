@@ -1,18 +1,20 @@
 import {
-  LIMIT_TOOLS,
-  TOOLS,
-  TOOL_ARGS,
   decide,
+  durationMs,
   hashCanonical,
-  isKnownTool,
   loadSignedRulebook,
+  quotasFor,
+  validateArgs,
   type DecideContext,
+  type QuotaUsage,
   type ReceiptInput,
   type Rulebook,
+  type ToolRegistry,
 } from "@gate/core";
-import { appendReceipt, forOrg, paymentsToday } from "@gate/db";
+import { appendReceipt, forOrg, quotaUsage, startOfDayIn } from "@gate/db";
 import { holdForApproval } from "./approvals";
-import { publicError, resolveConnector } from "./connectors";
+import { publicError, resolveConnectorFor } from "./connectors";
+import { registryFor } from "./registry";
 import { orgKey, raiseAlert, type Deps } from "./deps";
 
 export interface AgentIdentity {
@@ -32,7 +34,21 @@ export type GuardResult =
 export const GATE_ERROR_REASON = "Gate could not check this action safely, so it was refused.";
 
 function usesList(rb: Rulebook, tool: string, list: string) {
-  return rb.rules.some((r) => r.tool === tool && r.when?.to_domain_in === list);
+  return rb.rules.some((r) => (r.tool === tool || r.tag !== undefined) && r.when?.to_domain_in === list);
+}
+
+/** Current usage of every quota that applies to this tool, in each quota's own window. */
+async function usageFor(deps: Deps, orgId: string, rb: Rulebook, tool: string, registry: ToolRegistry): Promise<Record<string, QuotaUsage>> {
+  const quotas = quotasFor(rb, tool, registry);
+  if (!quotas.length) return {};
+  const org = await forOrg(orgId, deps.db).org.findFirstOrThrow({ select: { timezone: true } });
+  const out: Record<string, QuotaUsage> = {};
+  for (const q of quotas) {
+    const tools = q.tool !== undefined ? [q.tool] : registry.list().filter((t) => q.tag && t.tags.includes(q.tag)).map((t) => t.name);
+    const since = q.window === "day" ? startOfDayIn(org.timezone) : new Date(Date.now() - durationMs(q.window));
+    out[q.id] = await quotaUsage(orgId, tools, since, q.max_sum?.field, deps.db);
+  }
+  return out;
 }
 
 function argsHashOf(tool: string, args: unknown): string {
@@ -67,7 +83,8 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
 
     const rbRow = agent.activeRulebookId ? await db.rulebook.findFirst({ where: { id: agent.activeRulebookId } }) : null;
     if (!rbRow) return refuse("no-rulebook", "This agent has no published rulebook, so nothing is allowed.");
-    const loaded = loadSignedRulebook(rbRow.yaml, key.publicKeyPem);
+    const registry = await registryFor(deps, orgId);
+    const loaded = loadSignedRulebook(rbRow.yaml, key.publicKeyPem, registry);
     if (!loaded.ok) {
       await raiseAlert(deps, "rulebook-invalid", `Agent ${agent.slug}: ${loaded.reason}`, orgId);
       return refuse("rulebook-invalid", `The rulebook could not be trusted (${loaded.reason}), so the action was refused.`);
@@ -75,28 +92,22 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     const rb = loaded.rulebook;
     const rulebook = { version: rbRow.version, hash: rbRow.hash };
 
-    let args = (rawArgs ?? {}) as Record<string, unknown>;
-    if (isKnownTool(tool)) {
-      const parsed = TOOL_ARGS[tool].safeParse(rawArgs ?? {});
-      if (!parsed.success) {
-        const issue = parsed.error.issues[0];
-        const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";
-        return refuse("invalid-arguments", `The arguments are not valid (${where}${issue?.message ?? "invalid"}).`, { rulebook });
-      }
-      args = parsed.data as Record<string, unknown>;
-    } else if (typeof args !== "object" || Array.isArray(args)) {
-      args = {};
+    const spec = registry.get(tool);
+    let args: Record<string, unknown> = {};
+    if (spec) {
+      const v = validateArgs(spec, rawArgs ?? {});
+      if (!v.ok) return refuse("invalid-arguments", `The arguments are not valid (${v.error}).`, { rulebook });
+      args = v.args;
+    } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+      args = rawArgs as Record<string, unknown>;
     }
 
-    const conn = isKnownTool(tool) ? await resolveConnector(deps, orgId, TOOLS[tool].connector) : undefined;
-    const ctx: DecideContext = {};
+    const conn = spec ? await resolveConnectorFor(deps, orgId, spec) : undefined;
+    const ctx: DecideContext = { registry, usage: await usageFor(deps, orgId, rb, tool, registry) };
     if (conn?.ok && usesList(rb, tool, "vendor_domains")) ctx.lists = { vendor_domains: await conn.connector.vendorDomains(conn.ctx) };
-    if (tool === LIMIT_TOOLS.daily_payments_inr.tool && rb.limits?.daily_payments_inr !== undefined) {
-      ctx.usage = { daily_payments_inr: await paymentsToday(orgId, deps.db) };
-    }
 
     const d = decide(rb, tool, args, ctx);
-    const display = conn?.ok && isKnownTool(tool) ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
+    const display = conn?.ok ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
     const common: ReceiptInput = { ...base, args_summary: { ...d.argsSummary, ...display }, rulebook, rule_id: d.ruleId, reason: d.reason };
 
     if (d.decision === "refuse") {
@@ -123,7 +134,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
       outcome = { status: "error", error: conn?.reason ?? "no connector" };
     } else {
       try {
-        const res = await conn.connector.call(tool as keyof typeof TOOLS, args, conn.ctx);
+        const res = await conn.connector.call(tool, args, conn.ctx);
         outcome = { status: "ok", ...(res.ref ? { ref: res.ref } : {}) };
         result = res.data;
       } catch (e) {

@@ -1,6 +1,7 @@
 import { canonicalize, omit } from "./canonical";
 import { hashCanonical, signText, verifyText } from "./crypto";
 import { parseRulebookYaml, type Rulebook } from "./rulebook";
+import { builtinRegistry, lenientRegistry, type ToolRegistry } from "./tools";
 
 /** The exact bytes a rulebook signature covers. */
 export function rulebookSigningPayload(rb: Rulebook): string {
@@ -21,9 +22,13 @@ export function verifyRulebook(rb: Rulebook, publicKeyPem: string): boolean {
 
 export type LoadResult = { ok: true; rulebook: Rulebook } | { ok: false; reason: string };
 
-/** Parse, validate and verify. Gate only ever runs a rulebook that passes this. */
-export function loadSignedRulebook(text: string, publicKeyPem: string): LoadResult {
-  const parsed = parseRulebookYaml(text);
+/**
+ * Parse, validate and verify. Gate only ever runs a rulebook that passes this.
+ * Tool names are checked strictly when publishing; here a tool that has since gone away
+ * (e.g. removed from an upstream MCP server) must not make the whole rulebook unloadable.
+ */
+export function loadSignedRulebook(text: string, publicKeyPem: string, registry: ToolRegistry = builtinRegistry): LoadResult {
+  const parsed = parseRulebookYaml(text, lenientRegistry(registry));
   if (!parsed.ok) return { ok: false, reason: `invalid rulebook: ${parsed.errors.join("; ")}` };
   if (!parsed.rulebook.signature) return { ok: false, reason: "rulebook is not signed" };
   if (!verifyRulebook(parsed.rulebook, publicKeyPem)) return { ok: false, reason: "rulebook signature does not match" };
