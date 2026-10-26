@@ -53,13 +53,25 @@ function TimeLeft({ to }: { to: string }) {
   );
 }
 
-function ReauthDialog({ open, onDone, onCancel, needTotp: initialTotp }: { open: boolean; onDone: () => void; onCancel: () => void; needTotp: boolean }) {
+export function ReauthDialog({
+  open,
+  onDone,
+  onCancel,
+  needTotp: initialTotp,
+  description = "Approving moves money, so Gate asks for your password if you signed in more than 10 minutes ago.",
+}: {
+  open: boolean;
+  onDone: () => void;
+  onCancel: () => void;
+  needTotp: boolean;
+  description?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [needTotp, setNeedTotp] = useState(initialTotp);
   const [busy, setBusy] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent title="Confirm it's you" description="Approving moves money, so Gate asks for your password if you signed in more than 10 minutes ago.">
+      <DialogContent title="Confirm it's you" description={description}>
         <form
           className="grid gap-4"
           onSubmit={async (e) => {

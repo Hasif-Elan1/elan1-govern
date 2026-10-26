@@ -1,13 +1,23 @@
 import { connectorFor, type Connector, type ConnectorKind, type ConnectorMode, type LiveConfig } from "@gate/connectors";
-import { decrypt } from "@gate/core";
 import { forOrg, prisma as defaultPrisma, recordHealthAlert, type Db } from "@gate/db";
 import type { FastifyBaseLogger } from "fastify";
 import type { GateEnv } from "./env";
+import { activeKey, envKeyProvider, type KeyProvider } from "./keys";
 import { createMailer, type Mailer } from "./mailer";
+
+/** Where background work is queued. pg-boss in the running service; a no-op until jobs start. */
+export interface JobQueue {
+  send(queue: string, data: object, opts?: { startAfter?: number; singletonKey?: string }): Promise<void>;
+}
+
+export const noQueue: JobQueue = { send: async () => undefined };
 
 export interface Deps {
   env: GateEnv;
   db: Db;
+  /** Wraps and unwraps org signing keys (env master key today; a KMS later). */
+  keys: KeyProvider;
+  queue: JobQueue;
   mailer: Mailer;
   live: LiveConfig;
   log: FastifyBaseLogger;
@@ -35,21 +45,19 @@ export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partia
     connector: (kind, mode) => connectorFor(kind, mode, live),
     alerts: [],
     background: new Set(),
+    keys: envKeyProvider(env.GATE_MASTER_KEY),
+    queue: noQueue,
     ...overrides,
   };
 }
 
-const keyCache = new Map<string, string>();
-
-/** The org's Ed25519 private key, decrypted with the master key. Never leaves this process. */
-export async function orgKey(deps: Deps, orgId: string): Promise<{ privateKeyPem: string; publicKeyPem: string; name: string }> {
-  const org = await forOrg(orgId, deps.db).org.findFirstOrThrow();
-  let pem = keyCache.get(orgId);
-  if (!pem) {
-    pem = decrypt(deps.env.GATE_MASTER_KEY, org.privateKeyEnc, `org-key:${orgId}`);
-    keyCache.set(orgId, pem);
-  }
-  return { privateKeyPem: pem, publicKeyPem: org.publicKey, name: org.name };
+/**
+ * The org's active Ed25519 key, unwrapped by the KeyProvider. Never leaves this process.
+ * Chain writes take the key under the chain lock instead (see `signer` in keys.ts).
+ */
+export async function orgKey(deps: Deps, orgId: string): Promise<{ kid: string; privateKeyPem: string; publicKeyPem: string; name: string }> {
+  const org = await forOrg(orgId, deps.db).org.findFirstOrThrow({ select: { name: true } });
+  return { ...(await activeKey(deps, orgId)), name: org.name };
 }
 
 /** Record that Gate could not do its job. Never throws. */

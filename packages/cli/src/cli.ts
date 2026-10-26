@@ -44,6 +44,9 @@ export async function main(argv: string[], out: Out = console.log, err: Out = co
       if (r.count) out(`  receipts ${r.firstSeq}–${r.lastSeq}, ${r.checkpoints} signed checkpoint${r.checkpoints === 1 ? "" : "s"}`);
       if ("org" in r && r.org) out(`  organisation: ${r.org}`);
       if ("fingerprint" in r && r.fingerprint) out(`  key fingerprint: ${r.fingerprint}`);
+      if ("keys" in r && r.keys && r.keys.length > 1) {
+        out(`  signing keys: ${r.keys.map((k) => `${k.kid} (${k.retiredAt ? `retired ${k.retiredAt.slice(0, 10)}` : "current"})`).join(", ")}`);
+      }
       return 0;
     }
     err(r.seq !== null ? `Chain broken at receipt ${r.seq}: ${r.reason}` : `Not verified: ${r.reason}`);

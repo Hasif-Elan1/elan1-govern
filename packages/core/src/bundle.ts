@@ -2,10 +2,13 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 import { omit } from "./canonical";
 import { hashCanonical, keyFingerprint, sha256, signText, verifyText } from "./crypto";
+import type { PublicKeyInfo } from "./keys";
 import { CheckpointSchema, verifyChain, type ChainHead, type Checkpoint, type Receipt, type VerifyResult } from "./receipt";
 
 export const BUNDLE_FORMAT = "gate-evidence-bundle/1";
 const MAX_UNZIPPED = 512 * 1024 * 1024;
+
+const ManifestKeySchema = z.object({ kid: z.string(), created_at: z.string().optional(), retired_at: z.string().nullable().optional() }).strict();
 
 const ManifestSchema = z
   .object({
@@ -18,6 +21,10 @@ const ManifestSchema = z
     last_seq: z.number().int().min(0),
     last_hash: z.string(),
     key_fingerprint: z.string(),
+    /** The key that signed this manifest. Absent in bundles made before key rotation. */
+    kid: z.string().optional(),
+    /** Every signing key the org has had, with when each was retired. */
+    keys: z.array(ManifestKeySchema).optional(),
     files: z.record(z.string(), z.string()),
     sig: z.string(),
   })
@@ -28,7 +35,8 @@ const README = `Gate evidence bundle
 
 receipts.jsonl    one signed receipt per line, in chain order
 checkpoints.json  signed chain heads
-public_key.pem    the organisation's Gate public key
+public_key.pem    the organisation's current Gate public key
+public_keys.json  every Gate public key the organisation has used, by key id
 manifest.json     what this bundle covers, signed
 
 Verify it offline:  gate verify <this-file>.zip
@@ -41,8 +49,11 @@ export function buildBundle(input: {
   anchor: ChainHead;
   receipts: readonly Receipt[];
   checkpoints: readonly Checkpoint[];
+  /** The current key: signs the manifest and is written as public_key.pem. */
   publicKeyPem: string;
   privateKeyPem: string;
+  /** All of the org's keys, current and retired. Omit for an org with one key. */
+  publicKeys?: readonly PublicKeyInfo[];
   generatedAt: string;
 }): Uint8Array {
   const files: Record<string, string> = {
@@ -50,6 +61,9 @@ export function buildBundle(input: {
     "checkpoints.json": JSON.stringify(input.checkpoints, null, 2),
     "public_key.pem": input.publicKeyPem,
   };
+  const kid = keyFingerprint(input.publicKeyPem);
+  const keys = input.publicKeys?.length ? input.publicKeys : undefined;
+  if (keys) files["public_keys.json"] = JSON.stringify(Object.fromEntries(keys.map((k) => [keyFingerprint(k.publicKeyPem), k.publicKeyPem])), null, 2);
   const last = input.receipts[input.receipts.length - 1];
   const unsigned = {
     format: BUNDLE_FORMAT,
@@ -60,7 +74,17 @@ export function buildBundle(input: {
     count: input.receipts.length,
     last_seq: last?.seq ?? input.anchor.seq,
     last_hash: last?.hash ?? input.anchor.hash,
-    key_fingerprint: keyFingerprint(input.publicKeyPem),
+    key_fingerprint: kid,
+    ...(keys
+      ? {
+          kid,
+          keys: keys.map((k) => ({
+            kid: keyFingerprint(k.publicKeyPem),
+            ...(k.createdAt ? { created_at: k.createdAt } : {}),
+            retired_at: k.retiredAt ?? null,
+          })),
+        }
+      : {}),
     files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, sha256(v)])),
   };
   const manifest = { ...unsigned, sig: signText(input.privateKeyPem, hashCanonical(unsigned)) };
@@ -69,7 +93,33 @@ export function buildBundle(input: {
   return zipSync(zipFiles, { level: 6, mtime: new Date("2020-01-01T00:00:00Z") });
 }
 
-export type BundleResult = (VerifyResult & { fingerprint?: string; org?: string }) | { ok: false; seq: null; reason: string };
+export interface BundleKey {
+  kid: string;
+  retiredAt: string | null;
+}
+
+export type BundleResult = (VerifyResult & { fingerprint?: string; org?: string; keys?: BundleKey[] }) | { ok: false; seq: null; reason: string };
+
+type Fail = { ok: false; seq: null; reason: string };
+const fail = (reason: string): Fail => ({ ok: false, seq: null, reason });
+
+/** public_keys.json: kid -> PEM, where every kid must be that PEM's fingerprint. */
+function readPublicKeys(text: string | undefined, current: string): Record<string, string> | Fail {
+  if (text === undefined) return { [keyFingerprint(current)]: current };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return fail("public_keys.json is not valid JSON");
+  }
+  const r = z.record(z.string(), z.string()).safeParse(parsed);
+  if (!r.success) return fail("public_keys.json is malformed");
+  for (const [kid, pem] of Object.entries(r.data)) {
+    if (keyFingerprint(pem) !== kid) return fail(`public_keys.json names key ${kid} by the wrong id`);
+  }
+  if (!r.data[keyFingerprint(current)]) return fail("public_key.pem is not listed in public_keys.json");
+  return r.data;
+}
 
 export function verifyBundle(zip: Uint8Array, opts: { expectedPublicKeyPem?: string } = {}): BundleResult {
   let files: Record<string, Uint8Array>;
@@ -83,7 +133,7 @@ export function verifyBundle(zip: Uint8Array, opts: { expectedPublicKeyPem?: str
       },
     });
   } catch (e) {
-    return { ok: false, seq: null, reason: `not a readable bundle: ${(e as Error).message}` };
+    return fail(`not a readable bundle: ${(e as Error).message}`);
   }
   const read = (name: string) => (files[name] ? strFromU8(files[name]) : undefined);
   const manifestText = read("manifest.json");
@@ -91,24 +141,30 @@ export function verifyBundle(zip: Uint8Array, opts: { expectedPublicKeyPem?: str
   const checkpointsText = read("checkpoints.json");
   const publicKeyPem = read("public_key.pem");
   if (manifestText === undefined || receiptsText === undefined || checkpointsText === undefined || publicKeyPem === undefined) {
-    return { ok: false, seq: null, reason: "bundle is missing a file (manifest.json, receipts.jsonl, checkpoints.json, public_key.pem)" };
+    return fail("bundle is missing a file (manifest.json, receipts.jsonl, checkpoints.json, public_key.pem)");
   }
   if (opts.expectedPublicKeyPem && keyFingerprint(opts.expectedPublicKeyPem) !== keyFingerprint(publicKeyPem)) {
-    return { ok: false, seq: null, reason: "bundle was signed with a different key than the one you expected" };
+    return fail("bundle was signed with a different key than the one you expected");
   }
+  const pems = readPublicKeys(read("public_keys.json"), publicKeyPem);
+  if ("ok" in pems) return pems as Fail;
 
   let manifest: Manifest;
   let checkpoints: Checkpoint[];
   try {
     const m = ManifestSchema.safeParse(JSON.parse(manifestText));
-    if (!m.success) return { ok: false, seq: null, reason: "manifest.json is malformed" };
+    if (!m.success) return fail("manifest.json is malformed");
     manifest = m.data;
     const cps = z.array(CheckpointSchema).safeParse(JSON.parse(checkpointsText));
-    if (!cps.success) return { ok: false, seq: null, reason: "checkpoints.json is malformed" };
+    if (!cps.success) return fail("checkpoints.json is malformed");
     checkpoints = cps.data;
   } catch {
-    return { ok: false, seq: null, reason: "manifest.json or checkpoints.json is not valid JSON" };
+    return fail("manifest.json or checkpoints.json is not valid JSON");
   }
+  if (Object.keys(pems).length > 1 && !manifest.keys) return fail("manifest.json does not list the bundle's keys");
+  const retiredAt = new Map((manifest.keys ?? []).map((k) => [k.kid, k.retired_at ?? null]));
+  const keys: PublicKeyInfo[] = Object.entries(pems).map(([kid, pem]) => ({ kid, publicKeyPem: pem, retiredAt: retiredAt.get(kid) ?? null }));
+
   const lines = receiptsText.split("\n").filter((l) => l.trim() !== "");
   const receipts: unknown[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -119,11 +175,14 @@ export function verifyBundle(zip: Uint8Array, opts: { expectedPublicKeyPem?: str
     }
   }
 
-  const chain = verifyChain(receipts, publicKeyPem, { anchor: manifest.anchor, checkpoints });
+  const chain = verifyChain(receipts, keys, { anchor: manifest.anchor, checkpoints });
   if (!chain.ok) return chain;
 
+  // The manifest is signed by the current key, whatever its own kid field claims.
+  const manifestKid = keyFingerprint(publicKeyPem);
+  if (manifest.kid !== undefined && manifest.kid !== manifestKid) return fail("manifest names a different signing key than public_key.pem");
   if (!verifyText(publicKeyPem, hashCanonical(omit(manifest, ["sig"])), manifest.sig)) {
-    return { ok: false, seq: null, reason: "manifest signature is invalid" };
+    return fail("manifest signature is invalid");
   }
   if (chain.lastSeq < manifest.last_seq) {
     return { ok: false, seq: chain.lastSeq + 1, reason: `receipt ${chain.lastSeq + 1} is missing (bundle should end at ${manifest.last_seq})` };
@@ -133,9 +192,10 @@ export function verifyBundle(zip: Uint8Array, opts: { expectedPublicKeyPem?: str
   }
   for (const [name, expected] of Object.entries(manifest.files)) {
     const text = read(name);
-    if (text === undefined || sha256(text) !== expected) return { ok: false, seq: null, reason: `${name} does not match the manifest` };
+    if (text === undefined || sha256(text) !== expected) return fail(`${name} does not match the manifest`);
   }
-  return { ...chain, fingerprint: keyFingerprint(publicKeyPem), org: manifest.org.name };
+  if (files["public_keys.json"] && !manifest.files["public_keys.json"]) return fail("public_keys.json is not covered by the manifest");
+  return { ...chain, fingerprint: manifestKid, org: manifest.org.name, keys: keys.map((k) => ({ kid: k.kid as string, retiredAt: k.retiredAt ?? null })) };
 }
 
 /** Exposed for tests and tooling that build bundles by hand. */
@@ -146,7 +206,6 @@ export function readBundleFiles(zip: Uint8Array): Record<string, string> {
 export function writeBundleFiles(files: Record<string, string>): Uint8Array {
   return zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])));
 }
-
 
 export const PACK_BUNDLE_NAME = "evidence-bundle.zip";
 

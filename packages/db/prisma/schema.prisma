@@ -238,6 +238,7 @@ model Checkpoint {
   seq   Int
   hash  String
   ts    DateTime
+  kid   String? // signing key id; absent on checkpoints from before key rotation
   sig   String
 
   @@index([orgId, seq])
@@ -263,4 +264,54 @@ model HealthAlert {
   message    String
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
+}
+
+// An org's Ed25519 signing keys. One is active (retiredAt null); retired keys stay for verification.
+// Org.publicKey/privateKeyEnc hold the org's first key and are copied here by the migration.
+model OrgKey {
+  id            String    @id @default(cuid())
+  orgId         String
+  kid           String // key fingerprint: first 16 hex of sha256(public key PEM)
+  publicKey     String
+  privateKeyEnc String // wrapped by the gate's KeyProvider; only the gate service can unwrap it
+  provider      String    @default("env") // which KeyProvider wrapped it
+  createdAt     DateTime  @default(now())
+  retiredAt     DateTime?
+
+  @@unique([orgId, kid])
+  @@index([orgId, retiredAt])
+}
+
+// Outbound webhooks (SIEM / log export, integrations).
+model Webhook {
+  id         String            @id @default(cuid())
+  orgId      String
+  url        String
+  secretEnc  String // AES-GCM, key only in the gate service env
+  events     String[]
+  active     Boolean           @default(true)
+  createdBy  String?
+  createdAt  DateTime          @default(now())
+  deliveries WebhookDelivery[]
+
+  @@index([orgId])
+}
+
+model WebhookDelivery {
+  id             String    @id @default(cuid())
+  orgId          String
+  webhookId      String
+  webhook        Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  status         String    @default("pending") // pending | delivered | failed
+  attempts       Int       @default(0)
+  lastError      String?
+  responseStatus Int?
+  nextAttemptAt  DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, webhookId, createdAt])
+  @@index([status, nextAttemptAt])
 }

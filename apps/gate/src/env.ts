@@ -32,7 +32,12 @@ export const GateEnvSchema = z.object({
   ZOHO_ACCOUNTS_URL: z.string().url().default("https://accounts.zoho.in"),
   ZOHO_API_URL: z.string().url().default("https://www.zohoapis.in"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
-});
+  APP_ENV: z.enum(["development", "production"]).default("development"),
+  /** Let webhooks reach private, loopback and link-local addresses. Default: only outside production. */
+  WEBHOOK_ALLOW_PRIVATE: z.enum(["true", "false"]).optional(),
+  /** Postgres schema for the pg-boss job tables. */
+  JOBS_SCHEMA: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/).default("pgboss"),
+}).transform((e) => ({ ...e, WEBHOOK_ALLOW_PRIVATE: e.WEBHOOK_ALLOW_PRIVATE ? e.WEBHOOK_ALLOW_PRIVATE === "true" : e.APP_ENV !== "production" }));
 
 export type GateEnv = z.infer<typeof GateEnvSchema>;
 

@@ -1,7 +1,6 @@
 import { buildApp } from "./app";
-import { expireDue } from "./approvals";
 import { readGateEnv } from "./env";
-import { checkpointAll } from "./evidence";
+import { startJobs } from "./jobs";
 
 async function main() {
   let env;
@@ -14,12 +13,13 @@ async function main() {
   const { app, deps } = await buildApp(env);
   await app.listen({ port: env.GATE_PORT, host: "0.0.0.0" });
 
-  const sweep = setInterval(() => void expireDue(deps).catch((e: Error) => app.log.warn({ err: e.message }, "expiry sweep failed")), 10_000);
-  const hourly = setInterval(() => void checkpointAll(deps), 3_600_000);
+  // Approval expiry (every minute), hourly checkpoints and webhook delivery run on pg-boss,
+  // so they survive restarts and run once across several Gate instances.
+  const jobs = await startJobs(deps);
   const stop = async () => {
-    clearInterval(sweep);
-    clearInterval(hourly);
+    await jobs.stop().catch((e: Error) => app.log.warn({ err: e.message }, "job queue did not stop cleanly"));
     await app.close();
+    await Promise.allSettled([...deps.background]);
     await deps.db.$disconnect();
     process.exit(0);
   };

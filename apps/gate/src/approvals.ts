@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { decrypt, describeAction, encrypt, hmacSign, type DecisionResult, type Receipt, type ReceiptInput } from "@gate/core";
-import { dueApprovals, forOrg, withChain } from "@gate/db";
+import { dueApprovals, forOrg } from "@gate/db";
+import { chain } from "./chain";
 import { publicError, resolveConnectorFor, type Resolved } from "./connectors";
 import { registryFor } from "./registry";
-import { orgKey, raiseAlert, type Deps } from "./deps";
+import { raiseAlert, type Deps } from "./deps";
 import type { GuardResult } from "./guard";
 import { approvalEmail } from "./mailer";
 
@@ -25,7 +26,6 @@ export async function holdForApproval(
     orgId: string;
     agentId: string;
     agentName: string;
-    privateKeyPem: string;
     tool: string;
     args: Record<string, unknown>;
     receipt: ReceiptInput;
@@ -42,9 +42,9 @@ export async function holdForApproval(
     ? await input.connector.connector.evidence(input.tool, input.args, input.connector.ctx).catch(() => ({}))
     : {};
 
-  const { receipt, links } = await withChain(
+  const { receipt, links } = await chain(
+    deps,
     orgId,
-    input.privateKeyPem,
     async (append, tx) => {
       const receipt = await append({ ...input.receipt, decision: "ask", approval: { id, result: "pending", expires_at: expiresAt.toISOString() } });
       await tx.approval.create({
@@ -69,7 +69,6 @@ export async function holdForApproval(
       for (const email of approvers) links.push(await tx.approvalLink.create({ data: { orgId, approvalId: id, email, expiresAt } }));
       return { receipt, links };
     },
-    deps.db,
   );
 
   const action = describeAction(input.tool, input.receipt.args_summary ?? {});
@@ -158,7 +157,6 @@ export async function resolveApproval(
     throw e;
   }
 
-  const key = await orgKey(deps, orgId);
   const held = await heldReceipt(deps, orgId, approval.heldSeq);
   const decided = { id: approvalId, result: input.result, by: email, at: now.toISOString(), ...(selfApproval ? { self_approval: true } : {}) };
 
@@ -181,14 +179,13 @@ export async function resolveApproval(
   }
 
   try {
-    await withChain(
+    await chain(
+      deps,
       orgId,
-      key.privateKeyPem,
       async (append, tx) => {
         await append(followUp(held, decided, outcome));
         await tx.approval.update({ where: { id: approvalId }, data: { argsEnc: null, result: { ...outcome, ...(data !== undefined ? { data } : {}) } as object } });
       },
-      deps.db,
     );
   } catch (e) {
     await raiseAlert(deps, "receipt-write-failed", `Approval ${approvalId} was ${input.result} (${outcome.status}) but its receipt could not be written: ${(e as Error).message}`, orgId);
@@ -201,10 +198,9 @@ class ClaimError extends Error {}
 
 /** Expire one approval if it is pending and past its time. Returns true when it expired it. */
 export async function expireApproval(deps: Deps, orgId: string, approvalId: string): Promise<boolean> {
-  const key = await orgKey(deps, orgId);
-  return withChain(
+  return chain(
+    deps,
     orgId,
-    key.privateKeyPem,
     async (append, tx) => {
       const now = new Date();
       const claimed = await tx.approval.updateMany({ where: { id: approvalId, status: "pending", expiresAt: { lte: now } }, data: { status: "expired", resolvedAt: now, argsEnc: null } });
@@ -214,7 +210,6 @@ export async function expireApproval(deps: Deps, orgId: string, approvalId: stri
       await append(followUp(row.body as unknown as Receipt, { id: approvalId, result: "expired", at: now.toISOString() }, { status: "not_run" }));
       return true;
     },
-    deps.db,
   );
 }
 

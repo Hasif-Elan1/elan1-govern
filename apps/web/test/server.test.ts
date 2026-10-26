@@ -137,6 +137,10 @@ describe("receipt views", () => {
     expect(r("settings.updated")).toBe("Changed organisation settings");
     expect(r("user.2fa_enabled")).toMatch(/on two-step/);
     expect(r("user.2fa_disabled")).toMatch(/off two-step/);
+    expect(r("key.rotated", { new_kid: "abc" })).toBe("Rotated the signing key to abc");
+    expect(r("key.rotated")).toBe("Rotated the signing key");
+    expect(r("webhook.created", { host: "siem.example.com" })).toBe("Added a webhook to siem.example.com");
+    expect(r("webhook.deleted")).toBe("Deleted a webhook");
     expect(r("something.else")).toBe("something.else");
     expect(adminTitle({ kind: "admin" } as Receipt)).toBe("Setup change");
     expect(toView({ kind: "decision", seq: 1, ts: "", org: "", prev_hash: "", hash: "", sig: "" } as Receipt).status).toBe("admin");

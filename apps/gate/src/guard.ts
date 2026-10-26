@@ -11,8 +11,9 @@ import {
   type Rulebook,
   type ToolRegistry,
 } from "@gate/core";
-import { appendReceipt, forOrg, quotaUsage, startOfDayIn } from "@gate/db";
+import { forOrg, quotaUsage, startOfDayIn } from "@gate/db";
 import { holdForApproval } from "./approvals";
+import { record } from "./chain";
 import { publicError, resolveConnectorFor } from "./connectors";
 import { registryFor } from "./registry";
 import { orgKey, raiseAlert, type Deps } from "./deps";
@@ -63,18 +64,16 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
   const { orgId, agentId } = who;
   const args_hash = argsHashOf(tool, rawArgs);
   let base: ReceiptInput = { kind: "decision", tool, args_hash };
-  let privateKeyPem: string | undefined;
 
   try {
     const db = forOrg(orgId, deps.db);
     const agent = await db.agent.findFirstOrThrow({ where: { id: agentId } });
     const key = await orgKey(deps, orgId);
-    privateKeyPem = key.privateKeyPem;
     base = { ...base, agent: agent.slug };
     const touch = () => db.agent.update({ where: { id: agent.id }, data: { lastActionAt: new Date() } }).catch(() => undefined);
 
     const refuse = async (ruleId: string, reason: string, extra: Partial<ReceiptInput> = {}): Promise<GuardResult> => {
-      const r = await appendReceipt(orgId, key.privateKeyPem, { ...base, args_summary: {}, rule_id: ruleId, decision: "refuse", reason, ...extra }, deps.db);
+      const r = await record(deps, orgId, { ...base, args_summary: {}, rule_id: ruleId, decision: "refuse", reason, ...extra });
       await touch();
       return { status: "refused", ruleId, reason, seq: r.seq };
     };
@@ -111,19 +110,19 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     const common: ReceiptInput = { ...base, args_summary: { ...d.argsSummary, ...display }, rulebook, rule_id: d.ruleId, reason: d.reason };
 
     if (d.decision === "refuse") {
-      const r = await appendReceipt(orgId, key.privateKeyPem, { ...common, decision: "refuse" }, deps.db);
+      const r = await record(deps, orgId, { ...common, decision: "refuse" });
       await touch();
       return { status: "refused", ruleId: d.ruleId, reason: d.reason, seq: r.seq };
     }
 
     if (d.decision === "ask") {
-      const held = await holdForApproval(deps, { orgId, agentId: agent.id, agentName: agent.name, privateKeyPem: key.privateKeyPem, tool, args, receipt: common, decision: d, connector: conn, executor: mode === "execute" ? "gate" : "agent" });
+      const held = await holdForApproval(deps, { orgId, agentId: agent.id, agentName: agent.name, tool, args, receipt: common, decision: d, connector: conn, executor: mode === "execute" ? "gate" : "agent" });
       await touch();
       return held;
     }
 
     if (mode === "check") {
-      const r = await appendReceipt(orgId, key.privateKeyPem, { ...common, decision: "allow" }, deps.db);
+      const r = await record(deps, orgId, { ...common, decision: "allow" });
       await touch();
       return { status: "ok", ruleId: d.ruleId, reason: d.reason, seq: r.seq };
     }
@@ -144,7 +143,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
 
     let seq: number;
     try {
-      seq = (await appendReceipt(orgId, key.privateKeyPem, { ...common, decision: "allow", outcome }, deps.db)).seq;
+      seq = (await record(deps, orgId, { ...common, decision: "allow", outcome })).seq;
     } catch (e) {
       await raiseAlert(deps, "receipt-write-failed", `${tool} ran (${outcome.status}${outcome.ref ? `, ${outcome.ref}` : ""}) but its receipt could not be written: ${(e as Error).message}`, orgId);
       return { status: "refused", ruleId: "gate-error", reason: GATE_ERROR_REASON };
@@ -155,8 +154,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
   } catch (e) {
     deps.log.error({ err: e, orgId, tool }, "guard failed; refusing");
     try {
-      const key = privateKeyPem ?? (await orgKey(deps, orgId)).privateKeyPem;
-      const r = await appendReceipt(orgId, key, { ...base, args_summary: {}, rule_id: "gate-error", decision: "refuse", reason: GATE_ERROR_REASON }, deps.db);
+      const r = await record(deps, orgId, { ...base, args_summary: {}, rule_id: "gate-error", decision: "refuse", reason: GATE_ERROR_REASON });
       return { status: "refused", ruleId: "gate-error", reason: GATE_ERROR_REASON, seq: r.seq };
     } catch (e2) {
       await raiseAlert(deps, "receipt-write-failed", `A refusal for ${tool} could not be written: ${(e2 as Error).message}`, orgId);

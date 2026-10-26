@@ -15,6 +15,8 @@ export const PERMISSIONS = {
   "settings:manage": ["owner", "admin"],
   "members:manage": ["owner", "admin"],
   "demo:run": ["owner", "admin"],
+  "webhooks:manage": ["owner", "admin"],
+  "keys:rotate": ["owner"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

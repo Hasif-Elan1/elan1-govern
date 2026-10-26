@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GENESIS, buildBundle, buildReceipt, generateKeyPair, readBundleFiles, writeBundleFiles, type Receipt } from "@gate/core";
+import { GENESIS, buildBundle, buildReceipt, generateKeyPair, keyFingerprint, readBundleFiles, writeBundleFiles, type Receipt } from "@gate/core";
 import { describe, expect, it } from "vitest";
 import { main } from "../src/cli";
 
@@ -44,6 +44,43 @@ describe("gate verify", () => {
     const c = capture();
     expect(await main(["verify", file], c.out, c.err)).toBe(1);
     expect(c.errs[0]).toBe("Chain broken at receipt 3: receipt 3 was changed after it was written");
+  });
+  it("verifies a bundle that spans a key rotation, and rejects a retired key's late receipt", async () => {
+    const next = generateKeyPair();
+    const kidA = keyFingerprint(keys.publicKeyPem);
+    const kidB = keyFingerprint(next.publicKeyPem);
+    const make = (lateOldKey: boolean) => {
+      const receipts: Receipt[] = [];
+      let head = GENESIS;
+      const add = (input: Parameters<typeof buildReceipt>[0], ts: string, k: { privateKeyPem: string }, kid: string) => {
+        const r = buildReceipt(input, { org: "o", ts, head, kid }, k.privateKeyPem);
+        receipts.push(r);
+        head = { seq: r.seq, hash: r.hash };
+      };
+      add({ kind: "decision", tool: "gmail.search", decision: "allow" }, "2026-10-26T01:00:00.000Z", keys, kidA);
+      add({ kind: "admin", actor: "o@x.in", action: "key.rotated", details: { old_kid: kidA, new_kid: kidB } }, "2026-10-26T02:00:00.000Z", keys, kidA);
+      add({ kind: "decision", tool: "gmail.search", decision: "allow" }, "2026-10-26T03:00:00.000Z", lateOldKey ? keys : next, lateOldKey ? kidA : kidB);
+      return buildBundle({
+        org: { id: "o", name: "Acme" },
+        range: { from: "2026-10-26", to: "2026-10-26" },
+        anchor: GENESIS,
+        receipts,
+        checkpoints: [],
+        publicKeyPem: next.publicKeyPem,
+        privateKeyPem: next.privateKeyPem,
+        publicKeys: [{ publicKeyPem: keys.publicKeyPem, retiredAt: "2026-10-26T02:00:00.000Z" }, { publicKeyPem: next.publicKeyPem }],
+        generatedAt: "2026-10-26T04:00:00.000Z",
+      });
+    };
+    const ok = join(dir, "rotated.zip");
+    writeFileSync(ok, make(false));
+    const c = capture();
+    expect(await main(["verify", ok], c.out, c.err)).toBe(0);
+    expect(c.lines.join("\n")).toContain(`signing keys: ${kidA} (retired 2026-10-26), ${kidB} (current)`);
+    const bad = join(dir, "late.zip");
+    writeFileSync(bad, make(true));
+    expect(await main(["verify", bad], c.out, c.err)).toBe(1);
+    expect(c.errs.at(-1)).toBe(`Chain broken at receipt 3: receipt 3 signed with key ${kidA} after it was retired`);
   });
   it("reports unreadable files and usage", async () => {
     const file = join(dir, "junk.zip");
