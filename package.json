@@ -19,7 +19,7 @@
     "test:e2e": "playwright test",
     "db:migrate": "pnpm --filter @gate/db migrate",
     "db:seed": "pnpm --filter @gate/gate seed",
-    "gate": "pnpm --filter @gate/cli exec gate",
+    "gate": "node packages/cli/bin/gate.mjs",
     "security:audit": "pnpm audit --audit-level high",
     "security:semgrep": "semgrep scan --config auto --error --metrics=on --quiet",
     "security:gitleaks": "gitleaks detect --no-banner --redact -v",
