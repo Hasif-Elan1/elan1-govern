@@ -100,10 +100,9 @@ export function summarizeArgs(tool: string, args: Args, rb: Rulebook): Record<st
 
 function plainReason(rule: Rule, decision: Decision): string {
   if (rule.reason) return rule.reason;
-  const label = TOOLS[rule.tool as keyof typeof TOOLS]?.label.toLowerCase() ?? rule.tool;
-  if (decision === "allow") return `Rule "${rule.id}" allows ${label}.`;
-  if (decision === "ask") return `Rule "${rule.id}" needs a person to approve ${label}.`;
-  return `Rule "${rule.id}" never allows ${label}.`;
+  if (decision === "allow") return "Your rules allow this.";
+  if (decision === "ask") return "Your rules say a person must approve this first.";
+  return "Your rules never allow this.";
 }
 
 export function decide(rb: Rulebook, tool: string, args: Args, ctx: DecideContext = {}): DecisionResult {

@@ -90,8 +90,11 @@ export const mockGmail: Connector = {
         throw new ConnectorError(`Gmail does not handle ${tool}`, "invalid");
     }
   },
-  async describe() {
-    return {};
+  async describe(_tool, args, ctx): Promise<Record<string, string>> {
+    // The sender's domain only: enough to audit, without names or subjects.
+    const m = typeof args.message_id === "string" ? mockState(ctx.orgId).messages.find((x) => x.id === args.message_id) : undefined;
+    const domain = m ? /@([^>\s]+)/.exec(m.from)?.[1] : undefined;
+    return domain ? { from_domain: domain.toLowerCase() } : {};
   },
   async evidence(tool, args, ctx) {
     const s = mockState(ctx.orgId);

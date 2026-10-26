@@ -35,7 +35,8 @@ describe("describeAction", () => {
     expect(describeAction("zoho.get_vendor", { vendor: "V" })).toBe("Look up V");
     expect(describeAction("gmail.search", {})).toBe("Search the mailbox");
     expect(describeAction("gmail.read_message", {})).toBe("Read an email");
-    expect(describeAction("gmail.read_message", { subject: "Invoice" })).toBe("Read an email: Invoice");
+    expect(describeAction("gmail.read_message", { from_domain: "v.in" })).toBe("Read an email from v.in");
+    expect(describeAction("gmail.get_attachment", { from_domain: "v.in" })).toBe("Open an email attachment from v.in");
     expect(describeAction("gmail.get_attachment", {})).toMatch(/attachment/);
     expect(describeAction("gmail.draft_reply", {})).toBe("Draft a reply");
     expect(describeAction("gmail.send_reply", { to_domain: "x.in" })).toBe("Send a reply to x.in");
@@ -111,5 +112,21 @@ describe("diffLines", () => {
       { type: "same", text: "a" },
       { type: "remove", text: "b" },
     ]);
+  });
+});
+
+describe("describeRule", () => {
+  it("reads like a sentence", async () => {
+    const { describeRule } = await import("../src/describe");
+    expect(describeRule({ tool: "zoho.record_bill_payment", decide: "ask", approver: "finance", when: { amount_inr: { gt: 50000 } } })).toBe("Ask finance before: record a payment, when the amount is over ₹50,000");
+    expect(describeRule({ tool: "zoho.update_vendor", decide: "refuse", when: { fields_include: ["bank_account", "ifsc"] } })).toBe("Never allow: update a vendor, when it changes the bank account and IFSC");
+    expect(describeRule({ tool: "gmail.send_reply", decide: "ask", when: { to_domain_in: "vendor_domains" } })).toBe("Ask a person before: send a reply, when to someone at a known vendor");
+    expect(describeRule({ tool: "gmail.send_reply", decide: "allow", when: { to_domain_in: ["a.in", "b.in"] } })).toBe("Allow: send a reply, when to a.in, b.in");
+    expect(describeRule({ tool: "gmail.send_reply", decide: "allow", when: { to_domain_in: "partner_list" } })).toBe("Allow: send a reply, when to someone at a partner list");
+    expect(describeRule({ tool: "zoho.create_bill", decide: "allow", when: { vendor_id: { in: ["v1", "v2"] }, bill_number: { eq: "X" }, amount_inr: { gte: 5, lt: 10 } } })).toBe(
+      "Allow: create a bill, when vendor id is one of v1, v2 and bill number is exactly X and the amount is at least ₹5 and under ₹10",
+    );
+    expect(describeRule({ tool: "x.y", decide: "refuse" })).toBe("Never allow: x.y");
+    expect(describeRule({ tool: "zoho.update_vendor", decide: "refuse", when: { fields_include: ["zz"], other: { weird: 1 } } })).toMatch(/zz/);
   });
 });

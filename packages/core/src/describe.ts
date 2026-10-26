@@ -47,9 +47,9 @@ export function describeAction(tool: string, s: Record<string, unknown>): string
     case "gmail.search":
       return "Search the mailbox";
     case "gmail.read_message":
-      return `Read an email${str("subject") ? `: ${str("subject")}` : ""}`;
+      return `Read an email${str("from_domain") ? ` from ${str("from_domain")}` : ""}`;
     case "gmail.get_attachment":
-      return "Open an email attachment";
+      return `Open an email attachment${str("from_domain") ? ` from ${str("from_domain")}` : ""}`;
     case "gmail.draft_reply":
       return "Draft a reply";
     case "gmail.send_reply":
@@ -57,4 +57,28 @@ export function describeAction(tool: string, s: Record<string, unknown>): string
     default:
       return isKnownTool(tool) ? TOOLS[tool].label : `Use an unknown tool “${tool}”`;
   }
+}
+
+const OPS: Record<string, string> = { lt: "under", lte: "up to", gt: "over", gte: "at least", eq: "exactly", in: "one of" };
+
+function conditionWords(field: string, cond: unknown): string {
+  if (field === "to_domain_in") {
+    return typeof cond === "string" ? `to someone at a ${cond === "vendor_domains" ? "known vendor" : cond.replace(/_/g, " ")}` : `to ${(cond as string[]).join(", ")}`;
+  }
+  if (field === "fields_include") return `it changes the ${listWords((cond as string[]).map((f) => FIELD_LABELS[f] ?? f))}`;
+  const name = field === "amount_inr" ? "the amount" : field.replace(/_/g, " ");
+  const c = (cond ?? {}) as Record<string, unknown>;
+  const parts = Object.entries(c).map(([op, v]) => {
+    const value = field === "amount_inr" && typeof v === "number" ? formatINR(v) : Array.isArray(v) ? v.join(", ") : String(v);
+    return `${OPS[op] ?? op} ${value}`;
+  });
+  return `${name} is ${parts.join(" and ")}`;
+}
+
+/** "Ask finance before: Record a payment, when the amount is over ₹50,000" */
+export function describeRule(rule: { tool: string; decide: string; approver?: string; when?: Record<string, unknown> }): string {
+  const label = isKnownTool(rule.tool) ? TOOLS[rule.tool].label : rule.tool;
+  const when = Object.entries(rule.when ?? {}).map(([k, v]) => conditionWords(k, v));
+  const verb = rule.decide === "allow" ? "Allow" : rule.decide === "ask" ? `Ask ${rule.approver ?? "a person"} before` : "Never allow";
+  return `${verb}: ${label.toLowerCase()}${when.length ? `, when ${when.join(" and ")}` : ""}`;
 }

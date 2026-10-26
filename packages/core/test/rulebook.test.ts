@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  durationMs,
-  loadSignedRulebook,
-  parseRulebookYaml,
-  publishProblems,
-  rulebookHash,
-  rulebookToYaml,
-  signRulebook,
-  validateRulebook,
-  verifyRulebook,
-  type Rulebook,
-} from "../src/rulebook";
+import { durationMs, parseRulebookYaml, publishProblems, rulebookToYaml, validateRulebook, type Rulebook } from "../src/rulebook";
+import { loadSignedRulebook, rulebookHash, signRulebook, verifyRulebook } from "../src/rulebook-sign";
 import { KEYS, OTHER_KEYS, SAMPLE_YAML, sampleRulebook } from "./fixtures";
 
 function withRules(rules: unknown[], extra: Record<string, unknown> = {}) {

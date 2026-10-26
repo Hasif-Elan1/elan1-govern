@@ -2,6 +2,7 @@ export * from "./canonical";
 export * from "./crypto";
 export * from "./tools";
 export * from "./rulebook";
+export * from "./rulebook-sign";
 export * from "./engine";
 export * from "./receipt";
 export * from "./bundle";

@@ -105,8 +105,15 @@ export function gmailConnector(cfg: ProviderConfig, f: Fetch = fetch): Connector
           throw new ConnectorError(`Gmail does not handle ${tool}`, "invalid");
       }
     },
-    async describe() {
-      return {};
+    async describe(_tool, args, ctx): Promise<Record<string, string>> {
+      if (typeof args.message_id !== "string") return {};
+      try {
+        const m = (await get(ctx, `/messages/${encodeURIComponent(args.message_id)}?format=metadata&metadataHeaders=From`)) as { payload?: Part };
+        const domain = /@([^>\s]+)/.exec(header(m.payload, "From"))?.[1];
+        return domain ? { from_domain: domain.toLowerCase() } : {};
+      } catch {
+        return {};
+      }
     },
     async evidence() {
       return {};

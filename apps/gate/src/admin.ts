@@ -174,6 +174,7 @@ rules:
     when: { to_domain_in: vendor_domains }
     decide: ask
     approver: finance
+    reason: Emails to vendors are read by a person before they go out.
   - id: create-bills
     tool: zoho.create_bill
     decide: allow
@@ -187,6 +188,7 @@ rules:
     decide: ask
     approver: finance
     expires_in: 24h
+    reason: Payments over ₹50,000 need someone in finance to approve them.
   - id: no-bank-change
     tool: zoho.update_vendor
     when: { fields_include: [bank_account, ifsc] }

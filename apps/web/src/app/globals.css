@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+/* Theme: `theme` cookie sets .light or .dark on <html>; with neither, follow the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --paper: #fbfbfa;
+  --surface: #ffffff;
+  --sunken: #f4f4f2;
+  --ink: #1a1b20;
+  --ink-2: #4a4c55;
+  --ink-3: #6e707a;
+  --line: #e6e6e3;
+  --line-2: #d6d6d2;
+
+  --accent: #4b3fa6;
+  --accent-ink: #ffffff;
+  --accent-soft: #efedfb;
+  --accent-line: #d5d0f3;
+
+  --ok: #1f7a4d;
+  --ok-soft: #e7f4ec;
+  --ok-line: #bfe2cd;
+  --wait: #8a5a00;
+  --wait-soft: #fdf3dc;
+  --wait-line: #f1d79a;
+  --no: #b42318;
+  --no-soft: #fdecea;
+  --no-line: #f6c3bd;
+
+  --on-solid: #ffffff;
+  --focus: #4b3fa6;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e707a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+.dark {
+  --paper: #15161b;
+  --surface: #1c1d23;
+  --sunken: #121318;
+  --ink: #ececef;
+  --ink-2: #b9bac3;
+  --ink-3: #8e909b;
+  --line: #2b2d35;
+  --line-2: #3a3c46;
+
+  --accent: #a59cf5;
+  --accent-ink: #15161b;
+  --accent-soft: #26233d;
+  --accent-line: #3d3870;
+
+  --ok: #5fcf93;
+  --ok-soft: #16291f;
+  --ok-line: #24513a;
+  --wait: #f0c25a;
+  --wait-soft: #2c2412;
+  --wait-line: #5a4719;
+  --no: #f4877b;
+  --no-soft: #2f1816;
+  --no-line: #5e2a25;
+
+  --on-solid: #15161b;
+  --focus: #a59cf5;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) {
+    --paper: #15161b;
+    --surface: #1c1d23;
+    --sunken: #121318;
+    --ink: #ececef;
+    --ink-2: #b9bac3;
+    --ink-3: #8e909b;
+    --line: #2b2d35;
+    --line-2: #3a3c46;
+    --accent: #a59cf5;
+    --accent-ink: #15161b;
+    --accent-soft: #26233d;
+    --accent-line: #3d3870;
+    --ok: #5fcf93;
+    --ok-soft: #16291f;
+    --ok-line: #24513a;
+    --wait: #f0c25a;
+    --wait-soft: #2c2412;
+    --wait-line: #5a4719;
+    --no: #f4877b;
+    --no-soft: #2f1816;
+    --no-line: #5e2a25;
+    --on-solid: #15161b;
+    --focus: #a59cf5;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-solid: var(--on-solid);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-line: var(--ok-line);
+  --color-wait: var(--wait);
+  --color-wait-soft: var(--wait-soft);
+  --color-wait-line: var(--wait-line);
+  --color-no: var(--no);
+  --color-no-soft: var(--no-soft);
+  --color-no-line: var(--no-line);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.012em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The receipt slip: a perforated top edge, like a printed till slip. */
+.slip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px 4px 10px 10px;
+  position: relative;
+}
+.slip::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 8px;
+  background: radial-gradient(circle at 6px -1px, var(--paper) 4px, transparent 4.5px) repeat-x;
+  background-size: 12px 8px;
+}
+
+/* The stamp: decision marks on receipts and approvals. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 0.15rem 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transform: rotate(-2deg);
+}
+
+@keyframes stamp-in {
+  from {
+    transform: rotate(-8deg) scale(1.25);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(-2deg) scale(1);
+    opacity: 1;
+  }
+}
+.stamp-in {
+  animation: stamp-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}

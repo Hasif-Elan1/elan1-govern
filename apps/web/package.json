@@ -1,0 +1,38 @@
+{
+  "name": "@gate/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gate/core": "workspace:*",
+    "@gate/db": "workspace:*",
+    "argon2": "0.45.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.577.0",
+    "next": "15.5.28",
+    "nodemailer": "7.0.13",
+    "otpauth": "9.5.2",
+    "qrcode": "1.5.4",
+    "radix-ui": "1.8.1",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "server-only": "0.0.1",
+    "tailwind-merge": "3.7.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/nodemailer": "6.4.24",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3"
+  }
+}
