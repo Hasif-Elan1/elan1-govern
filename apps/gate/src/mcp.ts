@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { TOOLS, TOOL_ARGS, TOOL_NAMES } from "@gate/core";
 import type { FastifyInstance } from "fastify";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 import { waitForApproval } from "./approvals";
 import { authenticateAgent } from "./auth";
 import type { Deps } from "./deps";
@@ -12,7 +12,7 @@ import { guard, type AgentIdentity, type GuardResult } from "./guard";
 export const STATUS_TOOL = "gate.approval_status";
 
 function jsonSchema(tool: (typeof TOOL_NAMES)[number]) {
-  const { $schema: _s, ...schema } = zodToJsonSchema(TOOL_ARGS[tool], { target: "jsonSchema7", $refStrategy: "none" }) as Record<string, unknown>;
+  const { $schema: _s, ...schema } = z.toJSONSchema(TOOL_ARGS[tool], { target: "draft-7" }) as Record<string, unknown>;
   return schema as { type: "object"; [k: string]: unknown };
 }
 

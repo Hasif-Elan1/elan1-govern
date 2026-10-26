@@ -22,7 +22,7 @@ export const fail = (status: number, message: string, extra?: Record<string, unk
 
 type Limit = { max: number; windowMs: number };
 
-interface Opts<S extends z.ZodTypeAny> {
+interface Opts<S extends z.ZodType> {
   /** "public": no session. "user": signed in, org optional. "org": signed in with an active org. */
   auth: "public" | "user" | "org";
   permission?: Permission;
@@ -32,7 +32,7 @@ interface Opts<S extends z.ZodTypeAny> {
   limit?: Limit & { name: string };
 }
 
-type HandlerCtx<S extends z.ZodTypeAny, A extends Opts<S>["auth"]> = {
+type HandlerCtx<S extends z.ZodType, A extends Opts<S>["auth"]> = {
   req: NextRequest;
   body: z.infer<S>;
   params: Record<string, string>;
@@ -61,7 +61,7 @@ function sameOrigin(req: NextRequest): boolean {
  * Every API route goes through here: rate limit → CSRF → session → permission →
  * fresh sign-in → zod-validated body. Errors come back as { error } with a plain message.
  */
-export function route<S extends z.ZodTypeAny = z.ZodUndefined, A extends Opts<S>["auth"] = "org">(
+export function route<S extends z.ZodType = z.ZodUndefined, A extends Opts<S>["auth"] = "org">(
   opts: Opts<S> & { auth: A },
   fn: (h: HandlerCtx<S, A>) => Promise<Response | Record<string, unknown> | unknown[]>,
 ) {

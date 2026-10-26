@@ -10,7 +10,7 @@ const fp = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 
 
 export function hexSecret(name: string) {
   return z
-    .string({ required_error: `${name} is required` })
+    .string({ error: (iss) => (iss.input === undefined ? `${name} is required` : `${name} must be text`) })
     .regex(/^[0-9a-f]{64}$/i, `${name} must be 64 hex characters (32 random bytes). Generate one with: openssl rand -hex 32`)
     .refine((v) => new Set(v.toLowerCase()).size >= 8, `${name} looks weak; generate a random value`)
     .refine(
@@ -24,7 +24,7 @@ export function registerExampleSecrets(values: string[]) {
 }
 
 /** Parse env against a schema or exit with a readable message. Secret values are never printed. */
-export function loadEnv<T extends z.ZodTypeAny>(schema: T, source: NodeJS.ProcessEnv = process.env): z.infer<T> {
+export function loadEnv<T extends z.ZodType>(schema: T, source: NodeJS.ProcessEnv = process.env): z.infer<T> {
   const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join(".") || "env"}: ${i.message}`);

@@ -18,7 +18,7 @@ const ManifestSchema = z
     last_seq: z.number().int().min(0),
     last_hash: z.string(),
     key_fingerprint: z.string(),
-    files: z.record(z.string()),
+    files: z.record(z.string(), z.string()),
     sig: z.string(),
   })
   .strict();

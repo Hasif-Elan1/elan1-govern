@@ -30,7 +30,7 @@ export const WEB_EVENTS = ["settings.updated", "member.invited", "member.joined"
 
 const schemas = {
   org: z.object({ name: z.string().trim().min(1).max(120), ownerUserId: id, ownerEmail: email }).strict(),
-  event: z.object({ actor, action: z.enum(WEB_EVENTS), details: z.record(z.union([z.string().max(300), z.number(), z.boolean(), z.null()])).default({}) }).strict(),
+  event: z.object({ actor, action: z.enum(WEB_EVENTS), details: z.record(z.string(), z.union([z.string().max(300), z.number(), z.boolean(), z.null()])).default({}) }).strict(),
   agent: z
     .object({
       name: z.string().trim().min(1).max(80),
@@ -39,7 +39,7 @@ const schemas = {
       ownerEmail: email,
       createdById: id,
       riskTier: z.enum(["low", "medium", "high"]),
-      riskAnswers: z.record(z.string().max(20)).optional(),
+      riskAnswers: z.record(z.string(), z.string().max(20)).optional(),
       yaml: z.string().max(200_000).optional(),
       actor,
     })
@@ -63,7 +63,7 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       }
     });
 
-    const parse = <T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> => {
+    const parse = <T extends z.ZodType>(schema: T, body: unknown): z.infer<T> => {
       const r = schema.safeParse(body ?? {});
       if (!r.success) throw Object.assign(new Error(r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")), { statusCode: 400 });
       return r.data;

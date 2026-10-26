@@ -6,7 +6,7 @@ import { authenticateAgent } from "../auth";
 import { orgKey, type Deps } from "../deps";
 import { guard } from "../guard";
 
-const CheckBody = z.object({ tool: z.string().min(1).max(100), args: z.record(z.unknown()).default({}) }).strict();
+const CheckBody = z.object({ tool: z.string().min(1).max(100), args: z.record(z.string(), z.unknown()).default({}) }).strict();
 const RecordBody = z
   .object({
     check_id: z.number().int().positive().optional(),

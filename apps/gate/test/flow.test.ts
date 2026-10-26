@@ -98,7 +98,7 @@ describe("decisions", () => {
     const d = await demoOrg(ctx.deps);
     const agent = await d.db.agent.findFirstOrThrow({ where: { id: d.agentId } });
     const rb = await d.db.rulebook.findFirstOrThrow({ where: { id: agent.activeRulebookId! } });
-    const res = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/agents/${d.agentId}/rulebooks`, { yaml: rb.yaml.replace("daily_payments_inr: 500000", "daily_payments_inr: 60000"), actor: d.owner.email });
+    const res = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/agents/${d.agentId}/rulebooks`, { yaml: rb.yaml.replace("daily_payments_inr: 2000000", "daily_payments_inr: 60000"), actor: d.owner.email });
     expect(res.statusCode).toBe(200);
     expect(gateMeta(await tool(ctx.app, d.apiKey, "zoho.record_bill_payment", { bill_id: "bill_1187", amount_inr: 18000 }))).toMatchObject({ decision: "allow" });
     const r = await tool(ctx.app, d.apiKey, "zoho.record_bill_payment", { bill_id: "bill_554", amount_inr: 42480 });

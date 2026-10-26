@@ -46,7 +46,7 @@ export const RulebookSchema = z
     version: z.number().int().min(1),
     agent: slug,
     owner: z.string().email(),
-    default: z.literal("refuse", { errorMap: () => ({ message: "default must be refuse" }) }),
+    default: z.literal("refuse", { error: "default must be refuse" }),
     approvers: z.record(slug, z.array(z.string().email()).min(1).max(50)).default({}),
     lists: z.record(z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/), z.array(z.string().max(253)).max(500)).optional(),
     limits: z.object({ daily_payments_inr: z.number().finite().positive().optional() }).strict().optional(),
@@ -58,7 +58,7 @@ export const RulebookSchema = z
     const ids = new Set<string>();
     rb.rules.forEach((rule, i) => {
       const at = (msg: string, ...path: (string | number)[]) =>
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: msg, path: ["rules", i, ...path] });
+        ctx.addIssue({ code: "custom", message: msg, path: ["rules", i, ...path] });
       if (ids.has(rule.id)) at(`duplicate rule id "${rule.id}"`, "id");
       ids.add(rule.id);
       if (!isKnownTool(rule.tool)) return at(`unknown tool "${rule.tool}"`, "tool");
