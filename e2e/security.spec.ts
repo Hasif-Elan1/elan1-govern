@@ -265,7 +265,8 @@ test("SQL injection and XSS payloads in text fields are stored as text and rende
   });
   expect(agent.status(), await agent.text()).toBe(200);
   expect((await c.send("POST", "/api/members", { email: `${XSS}@x.in`, role: "viewer" })).status()).toBe(400);
-  expect((await c.send("POST", "/api/auth/signup", { name: SQLI, email: `a'--@x.in`, password: "quiet monsoon ledger 7" })).status()).toBeLessThan(500);
+  // Signing up in a separate, signed-out client so the owner's session is untouched.
+  expect((await (await Client.anonymous()).send("POST", "/api/auth/signup", { name: SQLI, email: `a${Date.now()}'--@x.in`, password: "quiet monsoon ledger 7" })).status()).toBeLessThan(500);
   expect((await c.get(`/api/activity?q=${encodeURIComponent(SQLI)}`)).status()).toBe(200);
   expect((await c.get(`/api/activity?agent=${encodeURIComponent(SQLI)}&tool=${encodeURIComponent(XSS)}`)).status()).toBe(200);
   expect((await c.get(`/api/receipts/${encodeURIComponent("1 OR 1=1")}`)).status()).toBe(400);
