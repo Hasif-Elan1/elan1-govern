@@ -4,6 +4,9 @@ import { request as pwRequest, expect, type APIRequestContext, type Page } from 
 export const WEB = process.env.WEB_URL ?? "http://localhost:3000";
 export const PASSWORD = "quiet monsoon ledger 7";
 
+/** AI risk triage answers for a customer chatbot: score 7, medium risk. */
+export const TRIAGE_MEDIUM = { autonomy: "informs", areas: ["none"], external: "yes", affected: ["customers"], data: ["personal"], oversight: "sampled", appeal: "yes", supplier: "documented" };
+
 export const uniqueEmail = (p = "user") => `${p}-${randomBytes(4).toString("hex")}@e2e.test`;
 
 /** A signed-in API client: cookies kept, CSRF token and Origin sent on every write. */

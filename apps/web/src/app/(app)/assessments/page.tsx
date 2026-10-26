@@ -37,7 +37,7 @@ export default async function Assessments() {
                   {items.map((a) => (
                     <li key={a.id}>
                       <Link href={`/assessments/${a.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-sunken">
-                        <span className="min-w-0 flex-1">
+                        <span className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
                           <span className="block font-medium">{a.system.name}</span>
                           <span className="block text-[13px] text-ink-3">
                             {getTemplate(a.templateKey)?.name ?? a.templateKey}

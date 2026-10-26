@@ -152,6 +152,23 @@ Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); th
 
 ---
 
+## AI inventory and assessments
+
+Gate keeps a register of **every AI system your company uses**, not only the agents it guards, and structured assessments with a second-person sign-off.
+
+- **Inventory** (sidebar → Inventory): name, kind (agent, model, vendor tool, internal app), vendor, owner, business unit, stage (proposed → in review → approved → live → retired), risk tier, the kinds of data it touches, who it affects, whether it makes decisions, and the next review date (amber once overdue). Every Gate agent appears automatically, linked to its agent page. Owners and admins add, edit and retire systems; everyone else reads.
+- **Assessments** (sidebar → Assessments, or *Start assessment* on a system): three built-in templates, each marked *Draft — needs legal review*:
+  - **AI risk triage**: nine quick questions that set a starting tier. Uses in hiring, credit, education, essential services, justice, biometrics or safety always come out high.
+  - **AI impact assessment**: people affected, possible harms, severity, bias testing, oversight and remedies. Inspired by the topics of an EU AI Act Article 27 fundamental rights impact assessment; it does not on its own meet any legal requirement.
+  - **Data protection check**: lawful basis and consent, notice, rights, minimisation, training use, retention, cross-border transfer, children's data and security. Inspired by DPIAs under India's DPDP Act and the GDPR; not legal advice.
+- **Scoring is deterministic**: each answer carries points, the total maps to low / medium / high by the template's thresholds, and some answers force a minimum tier. The page shows the score, the thresholds and every answer that added to it.
+- **Sign-off**: owners, admins and approvers draft and submit; owners and admins approve or request changes, **never their own submission** (enforced on the server). Approving sets the system's tier to the highest result among the latest approved assessment of each template, and schedules the next review: 6 months for high, 12 for medium, 24 for low.
+- **Receipts**: adding or changing a system, submitting, approving and requesting changes are signed receipts on the same chain as agent decisions (Activity → Setup changes). If Gate cannot write the receipt, the change is undone.
+
+The templates are code (`packages/core/src/assessments.ts`), versioned; each assessment stores the template key and version it was answered against.
+
+---
+
 ## What's inside
 
 ```
@@ -169,7 +186,7 @@ e2e                 Playwright end-to-end and security tests
 |---|---|
 | `pnpm test` | Unit and integration tests (Vitest, real Postgres) |
 | `pnpm test:coverage` | Same, with coverage (core ≥ 95%, overall ≥ 80% enforced) |
-| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder, demo, authz matrix, CSRF, injection |
+| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder, demo, inventory and assessment sign-off, authz matrix, CSRF, injection |
 | `pnpm lint` · `pnpm typecheck` | ESLint, strict TypeScript |
 | `pnpm security` | `pnpm audit`, semgrep, gitleaks |
 | `pnpm security:zap` | OWASP ZAP baseline against the running stack |

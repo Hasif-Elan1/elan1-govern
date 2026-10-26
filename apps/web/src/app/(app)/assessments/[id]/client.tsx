@@ -90,10 +90,13 @@ export function ResultCard({ template, answers, final }: { template: AssessmentT
       {r.reasons.length ? (
         <>
           <p className="mt-4 mb-1.5 text-sm font-medium">What added to the score</p>
-          <ul className="grid gap-1.5 text-[13px]">
+          <ul className="grid gap-2.5 text-[13px]">
             {r.reasons.slice(0, 8).map((x, i) => (
               <li key={`${x.questionId}-${i}`} className="flex justify-between gap-3">
-                <span className="text-ink-2">{x.answer}</span>
+                <span className="min-w-0">
+                  <span className="block text-ink-3">{x.question}</span>
+                  <span className="block text-ink-2">{x.answer}</span>
+                </span>
                 <span className="shrink-0 font-medium">{x.forces ? `${x.points ? `+${x.points}, ` : ""}makes it ${x.forces}` : `+${x.points}`}</span>
               </li>
             ))}

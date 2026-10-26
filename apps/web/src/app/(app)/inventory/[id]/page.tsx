@@ -112,10 +112,10 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
             {assessments.map((a) => (
               <li key={a.id}>
                 <Link href={`/assessments/${a.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-sunken">
-                  <span className="min-w-0 flex-1 font-medium">{getTemplate(a.templateKey)?.name ?? a.templateKey}</span>
+                  <span className="min-w-0 basis-full font-medium sm:flex-1 sm:basis-auto">{getTemplate(a.templateKey)?.name ?? a.templateKey}</span>
                   {a.resultTier ? <TierPill tier={a.resultTier} /> : <Pill>No result yet</Pill>}
                   <AssessmentStatusPill status={a.status} />
-                  <span className="w-28 text-right text-[13px] text-ink-3">{relative(a.updatedAt)}</span>
+                  <span className="text-[13px] text-ink-3">{relative(a.updatedAt)}</span>
                 </Link>
               </li>
             ))}
