@@ -12,6 +12,7 @@ const EXPECTED: Record<Permission, Role[]> = {
   "evidence:export": ["owner", "admin", "auditor"],
   "evidence:checkpoint": ["owner", "admin", "auditor"],
   "settings:manage": ["owner", "admin"],
+  "compliance:manage": ["owner", "admin"],
   "members:manage": ["owner", "admin"],
   "demo:run": ["owner", "admin"],
 };

@@ -1,5 +1,6 @@
 import "server-only";
 import { describeAction, keyFingerprint, verifyChain, type Receipt } from "@gate/core";
+import { frameworkById, packById } from "@gate/core/frameworks";
 import { forOrg, startOfDayIST, toCheckpoint } from "@gate/db";
 import type { ApprovalView } from "@/components/approval-card";
 import type { DecisionKind } from "@/components/ui/status";
@@ -48,7 +49,14 @@ export function adminTitle(r: Receipt): string {
     case "connector.disconnected":
       return `Disconnected ${CONNECTOR_NAME[String(d.connector)] ?? "a connector"}`;
     case "evidence.exported":
+      if (d.kind === "framework-report") return `Downloaded the ${frameworkById(String(d.framework))?.shortName ?? String(d.framework)} framework report`;
       return `Downloaded evidence for ${String(d.from)} to ${String(d.to)}`;
+    case "org.industry_set":
+      return `Set the industry to ${packById(String(d.industry))?.name.toLowerCase() ?? String(d.industry)}`;
+    case "framework.enabled":
+      return `Turned on ${frameworkById(String(d.framework))?.shortName ?? String(d.framework)}`;
+    case "framework.disabled":
+      return `Turned off ${frameworkById(String(d.framework))?.shortName ?? String(d.framework)}`;
     case "member.invited":
       return `Invited someone as ${String(d.role ?? "a member")}`;
     case "member.joined":

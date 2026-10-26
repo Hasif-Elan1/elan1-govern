@@ -1,6 +1,6 @@
 import { generateKeyPair, verifyChain, type Receipt } from "@gate/core";
 import { afterAll, describe, expect, it } from "vitest";
-import { appendReceipt, createCheckpoint, forOrg, paymentsToday, prisma, startOfDayIST, toCheckpoint, withChain } from "../src";
+import { appendReceipt, createCheckpoint, disableFramework, enabledFrameworks, enableFrameworks, evidenceCounts, forOrg, paymentsToday, prisma, startOfDayIST, toCheckpoint, withChain } from "../src";
 
 const keys = generateKeyPair();
 
@@ -35,8 +35,9 @@ describe("forOrg", () => {
 
   it("scopes createMany and upsert", async () => {
     const [a, b] = await Promise.all([newOrg(), newOrg()]);
-    await forOrg(a.id).control.createMany({ data: [{ orgId: b.id, code: "C1", title: "t", description: "d", evidence: "e", mappings: [] } as never] });
-    expect(await forOrg(b.id).control.count()).toBe(0);
+    await forOrg(a.id).orgFramework.createMany({ data: [{ orgId: b.id, frameworkId: "gdpr", enabledBy: "x" } as never] });
+    expect(await forOrg(b.id).orgFramework.count()).toBe(0);
+    expect(await forOrg(a.id).orgFramework.count()).toBe(1);
     await forOrg(b.id).connector.upsert({ where: { orgId_kind: { orgId: a.id, kind: "gmail" } }, create: { kind: "gmail" } as never, update: {} });
     expect(await forOrg(a.id).connector.count()).toBe(0);
     expect(await forOrg(b.id).connector.count()).toBe(1);
@@ -128,5 +129,33 @@ describe("quotas and time zones", () => {
     expect(await quotaUsage(org.id, ["crm.issue_refund", "crm.other"], new Date(Date.now() - 60_000))).toEqual({ count: 4, sum: 0 });
     expect(await quotaUsage(org.id, ["crm.issue_refund"], new Date(Date.now() + 60_000), "amount")).toEqual({ count: 0, sum: 0 });
     expect(await quotaUsage(org.id, [], new Date(0))).toEqual({ count: 0, sum: 0 });
+  });
+});
+
+describe("compliance", () => {
+  it("enables frameworks once, skips unknown ids and disables them", async () => {
+    const org = await newOrg();
+    expect(await enableFrameworks(org.id, ["gdpr", "soc2", "gdpr", "made-up"], "o@a.in")).toEqual(["gdpr", "soc2"]);
+    expect(await enableFrameworks(org.id, ["gdpr", "hipaa"], "o@a.in")).toEqual(["hipaa"]);
+    expect((await enabledFrameworks(org.id)).map((f) => f.frameworkId).sort()).toEqual(["gdpr", "hipaa", "soc2"]);
+    expect(await disableFramework(org.id, "soc2")).toBe(true);
+    expect(await disableFramework(org.id, "soc2")).toBe(false);
+    expect((await enabledFrameworks(org.id)).map((f) => f.frameworkId).sort()).toEqual(["gdpr", "hipaa"]);
+    expect(await enabledFrameworks((await newOrg()).id)).toEqual([]);
+  });
+
+  it("counts evidence from receipts, including inventory and assessment receipts when they exist", async () => {
+    const org = await newOrg();
+    const admin = (action: string) => appendReceipt(org.id, keys.privateKeyPem, { kind: "admin", actor: "o@a.in", action, details: {} });
+    expect(await evidenceCounts(org.id)).toMatchObject({ systems: 0, approved_assessments: 0, member_changes: 0, receipts: 0 });
+    await admin("system.created");
+    await admin("system.created");
+    await admin("assessment.approved");
+    await admin("member.invited");
+    await admin("member.role_changed");
+    await appendReceipt(org.id, keys.privateKeyPem, { kind: "decision", tool: "gmail.search", decision: "refuse", args_summary: {} });
+    const c = await evidenceCounts(org.id);
+    expect(c).toMatchObject({ systems: 2, approved_assessments: 1, member_changes: 2, decisions: 1, default_refusals: 1, receipts: 6 });
+    expect(await evidenceCounts(org.id, { from: new Date(Date.now() + 60_000), to: new Date(Date.now() + 120_000) })).toMatchObject({ receipts: 0, systems: 0 });
   });
 });

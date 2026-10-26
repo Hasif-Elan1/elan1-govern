@@ -18,7 +18,7 @@ import { authenticateAgent } from "../auth";
 import { resetMockState } from "@gate/connectors";
 import { runDemoAgent } from "../demo/agent";
 import { orgKey, type Deps } from "../deps";
-import { exportBundle, exportPack } from "../evidence";
+import { exportBundle, exportFrameworkReport, exportPack } from "../evidence";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -26,7 +26,18 @@ const actor = email;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Admin actions the web app may log on its own (it writes the row; Gate writes the receipt). */
-export const WEB_EVENTS = ["settings.updated", "member.invited", "member.joined", "member.role_changed", "member.removed", "user.2fa_enabled", "user.2fa_disabled"] as const;
+export const WEB_EVENTS = [
+  "settings.updated",
+  "member.invited",
+  "member.joined",
+  "member.role_changed",
+  "member.removed",
+  "user.2fa_enabled",
+  "user.2fa_disabled",
+  "org.industry_set",
+  "framework.enabled",
+  "framework.disabled",
+] as const;
 
 const schemas = {
   org: z.object({ name: z.string().trim().min(1).max(120), ownerUserId: id, ownerEmail: email }).strict(),
@@ -50,6 +61,7 @@ const schemas = {
   resolve: z.object({ userId: id, email, result: z.enum(["approved", "rejected"]), note: z.string().trim().max(1000).optional(), linkId: id.optional() }).strict(),
   checkpoint: z.object({ actor }).strict(),
   export: z.object({ from: day, to: day, kind: z.enum(["bundle", "pack"]), actor }).strict(),
+  report: z.object({ actor }).strict(),
   connector: z.object({ action: z.enum(["connect", "disconnect"]), mode: z.enum(["mock", "live"]).optional(), actor }).strict(),
   demo: z.object({ userId: id, email, run: z.boolean().default(true) }).strict(),
 };
@@ -140,6 +152,14 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       if (b.from > b.to) return reply.code(400).send({ error: "from must be on or before to" });
       const bytes = b.kind === "pack" ? await exportPack(deps, orgId, b, b.actor) : await exportBundle(deps, orgId, b, b.actor);
       return reply.type("application/zip").send(Buffer.from(bytes));
+    });
+
+    internal.post<P>("/internal/orgs/:org/frameworks/:id/report", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.report, req.body);
+      const bytes = await exportFrameworkReport(deps, orgId, parse(z.string().regex(/^[a-z0-9-]{1,64}$/), req.params.id), b.actor);
+      if (!bytes) return reply.code(404).send({ error: "no such framework" });
+      return reply.type("application/pdf").send(Buffer.from(bytes));
     });
 
     internal.post<P>("/internal/orgs/:org/connectors/:kind", async (req, reply) => {

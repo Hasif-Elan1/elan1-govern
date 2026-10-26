@@ -1,8 +1,9 @@
 import { hashToken } from "@gate/core";
-import { addMembership, forOrg, membershipsForUser, prisma } from "@gate/db";
+import { packById, recommendedFrameworks, type Region } from "@gate/core/frameworks";
+import { addMembership, enableFrameworks, forOrg, membershipsForUser, prisma } from "@gate/db";
 import argon2 from "argon2";
 import pino from "pino";
-import { createOrg, setUpDemoAgent } from "./admin";
+import { adminEvent, createOrg, setUpDemoAgent } from "./admin";
 import { makeDeps } from "./deps";
 import { readGateEnv } from "./env";
 
@@ -29,6 +30,19 @@ async function orgFor(userId: string, name: string, deps: ReturnType<typeof make
   return (await createOrg(deps, { name, ownerUserId: userId, ownerEmail: email })).id;
 }
 
+/** Records the org's industry and switches on the pack's frameworks for where it operates. */
+async function setIndustry(deps: ReturnType<typeof makeDeps>, orgId: string, actor: string, industry: string, regions: Region[]) {
+  const db = forOrg(orgId);
+  const org = await db.org.findFirstOrThrow();
+  if (org.industry !== industry) {
+    await db.org.update({ where: { id: orgId }, data: { industry, regions } });
+    await adminEvent(deps, orgId, actor, "org.industry_set", { industry, regions: regions.join(", ") });
+  }
+  for (const framework of await enableFrameworks(orgId, recommendedFrameworks(packById(industry)!, regions), actor)) {
+    await adminEvent(deps, orgId, actor, "framework.enabled", { framework });
+  }
+}
+
 export async function seed() {
   const env = readGateEnv();
   const password = process.env.DEMO_OWNER_PASSWORD;
@@ -41,6 +55,7 @@ export async function seed() {
   const ca = await user(DEMO.ca.email, DEMO.ca.name, password);
   const orgId = await orgFor(owner.id, DEMO.org, deps, owner.email);
   await addMembership({ orgId, userId: ca.id, role: "approver" });
+  await setIndustry(deps, orgId, owner.email, "finance", ["india", "eu"]);
   const demo = await setUpDemoAgent(deps, orgId, owner);
 
   // The demo agent's key is fixed by .env so `pnpm demo` can use it. Retire the random one.
@@ -56,6 +71,7 @@ export async function seed() {
   const clientOwner = await user(DEMO.clientOwner.email, DEMO.clientOwner.name, password);
   const clientId = await orgFor(clientOwner.id, DEMO.clientOrg, deps, clientOwner.email);
   await addMembership({ orgId: clientId, userId: ca.id, role: "auditor" });
+  await setIndustry(deps, clientId, clientOwner.email, "finance", ["india"]);
 
   console.log(`Seeded "${DEMO.org}". Sign in as ${DEMO.owner.email} (password: DEMO_OWNER_PASSWORD in .env).`);
   await prisma.$disconnect();

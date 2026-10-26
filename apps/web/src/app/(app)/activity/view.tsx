@@ -37,7 +37,7 @@ export function ActivityView({ items, filter, agents, tools, openSeq }: { items:
         <label className="relative sm:col-span-2 lg:col-span-1">
           <span className="sr-only">Search</span>
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search vendor, rule, payment ref…" className="pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search names, rules, references…" className="pl-9" />
         </label>
         <Select aria-label="Agent" value={filter.agent ?? ""} onChange={(e) => set({ agent: e.target.value || undefined })}>
           <option value="">All agents</option>

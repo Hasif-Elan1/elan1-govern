@@ -137,6 +137,10 @@ describe("receipt views", () => {
     expect(r("settings.updated")).toBe("Changed organisation settings");
     expect(r("user.2fa_enabled")).toMatch(/on two-step/);
     expect(r("user.2fa_disabled")).toMatch(/off two-step/);
+    expect(r("evidence.exported", { kind: "framework-report", framework: "hipaa" })).toBe("Downloaded the HIPAA framework report");
+    expect(r("org.industry_set", { industry: "healthcare" })).toBe("Set the industry to healthcare");
+    expect(r("framework.enabled", { framework: "gdpr" })).toBe("Turned on GDPR");
+    expect(r("framework.disabled", { framework: "made-up" })).toBe("Turned off made-up");
     expect(r("something.else")).toBe("something.else");
     expect(adminTitle({ kind: "admin" } as Receipt)).toBe("Setup change");
     expect(toView({ kind: "decision", seq: 1, ts: "", org: "", prev_hash: "", hash: "", sig: "" } as Receipt).status).toBe("admin");

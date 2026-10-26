@@ -52,7 +52,7 @@ if (check.decision === "allow") {
           <TabsTrigger value="sdk">TypeScript SDK</TabsTrigger>
         </TabsList>
         <TabsContent value="mcp" className="pt-4">
-          <p className="mb-3 text-sm text-ink-2">Add Gate as an MCP server in your agent (Claude, Cursor, or any client that speaks streamable HTTP). The agent sees only the tools your rules mention, and never sees Gmail or Zoho Books passwords or tokens.</p>
+          <p className="mb-3 text-sm text-ink-2">Add Gate as an MCP server in your agent (Claude, Cursor, or any client that speaks streamable HTTP). The agent sees only the tools your rules mention, and never sees the passwords or tokens of your connected accounts.</p>
           <Code code={mcpConfig} />
         </TabsContent>
         <TabsContent value="sdk" className="pt-4">

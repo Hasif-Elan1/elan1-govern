@@ -84,6 +84,8 @@ model Org {
   timezone      String       @default("Asia/Kolkata") // IANA zone; "day" quotas and Today reset at local midnight
   currency      String       @default("INR") // ISO 4217
   locale        String       @default("en-IN") // BCP 47, for number and date formatting
+  industry      String? // industry pack id, e.g. "healthcare"; null = set up before packs (finance)
+  regions       String[]     @default([]) // where the org operates: india | eu | us | uk | other
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
@@ -243,17 +245,15 @@ model Checkpoint {
   @@index([orgId, seq])
 }
 
-model Control {
-  id          String @id @default(cuid())
+// A framework the org has switched on (the library itself is code: @gate/core/frameworks).
+model OrgFramework {
+  id          String   @id @default(cuid())
   orgId       String
-  code        String
-  title       String
-  description String
-  evidence    String // which receipts count as evidence, e.g. "decision:refuse"
-  mappings    Json // [{ framework, clause, note }]
-  status      String @default("draft")
+  frameworkId String
+  enabledAt   DateTime @default(now())
+  enabledBy   String
 
-  @@unique([orgId, code])
+  @@unique([orgId, frameworkId])
 }
 
 model HealthAlert {

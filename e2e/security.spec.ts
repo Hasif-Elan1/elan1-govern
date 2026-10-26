@@ -29,7 +29,7 @@ test.beforeAll(async () => {
 
 // ---- Authorisation matrix: every role against every route ----
 
-type RouteCase = { method: "GET" | "POST" | "PATCH" | "DELETE"; path: string; body?: unknown; allowed: Role[] };
+type RouteCase = { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown; allowed: Role[] };
 const ALL = ROLES;
 const ADMINS: Role[] = ["owner", "admin"];
 // Bodies are deliberately invalid: an allowed role gets past the permission check and fails validation (400),
@@ -47,6 +47,9 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/members", body: {}, allowed: ADMINS },
   { method: "PATCH", path: "/api/members/nobody", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/approvals/apr_none", body: {}, allowed: ["owner", "admin", "approver"] },
+  { method: "PUT", path: "/api/compliance/profile", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/compliance/frameworks", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/compliance/report", body: {}, allowed: ["owner", "admin", "auditor"] },
 ];
 
 test("authz matrix: API routes", async () => {
@@ -74,7 +77,7 @@ test("authz matrix: side-effect routes", async () => {
 });
 
 test("authz matrix: pages", async () => {
-  const pages = ["/", "/approvals", "/activity", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/settings"];
+  const pages = ["/", "/approvals", "/activity", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/compliance", "/compliance/eu-ai-act", "/settings"];
   const anon = await Client.anonymous();
   for (const p of [...pages, "/agents/new"]) {
     const res = await anon.get(p);
@@ -84,7 +87,9 @@ test("authz matrix: pages", async () => {
   for (const role of ROLES) {
     for (const p of pages) expect((await users[role].get(p)).status(), `${role} ${p}`).toBe(200);
     expect((await users[role].get("/agents/new")).status(), `${role} /agents/new`).toBe(ADMINS.includes(role) ? 200 : 307);
+    expect((await users[role].get("/onboarding?step=industry")).status(), `${role} industry step`).toBe(ADMINS.includes(role) ? 200 : 307);
   }
+  expect((await users.owner.get("/compliance/not-a-framework")).status()).toBe(404);
   // Anonymous API calls are refused, not redirected.
   expect((await anon.get("/api/activity")).status()).toBe(401);
 });
@@ -105,6 +110,19 @@ test("another org cannot see or act on this org's data", async () => {
   const link = await approvalLinkFor(users.owner.email);
   const page = await other.get(new URL(link).pathname);
   expect(await page.text()).toContain("This approval is for another organisation");
+});
+
+test("frameworks are per org: turning one on in this org does not touch another", async () => {
+  const r = await users.admin.send("PUT", "/api/compliance/profile", { industry: "healthcare", regions: ["us"] });
+  expect(r.status(), await r.text()).toBe(200);
+  expect((await r.json()).enabled).toContain("hipaa");
+  expect((await users.viewer.send("POST", "/api/compliance/frameworks", { framework: "gdpr", enabled: true })).status()).toBe(403);
+  expect((await users.owner.send("POST", "/api/compliance/frameworks", { framework: "made-up", enabled: true })).status()).toBe(400);
+  expect(await (await users.auditor.get("/compliance")).text()).toContain("HIPAA");
+  expect(await (await other.get("/compliance")).text()).toContain("No frameworks yet");
+  const report = await users.auditor.send("POST", "/api/compliance/report", { framework: "hipaa" });
+  expect(report.status()).toBe(200);
+  expect(report.headers()["content-type"]).toBe("application/pdf");
 });
 
 // ---- Approval links, approvers, self-approval ----

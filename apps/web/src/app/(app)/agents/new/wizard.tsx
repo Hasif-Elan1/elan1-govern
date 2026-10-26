@@ -1,6 +1,7 @@
 "use client";
 
-import { describeRule, RISK_QUESTIONS, riskTier, suggestRules, type RiskAnswers } from "@gate/core/browser";
+import { describeRule, RISK_QUESTIONS, RISK_TAG_LABELS, riskTier, suggestRules, type Quota, type RiskAnswers } from "@gate/core/browser";
+import { mergeStarterRules, packFor } from "@gate/core/frameworks";
 import { Check } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -16,7 +17,16 @@ import { ConnectorCard, type ConnectorRow } from "../../connectors/card";
 
 const STEPS = ["Name and purpose", "Risk", "Connect"];
 
-export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me: string; connectors: ConnectorRow[]; mcpUrl: string; gateUrl: string; liveAvailable: Record<"gmail" | "zoho", boolean> }) {
+/** "At most 50 an hour: any action that contacts people outside the company". */
+function describeQuota(q: Quota): string {
+  const what = q.tag ? `any action that ${RISK_TAG_LABELS[q.tag]}` : (q.tool ?? "");
+  const per = q.window === "day" ? "a day" : q.window === "1h" ? "an hour" : `per ${q.window}`;
+  const limit = q.max_count !== undefined ? `At most ${q.max_count} ${per}` : `At most ${q.max_sum?.value} in ${q.max_sum?.field} ${per}`;
+  return `${limit}: ${what}${q.approver ? `, then ask ${q.approver}` : ""}`;
+}
+
+export function Wizard({ me, industry, connectors, mcpUrl, gateUrl, liveAvailable }: { me: string; industry: string | null; connectors: ConnectorRow[]; mcpUrl: string; gateUrl: string; liveAvailable: Record<"gmail" | "zoho", boolean> }) {
+  const pack = packFor(industry);
   const toast = useToast();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -29,7 +39,8 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
 
   const complete = RISK_QUESTIONS.every((q) => answers[q.id]);
   const tier = complete ? riskTier(answers as RiskAnswers) : null;
-  const rules = useMemo(() => (tier ? suggestRules(answers as RiskAnswers, tier) : []), [answers, tier]);
+  const starter = useMemo(() => (tier ? mergeStarterRules(pack, suggestRules(answers as RiskAnswers, tier), answers as RiskAnswers, tier) : { rules: [], quotas: [] }), [pack, answers, tier]);
+  const rules = starter.rules;
 
   async function create() {
     setBusy(true);
@@ -62,11 +73,11 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
             setStep(1);
           }}
         >
-          <Field label="Name" htmlFor="agent-name" hint="What your team calls it, e.g. AP bot.">
+          <Field label="Name" htmlFor="agent-name" hint={`What your team calls it, e.g. ${pack.agentNameExample}.`}>
             <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={80} autoFocus />
           </Field>
           <Field label="What does it do?" htmlFor="agent-purpose" hint="One or two sentences. This goes in the registry and the auditor pack.">
-            <Textarea id="agent-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} required minLength={5} maxLength={500} placeholder="Reads vendor invoices from Gmail, creates bills in Zoho Books and records payments." />
+            <Textarea id="agent-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} required minLength={5} maxLength={500} placeholder={pack.purposeExample} />
           </Field>
           <Field label="Owner" htmlFor="agent-owner" hint="The person answerable for this agent.">
             <Input id="agent-owner" type="email" value={owner} onChange={(e) => setOwner(e.target.value)} required />
@@ -83,7 +94,7 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
         <div className="grid gap-7">
           {RISK_QUESTIONS.map((q) => (
             <fieldset key={q.id}>
-              <legend className="mb-2.5 font-medium">{q.text}</legend>
+              <legend className="mb-2.5 font-medium">{pack.questions[q.id] ?? q.text}</legend>
               <div className="flex flex-wrap gap-2">
                 {q.options.map(([value, label]) => {
                   const on = answers[q.id] === value;
@@ -105,7 +116,7 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
                 <RiskPill tier={tier} />
               </div>
               <p className="mb-4 text-sm text-ink-2">
-                {tier === "high" ? "High-risk agents must ask a person before every payment over a small amount." : tier === "medium" ? "Medium-risk agents ask before larger actions." : "Low-risk agents can do routine work on their own."} Here are starter rules. Untick any you don't want; you can change all of them later.
+                {tier === "high" ? "High-risk agents must ask a person before moving money and before other high-impact actions." : tier === "medium" ? "Medium-risk agents ask before larger actions." : "Low-risk agents can do routine work on their own."} Here are starter rules from the {pack.name.toLowerCase()} pack. Untick any you don't want; you can change all of them later.
               </p>
               <ul className="grid gap-1.5">
                 {rules.map((r) => (
@@ -130,6 +141,13 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
                   </li>
                 ))}
               </ul>
+              {starter.quotas.length ? (
+                <ul className="mt-3 grid gap-1 text-sm text-ink-2">
+                  {starter.quotas.map((q) => (
+                    <li key={q.id}>{describeQuota(q)}</li>
+                  ))}
+                </ul>
+              ) : null}
               <p className="mt-3 text-[13px] text-ink-3">Anything not on this list is refused.</p>
             </Card>
           ) : null}
@@ -164,7 +182,7 @@ export function Wizard({ me, connectors, mcpUrl, gateUrl, liveAvailable }: { me:
           </div>
         ) : (
           <div className="grid gap-6">
-            <p className="text-ink-2">The agent reaches Gmail and Zoho Books only through Gate. Connect them here; their tokens stay inside Gate.</p>
+            <p className="text-ink-2">The agent reaches your tools only through Gate. Connect the ones it needs here; their tokens stay inside Gate.</p>
             <div className="grid gap-4 sm:grid-cols-2">
               {(["gmail", "zoho"] as const).map((k) => (
                 <ConnectorCard key={k} kind={k} row={connectors.find((c) => c.kind === k)} manage liveAvailable={liveAvailable[k]} compact />

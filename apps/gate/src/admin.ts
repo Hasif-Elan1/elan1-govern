@@ -12,7 +12,8 @@ import {
   signRulebook,
   type ReceiptInput,
 } from "@gate/core";
-import { addMembership, appendReceipt, createOrgRow, forOrg, seedControls, withChain, type RiskTier } from "@gate/db";
+import { packById, starterRulebook } from "@gate/core/frameworks";
+import { addMembership, appendReceipt, createOrgRow, forOrg, withChain, type RiskTier } from "@gate/db";
 import { orgKey, type Deps } from "./deps";
 
 export async function adminEvent(deps: Deps, orgId: string, actor: string, action: string, details: Record<string, unknown> = {}, extra: Partial<ReceiptInput> = {}) {
@@ -26,7 +27,6 @@ export async function createOrg(deps: Deps, input: { name: string; ownerUserId: 
   const org = await createOrgRow({ name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
   await forOrg(org.id, deps.db).org.update({ where: { id: org.id }, data: { privateKeyEnc: encrypt(deps.env.GATE_MASTER_KEY, keys.privateKeyPem, `org-key:${org.id}`) } });
   await addMembership({ orgId: org.id, userId: input.ownerUserId, role: "owner" }, deps.db);
-  await seedControls(org.id, deps.db);
   const db = forOrg(org.id, deps.db);
   for (const kind of ["gmail", "zoho"] as const) {
     await db.connector.create({ data: { orgId: org.id, kind, mode: deps.env.CONNECTOR_MODE, status: "disconnected" } });
@@ -140,61 +140,9 @@ export async function disconnectConnector(deps: Deps, orgId: string, kind: Conne
   return { ok: true as const, status: "disconnected" };
 }
 
+/** The accounts-payable demo's rulebook: the finance industry pack's starter rules. */
 export function demoRulebookYaml(owner: string, approvers: string[]): string {
-  const list = [...new Set([owner, ...approvers].map((e) => e.toLowerCase()))].join(", ");
-  return `version: 1
-agent: ap-bot
-owner: ${owner}
-default: refuse
-approvers:
-  finance: [${list}]
-limits:
-  daily_payments_inr: 2000000
-rules:
-  - id: read-mail
-    tool: gmail.read_message
-    decide: allow
-  - id: search-mail
-    tool: gmail.search
-    decide: allow
-  - id: open-attachments
-    tool: gmail.get_attachment
-    decide: allow
-  - id: list-bills
-    tool: zoho.list_bills
-    decide: allow
-  - id: look-up-vendor
-    tool: zoho.get_vendor
-    decide: allow
-  - id: draft-replies
-    tool: gmail.draft_reply
-    decide: allow
-  - id: reply-vendor
-    tool: gmail.send_reply
-    when: { to_domain_in: vendor_domains }
-    decide: ask
-    approver: finance
-    reason: Emails to vendors are read by a person before they go out.
-  - id: create-bills
-    tool: zoho.create_bill
-    decide: allow
-  - id: pay-small
-    tool: zoho.record_bill_payment
-    when: { amount_inr: { lte: 50000 } }
-    decide: allow
-  - id: pay-large
-    tool: zoho.record_bill_payment
-    when: { amount_inr: { gt: 50000 } }
-    decide: ask
-    approver: finance
-    expires_in: 24h
-    reason: Payments over ₹50,000 need someone in finance to approve them.
-  - id: no-bank-change
-    tool: zoho.update_vendor
-    when: { fields_include: [bank_account, ifsc] }
-    decide: refuse
-    reason: Bank details are only changed by a person, after calling the vendor on a known number.
-`;
+  return rulebookToYaml(starterRulebook(packById("finance")!, { agent: "ap-bot", owner, approvers }));
 }
 
 /** Creates (or reuses) the demo AP agent with mock connectors and a signed rulebook. */

@@ -1,4 +1,5 @@
 import { riskTier, rulebookToYaml, suggestRules, validateRulebook, type RiskAnswers } from "@gate/core";
+import { approverGroupsOf, mergeStarterRules, packFor } from "@gate/core/frameworks";
 import { forOrg } from "@gate/db";
 import { z } from "zod";
 import { HttpError, route } from "@/server/api";
@@ -26,26 +27,33 @@ function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "agent";
 }
 
-/** Add-agent wizard: register the agent, publish a starter rulebook from the questionnaire, return the key once. */
+/**
+ * Add-agent wizard: register the agent, publish a starter rulebook from the questionnaire and
+ * the org's industry pack, and return the key once.
+ */
 export const POST = route({ auth: "org", permission: "agents:manage", body: Body }, async ({ body, ctx }) => {
   const answers = body.answers as RiskAnswers;
   const tier = riskTier(answers);
-  const suggested = suggestRules(answers, tier);
-  const rules = body.keepRules ? suggested.filter((r) => body.keepRules!.includes(r.id)) : suggested;
+  const db = forOrg(ctx.org.id);
+  const org = await db.org.findFirstOrThrow({ select: { industry: true } });
+  const starter = mergeStarterRules(packFor(org.industry), suggestRules(answers, tier), answers, tier);
+  const rules = body.keepRules ? starter.rules.filter((r) => body.keepRules!.includes(r.id)) : starter.rules;
 
-  const members = await forOrg(ctx.org.id).membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } });
-  const finance = [...new Set([body.ownerEmail, ...members.map((m) => m.user.email)])];
+  const members = await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } });
+  const people = [...new Set([body.ownerEmail, ...members.map((m) => m.user.email)])];
 
   let slug = slugify(body.name);
-  if (await forOrg(ctx.org.id).agent.findFirst({ where: { slug } })) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+  if (await db.agent.findFirst({ where: { slug } })) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
 
   const rb = validateRulebook({
     version: 1,
     agent: slug,
     owner: body.ownerEmail,
     default: "refuse",
-    approvers: { finance },
+    // Every group the starter rules ask gets the same people: the owner and the org's approvers.
+    approvers: Object.fromEntries(approverGroupsOf(rules, starter.quotas).map((g) => [g, people])),
     ...(answers.money === "yes" ? { limits: { daily_payments_inr: tier === "high" ? 300000 : 500000 } } : {}),
+    ...(starter.quotas.length ? { quotas: starter.quotas } : {}),
     rules,
   });
   if (!rb.ok) throw new HttpError(400, rb.errors[0] ?? "The starter rules are not valid.");
