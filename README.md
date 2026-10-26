@@ -152,6 +152,40 @@ Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); th
 
 ---
 
+## Govern any MCP server
+
+Gmail and Zoho Books are built in, but Gate can sit in front of **any MCP server** your agents already use: a CRM, a ticketing system, health records, cloud operations. The agent connects to Gate only; Gate holds the server's credentials and forwards a call only when your rules allow it.
+
+1. **Connectors → Your MCP servers → Add an MCP server.** Give it a name (it becomes the tool prefix: `CRM` gives `crm.issue_refund`), its streamable HTTP URL, and optionally the `Authorization` header value it needs. Gate stores the header encrypted and never shows it again.
+2. **Gate lists the server's tools** (`tools/list`) and suggests risk tags from each tool's name: *refund, pay, charge, transfer* → moves money; *delete, remove* → deletes data; *send, email, post* → contacts people outside the company; *grant, role, permission* → changes access; *deploy, restart, scale* → changes production; *create, update, set* → changes records; *get, list, search, read* → reads data.
+3. **Check the tags and switch tools on.** New tools stay off until you do, and only switched-on tools are shown to agents. Press **Sync tools** when the server changes; your tags and choices are kept.
+4. **Write rules by tag**, so one rule covers every tool that does the same kind of thing, on every server:
+
+```yaml
+rules:
+  - id: read-anything
+    tag: reads_data
+    decide: allow
+  - id: small-refunds
+    tag: moves_money
+    when: { amount: { lte: 100 } }
+    decide: allow
+  - id: large-refunds
+    tag: moves_money
+    when: { amount: { gt: 100 } }
+    decide: ask
+    approver: leads
+  - id: never-delete
+    tag: deletes
+    decide: refuse
+```
+
+A rule can still name one tool (`tool: crm.issue_refund`). The rule builder offers the server's tools and a number condition for any number field in a tool's input schema. Everything else works as for the built-in tools: the strictest rule wins, quotas, approvals (Gate runs the call on the server once approved), and minimised receipts. A tool that is unknown, switched off or removed is refused.
+
+Gate only connects to public addresses in production. Set `UPSTREAM_ALLOW_PRIVATE=true` to allow servers on your own network; it is on by default outside `APP_ENV=production`.
+
+---
+
 ## What's inside
 
 ```
