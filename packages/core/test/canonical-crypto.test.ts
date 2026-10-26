@@ -117,3 +117,19 @@ describe("tokens", () => {
     expect(hmacVerify(KEY, `${body}.${mac}`)).toBeNull();
   });
 });
+
+describe("request signing", () => {
+  it("binds method, path, body and time", async () => {
+    const { signRequest, verifyRequest } = await import("../src/crypto");
+    const now = 1_800_000_000_000;
+    const h = signRequest(KEY, "post", "/internal/x", '{"a":1}', now);
+    expect(verifyRequest(KEY, h, "POST", "/internal/x", '{"a":1}', now)).toBe(true);
+    expect(verifyRequest(KEY, h, "POST", "/internal/x", '{"a":2}', now)).toBe(false);
+    expect(verifyRequest(KEY, h, "GET", "/internal/x", '{"a":1}', now)).toBe(false);
+    expect(verifyRequest(KEY, h, "POST", "/internal/y", '{"a":1}', now)).toBe(false);
+    expect(verifyRequest(KEY, h, "POST", "/internal/x", '{"a":1}', now + 120_000)).toBe(false);
+    expect(verifyRequest("b".repeat(64), h, "POST", "/internal/x", '{"a":1}', now)).toBe(false);
+    expect(verifyRequest(KEY, undefined, "POST", "/internal/x", "", now)).toBe(false);
+    expect(verifyRequest(KEY, "t=1,v=zz", "POST", "/", "", now)).toBe(false);
+  });
+});

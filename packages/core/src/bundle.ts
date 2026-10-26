@@ -10,10 +10,10 @@ const MAX_UNZIPPED = 512 * 1024 * 1024;
 const ManifestSchema = z
   .object({
     format: z.literal(BUNDLE_FORMAT),
-    org: z.object({ id: z.string(), name: z.string() }),
+    org: z.object({ id: z.string(), name: z.string() }).strict(),
     generated_at: z.string(),
-    range: z.object({ from: z.string(), to: z.string() }),
-    anchor: z.object({ seq: z.number().int().min(0), hash: z.string() }),
+    range: z.object({ from: z.string(), to: z.string() }).strict(),
+    anchor: z.object({ seq: z.number().int().min(0), hash: z.string() }).strict(),
     count: z.number().int().min(0),
     last_seq: z.number().int().min(0),
     last_hash: z.string(),
@@ -147,3 +147,16 @@ export function writeBundleFiles(files: Record<string, string>): Uint8Array {
   return zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])));
 }
 
+
+export const PACK_BUNDLE_NAME = "evidence-bundle.zip";
+
+/** Accepts either an evidence bundle or an auditor pack that contains one. */
+export function verifyEvidenceFile(zip: Uint8Array, opts: { expectedPublicKeyPem?: string } = {}): BundleResult {
+  let inner: Uint8Array | undefined;
+  try {
+    inner = unzipSync(zip, { filter: (f) => f.name === PACK_BUNDLE_NAME && f.originalSize < MAX_UNZIPPED })[PACK_BUNDLE_NAME];
+  } catch {
+    inner = undefined;
+  }
+  return verifyBundle(inner ?? zip, opts);
+}

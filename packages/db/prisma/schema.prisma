@@ -185,6 +185,7 @@ model Approval {
   resolvedBy    String?
   note          String?
   selfApproval  Boolean        @default(false)
+  executor      String         @default("gate") // gate (MCP: Gate runs it) | agent (SDK: the agent runs it)
   result        Json?
   expiresAt     DateTime
   resolvedAt    DateTime?
@@ -218,6 +219,7 @@ model Receipt {
   decision  String?
   amountInr Float?
   outcome   String?
+  action    String?
   body      Json
   hash      String
   createdAt DateTime @default(now())

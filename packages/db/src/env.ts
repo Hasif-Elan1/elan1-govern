@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 // Fingerprints of the dev-only values shipped in .env.example. They are fine on a
-// laptop and refused when NODE_ENV=production.
+// laptop and refused when APP_ENV=production. (APP_ENV, not NODE_ENV: `next start`
+// always sets NODE_ENV=production, even for a local docker stack.)
 export const EXAMPLE_SECRET_FINGERPRINTS = new Set<string>();
 
 const fp = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
@@ -13,7 +14,7 @@ export function hexSecret(name: string) {
     .regex(/^[0-9a-f]{64}$/i, `${name} must be 64 hex characters (32 random bytes). Generate one with: openssl rand -hex 32`)
     .refine((v) => new Set(v.toLowerCase()).size >= 8, `${name} looks weak; generate a random value`)
     .refine(
-      (v) => process.env.NODE_ENV !== "production" || !EXAMPLE_SECRET_FINGERPRINTS.has(fp(v)),
+      (v) => process.env.APP_ENV !== "production" || !EXAMPLE_SECRET_FINGERPRINTS.has(fp(v)),
       `${name} is the example value from .env.example; set a real secret in production`,
     );
 }

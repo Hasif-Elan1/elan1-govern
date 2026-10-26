@@ -225,3 +225,16 @@ describe("evidence bundles", () => {
     expect(verifyBundle(make([]), { expectedPublicKeyPem: OTHER_KEYS.publicKeyPem })).toMatchObject({ ok: false, reason: expect.stringMatching(/different key/) });
   });
 });
+
+describe("auditor packs", () => {
+  it("verifies the bundle inside a pack and plain bundles", async () => {
+    const { verifyEvidenceFile, PACK_BUNDLE_NAME } = await import("../src/bundle");
+    const { zipSync, strToU8 } = await import("fflate");
+    const receipts = makeChain(3);
+    const bundle = buildBundle({ org: { id: "org1", name: "Acme" }, range: { from: "a", to: "b" }, anchor: GENESIS, receipts, checkpoints: [], publicKeyPem: KEYS.publicKeyPem, privateKeyPem: KEYS.privateKeyPem, generatedAt: ts });
+    const pack = zipSync({ [PACK_BUNDLE_NAME]: bundle, "summary.pdf": strToU8("%PDF") });
+    expect(verifyEvidenceFile(pack)).toMatchObject({ ok: true, count: 3 });
+    expect(verifyEvidenceFile(bundle)).toMatchObject({ ok: true, count: 3 });
+    expect(verifyEvidenceFile(new Uint8Array([9, 9]))).toMatchObject({ ok: false });
+  });
+});

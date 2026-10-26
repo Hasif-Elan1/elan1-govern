@@ -1,0 +1,33 @@
+{
+  "name": "@gate/gate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "tsx src/main.ts",
+    "demo": "tsx src/demo/cli.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/helmet": "13.2.0",
+    "@fastify/rate-limit": "11.2.1",
+    "@gate/connectors": "workspace:*",
+    "@gate/core": "workspace:*",
+    "@gate/db": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "argon2": "0.45.1",
+    "pino": "9.14.0",
+    "fflate": "0.8.3",
+    "fastify": "5.12.7",
+    "nodemailer": "7.0.13",
+    "pdf-lib": "1.17.1",
+    "tsx": "4.23.15",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.2"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "6.4.24"
+  }
+}

@@ -1,0 +1,43 @@
+# docker compose up   → Postgres, Mailpit, Gate (4000) and the web app (3000).
+# Uses .env (copy it from .env.example). Hostnames below override the localhost defaults.
+x-env: &env
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://gate:gate@postgres:5432/gate
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+    GATE_INTERNAL_URL: http://gate:4000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: gate, POSTGRES_PASSWORD: gate, POSTGRES_DB: gate }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U gate"], interval: 3s, retries: 20 }
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports: ["8025:8025"]
+
+  migrate:
+    build: { context: ., target: gate }
+    <<: *env
+    command: ["sh", "-c", "pnpm --filter @gate/db migrate && pnpm db:seed"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  gate:
+    build: { context: ., target: gate }
+    <<: *env
+    ports: ["4000:4000"]
+    depends_on: { migrate: { condition: service_completed_successfully }, mailpit: { condition: service_started } }
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://localhost:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], interval: 5s, retries: 20 }
+
+  web:
+    build: { context: ., target: web }
+    <<: *env
+    ports: ["3000:3000"]
+    depends_on: { gate: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], interval: 5s, retries: 30 }
+
+volumes:
+  pgdata:

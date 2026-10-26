@@ -49,6 +49,7 @@ export async function withChain<T>(
             decision: receipt.decision ?? null,
             amountInr: typeof amount === "number" ? amount : null,
             outcome: receipt.outcome?.status ?? null,
+            action: receipt.action ?? null,
             body: receipt as object,
             hash: receipt.hash,
           },

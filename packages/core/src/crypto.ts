@@ -128,3 +128,23 @@ export function hmacVerify<T = Record<string, unknown>>(secretHex: string, token
     return null;
   }
 }
+
+// ---- Service-to-service request signing (web -> gate internal API) ----
+
+function requestMac(secretHex: string, t: number, method: string, path: string, body: string): string {
+  const digest = createHash("sha256").update(body, "utf8").digest("hex");
+  return createHmac("sha256", parseKey(secretHex)).update(`${t}.${method.toUpperCase()}.${path}.${digest}`).digest("hex");
+}
+
+export function signRequest(secretHex: string, method: string, path: string, body: string, now = Date.now()): string {
+  const t = Math.floor(now / 1000);
+  return `t=${t},v=${requestMac(secretHex, t, method, path, body)}`;
+}
+
+export function verifyRequest(secretHex: string, header: string | undefined, method: string, path: string, body: string, now = Date.now(), skewSeconds = 60): boolean {
+  const m = /^t=(\d{1,12}),v=([0-9a-f]{64})$/.exec(header ?? "");
+  if (!m) return false;
+  const t = Number(m[1]);
+  if (Math.abs(Math.floor(now / 1000) - t) > skewSeconds) return false;
+  return safeEqual(m[2] as string, requestMac(secretHex, t, method, path, body));
+}

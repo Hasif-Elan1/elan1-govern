@@ -4,10 +4,11 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "secrets": "node scripts/secrets.mjs",
     "dev": "node scripts/dev.mjs",
     "build": "pnpm -r build",
     "demo": "pnpm --filter @gate/gate demo",
@@ -17,7 +18,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "db:migrate": "pnpm --filter @gate/db migrate",
-    "db:seed": "pnpm --filter @gate/db seed",
+    "db:seed": "pnpm --filter @gate/gate seed",
     "gate": "pnpm --filter @gate/cli exec gate",
     "security:audit": "pnpm audit --audit-level high",
     "security:semgrep": "semgrep scan --config auto --error --severity ERROR --exclude-rule generic.secrets.security.detected-generic-secret.detected-generic-secret",
