@@ -19,6 +19,9 @@ export const TENANT_MODELS = [
   "UpstreamServer",
   "UpstreamTool",
   "OrgFramework",
+  "OrgKey",
+  "Webhook",
+  "WebhookDelivery",
 ] as const;
 
 const WHERE_OPS = new Set([

@@ -13,20 +13,22 @@ import {
   type ReceiptInput,
 } from "@gate/core";
 import { packById, starterRulebook } from "@gate/core/frameworks";
-import { addMembership, appendReceipt, createOrgRow, forOrg, withChain, type RiskTier } from "@gate/db";
-import { orgKey, type Deps } from "./deps";
+import { addMembership, createOrgRow, forOrg, type RiskTier } from "@gate/db";
+import { chain, record } from "./chain";
+import type { Deps } from "./deps";
+import { addFirstKey, legacyKeyAad } from "./keys";
 import { registryFor } from "./registry";
 
 export async function adminEvent(deps: Deps, orgId: string, actor: string, action: string, details: Record<string, unknown> = {}, extra: Partial<ReceiptInput> = {}) {
-  const key = await orgKey(deps, orgId);
-  return appendReceipt(orgId, key.privateKeyPem, { kind: "admin", actor, action, details, ...extra }, deps.db);
+  return record(deps, orgId, { kind: "admin", actor, action, details, ...extra });
 }
 
 export async function createOrg(deps: Deps, input: { name: string; ownerUserId: string; ownerEmail: string }) {
   const keys = generateKeyPair();
   // Encrypt under an AAD bound to the org id, so the row id is needed before the key.
   const org = await createOrgRow({ name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
-  await forOrg(org.id, deps.db).org.update({ where: { id: org.id }, data: { privateKeyEnc: encrypt(deps.env.GATE_MASTER_KEY, keys.privateKeyPem, `org-key:${org.id}`) } });
+  await forOrg(org.id, deps.db).org.update({ where: { id: org.id }, data: { privateKeyEnc: encrypt(deps.env.GATE_MASTER_KEY, keys.privateKeyPem, legacyKeyAad(org.id)) } });
+  await addFirstKey(deps, org.id, keys);
   await addMembership({ orgId: org.id, userId: input.ownerUserId, role: "owner" }, deps.db);
   const db = forOrg(org.id, deps.db);
   for (const kind of ["gmail", "zoho"] as const) {
@@ -87,12 +89,7 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
   const db = forOrg(orgId, deps.db);
   const agent = await db.agent.findFirst({ where: { id: agentId } });
   if (!agent) return { ok: false, errors: ["No such agent."] };
-  const key = await orgKey(deps, orgId);
-
-  return withChain(
-    orgId,
-    key.privateKeyPem,
-    async (append, tx) => {
+  return chain(deps, orgId, async (append, tx, key) => {
       const latest = await tx.rulebook.findFirst({ where: { agentId }, orderBy: { version: "desc" }, select: { version: true } });
       const { signature: _old, ...rest } = parsed.rulebook;
       const rb = { ...rest, version: (latest?.version ?? 0) + 1, agent: agent.slug };
@@ -105,9 +102,7 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
       await tx.agent.update({ where: { id: agentId }, data: { activeRulebookId: row.id } });
       await append({ kind: "admin", actor, action: "rulebook.signed", agent: agent.slug, rulebook: { version: rb.version, hash }, details: { rules: rb.rules.length } });
       return { ok: true as const, version: rb.version, hash, yaml: text };
-    },
-    deps.db,
-  );
+  });
 }
 
 export function oauthState(deps: Deps, orgId: string, kind: ConnectorKind, actor: string) {

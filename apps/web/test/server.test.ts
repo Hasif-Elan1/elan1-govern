@@ -141,6 +141,10 @@ describe("receipt views", () => {
     expect(r("org.industry_set", { industry: "healthcare" })).toBe("Set the industry to healthcare");
     expect(r("framework.enabled", { framework: "gdpr" })).toBe("Turned on GDPR");
     expect(r("framework.disabled", { framework: "made-up" })).toBe("Turned off made-up");
+    expect(r("key.rotated", { new_kid: "abc" })).toBe("Rotated the signing key to abc");
+    expect(r("key.rotated")).toBe("Rotated the signing key");
+    expect(r("webhook.created", { host: "siem.example.com" })).toBe("Added a webhook to siem.example.com");
+    expect(r("webhook.deleted")).toBe("Deleted a webhook");
     expect(r("something.else")).toBe("something.else");
     expect(adminTitle({ kind: "admin" } as Receipt)).toBe("Setup change");
     expect(toView({ kind: "decision", seq: 1, ts: "", org: "", prev_hash: "", hash: "", sig: "" } as Receipt).status).toBe("admin");

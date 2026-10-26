@@ -129,6 +129,71 @@ if (check.decision === "allow") {
 
 REST equivalents: `POST /v1/check`, `POST /v1/record`, `GET /v1/approvals/:id?wait=30`.
 
+### API reference
+
+The agent-facing API (`/v1/check`, `/v1/record`, `/v1/approvals/{id}`) and the MCP endpoint are described in **OpenAPI 3.1**:
+
+- served by Gate, no key needed: `GET http://localhost:4000/v1/openapi.json`
+- checked in: [`docs/openapi.json`](docs/openapi.json)
+
+It is generated from the same zod schemas the routes validate with, including response and error shapes (every error is `{ "error": "plain-English message" }`). After changing a schema, run `pnpm --filter @gate/gate openapi`; a test fails if the file is out of date.
+
+---
+
+## Webhooks
+
+Send Gate's events to a SIEM, a log store or your own tools. In **Settings → Webhooks** (owners and admins), add an endpoint URL and pick events:
+
+| Event | When | `data` |
+|---|---|---|
+| `receipt.created` | Every receipt: decisions, approvals, outcomes, setup changes | The receipt itself (already minimised: no email bodies, bank details or tokens) |
+| `approval.pending` | An action waits for a person | Approval id, agent, tool, rule, summary, expiry |
+| `approval.resolved` | It was approved, rejected or expired | The same, plus who decided and the outcome |
+
+Gate shows the endpoint's **signing secret once**. Each delivery is a `POST` with `content-type: application/json` and:
+
+```
+gate-signature: t=1793000000,v1=<hex HMAC-SHA256 of "1793000000.<raw body>">
+gate-event:     receipt.created
+gate-delivery:  <delivery id, for de-duplication>
+
+{ "id": "<delivery id>", "type": "receipt.created", "created_at": "…", "org": "<org id>", "data": { … } }
+```
+
+Check it with the SDK (rejects bad signatures and timestamps more than 5 minutes off, which stops replays):
+
+```ts
+import { verifyWebhook } from "@gate/sdk";
+
+app.post("/gate-events", express.raw({ type: "application/json" }), (req, res) => {
+  if (!verifyWebhook(process.env.GATE_WEBHOOK_SECRET!, req.header("gate-signature"), req.body)) return res.sendStatus(400);
+  const event = JSON.parse(req.body.toString("utf8"));
+  // …
+  res.sendStatus(204);
+});
+```
+
+Any 2xx counts as delivered. Anything else (or no answer within 10 seconds) is retried with backoff, up to 8 attempts over about an hour; Settings shows each delivery's status and last error, and **Send a test event** checks an endpoint at once. Events are sent after the receipt is committed, from a durable job queue, so agents never wait for them. Gate refuses to call private, loopback or link-local addresses unless `WEBHOOK_ALLOW_PRIVATE=true` (the default outside production, so a local receiver works in development).
+
+## Rotating keys
+
+Each organisation signs receipts, checkpoints, rulebooks and evidence with its own Ed25519 key. To replace it (a scheduled rotation, or someone left who could have seen it), an owner opens **Settings → Signing keys → Rotate signing key** and confirms (a sign-in within the last 10 minutes is required).
+
+- Gate writes a `key.rotated` receipt **signed with the old key** that names the new key's id, so the chain itself records the handover.
+- From then on everything is signed with the new key. The old key is retired, not deleted: older receipts still verify, and anything it signs after its retirement time is rejected.
+- Every receipt and checkpoint carries `kid`, the id (fingerprint) of the key that signed it. Rulebooks are re-signed with the new key.
+- Evidence bundles include `public_keys.json` (every key, by id) next to `public_key.pem` (the current key). `gate verify` picks the key for each receipt, and older bundles verify as before:
+
+```
+Chain intact: 58 receipts
+  receipts 1–58, 3 signed checkpoints
+  organisation: Demo Traders Pvt Ltd
+  key fingerprint: 9c1d0e6a51b2f437
+  signing keys: 17f410d32e400e2d (retired 2026-10-26), 9c1d0e6a51b2f437 (current)
+```
+
+Tell your auditor the new fingerprint if they pinned the old one. Org keys are wrapped by a `KeyProvider` (today the `GATE_MASTER_KEY` with AES-256-GCM); see DECISIONS.md #36 for how a cloud KMS plugs in.
+
 ---
 
 ## Connect real Gmail and Zoho Books
@@ -240,9 +305,11 @@ Everything here is labelled **Draft — needs legal review**, on screen and in e
 apps/web            Next.js console (App Router, Tailwind, shadcn-style components, lucide)
 apps/gate           Fastify service: MCP server, REST Event API, approvals, evidence export
 packages/core       Rule engine, receipt chain, crypto, bundle verifier, framework library and industry packs (pure, no I/O)
+apps/gate           Fastify service: MCP server, REST Event API, approvals, evidence export, webhooks, pg-boss jobs
+packages/core       Rule engine, receipt chain, crypto, bundle verifier (pure, no I/O)
 packages/db         Prisma schema, tenant-scoped client (forOrg), serialized chain writer
 packages/connectors Gmail, Zoho Books (zoho.in) and mock connectors
-packages/sdk        gate.check() / gate.record() / gate.waitForApproval()
+packages/sdk        gate.check() / gate.record() / gate.waitForApproval() / verifyWebhook()
 packages/cli        gate verify | sign | keygen
 e2e                 Playwright end-to-end and security tests
 ```

@@ -1,4 +1,4 @@
-import { createCheckpoint, forOrg, openHealthAlerts } from "@gate/db";
+import { forOrg, openHealthAlerts } from "@gate/db";
 import { RISK_TAGS, verifyRequest } from "@gate/core";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -17,9 +17,12 @@ import { resolveApproval } from "../approvals";
 import { authenticateAgent } from "../auth";
 import { resetMockState } from "@gate/connectors";
 import { runDemoAgent } from "../demo/agent";
-import { orgKey, type Deps } from "../deps";
+import { checkpoint } from "../chain";
+import type { Deps } from "../deps";
 import { exportBundle, exportFrameworkReport, exportPack } from "../evidence";
+import { rotateSigningKey } from "../keys";
 import { addUpstream, removeUpstream, syncUpstream, updateUpstreamTool, type UpstreamFail } from "../upstream";
+import { createWebhook, deleteWebhook, testWebhook, WEBHOOK_EVENTS } from "../webhooks";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -81,6 +84,7 @@ const schemas = {
     .strict(),
   actorOnly: z.object({ actor }).strict(),
   upstreamTool: z.object({ enabled: z.boolean().optional(), tags: z.array(z.enum(RISK_TAGS)).max(RISK_TAGS.length).optional(), actor }).strict(),
+  webhook: z.object({ url: z.string().trim().min(1).max(2000), events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(WEBHOOK_EVENTS.length), actor }).strict(),
 };
 
 export function registerInternal(app: FastifyInstance, deps: Deps) {
@@ -160,8 +164,38 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
     internal.post<P>("/internal/orgs/:org/checkpoints", async (req) => {
       const orgId = await org(req.params.org);
       parse(schemas.checkpoint, req.body);
-      const cp = await createCheckpoint(orgId, (await orgKey(deps, orgId)).privateKeyPem, deps.db);
+      const cp = await checkpoint(deps, orgId);
       return { checkpoint: cp };
+    });
+
+    // ---- Signing keys ----
+
+    internal.post<P>("/internal/orgs/:org/signing-key/rotate", async (req) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      return rotateSigningKey(deps, orgId, b.actor);
+    });
+
+    // ---- Webhooks ----
+
+    internal.post<P>("/internal/orgs/:org/webhooks", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.webhook, req.body);
+      const r = await createWebhook(deps, orgId, b);
+      return r.ok ? r : reply.code(400).send({ error: r.error });
+    });
+
+    internal.post<P>("/internal/orgs/:org/webhooks/:id/delete", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      return (await deleteWebhook(deps, orgId, parse(id, req.params.id), b.actor)) ? { deleted: true } : reply.code(404).send({ error: "No such webhook." });
+    });
+
+    internal.post<P>("/internal/orgs/:org/webhooks/:id/test", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      parse(schemas.actorOnly, req.body);
+      const r = await testWebhook(deps, orgId, parse(id, req.params.id));
+      return r ?? reply.code(404).send({ error: "No such webhook." });
     });
 
     internal.post<P>("/internal/orgs/:org/export", async (req, reply) => {

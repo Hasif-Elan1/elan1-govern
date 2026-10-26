@@ -1,22 +1,12 @@
-import { appendReceipt, forOrg } from "@gate/db";
+import { forOrg } from "@gate/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { z } from "zod";
 import { waitForApproval } from "../approvals";
 import { authenticateAgent } from "../auth";
-import { orgKey, type Deps } from "../deps";
+import { record } from "../chain";
+import type { Deps } from "../deps";
 import { guard } from "../guard";
-
-const CheckBody = z.object({ tool: z.string().min(1).max(100), args: z.record(z.string(), z.unknown()).default({}) }).strict();
-const RecordBody = z
-  .object({
-    check_id: z.number().int().positive().optional(),
-    approval_id: z.string().max(64).optional(),
-    status: z.enum(["ok", "error"]),
-    ref: z.string().max(200).optional(),
-    error: z.string().max(500).optional(),
-  })
-  .strict()
-  .refine((b) => (b.check_id === undefined) !== (b.approval_id === undefined), "give exactly one of check_id or approval_id");
+import { openApiSpec } from "../openapi";
+import { ApprovalParams, ApprovalQuery, CheckBody, RecordBody } from "./schemas";
 
 const limit = { config: { rateLimit: { max: 300, timeWindow: "1 minute" } } };
 
@@ -30,6 +20,9 @@ export function registerAgentApi(app: FastifyInstance, deps: Deps) {
     }
     return who;
   };
+
+  // The OpenAPI 3.1 description of this API and the MCP endpoint. Public: it holds no data.
+  app.get("/v1/openapi.json", async (_req, reply) => reply.header("cache-control", "public, max-age=300").send(openApiSpec(deps.env.GATE_PUBLIC_URL)));
 
   app.post("/v1/check", limit, async (req, reply) => {
     const who = await auth(req, reply);
@@ -66,10 +59,9 @@ export function registerAgentApi(app: FastifyInstance, deps: Deps) {
     if (dup) return reply.code(409).send({ error: "An outcome was already recorded for this action." });
 
     const heldBody = held.body as { tool?: string; args_summary?: Record<string, unknown>; rule_id?: string };
-    const key = await orgKey(deps, who.orgId);
-    const receipt = await appendReceipt(
+    const receipt = await record(
+      deps,
       who.orgId,
-      key.privateKeyPem,
       {
         kind: "outcome",
         agent: agent.slug,
@@ -79,7 +71,6 @@ export function registerAgentApi(app: FastifyInstance, deps: Deps) {
         outcome: { status: body.data.status, ...(body.data.ref ? { ref: body.data.ref } : {}), ...(body.data.error ? { error: body.data.error } : {}) },
         ref_seq: refSeq,
       },
-      deps.db,
     );
     return { recorded: true, receipt_seq: receipt.seq };
   });
@@ -87,10 +78,10 @@ export function registerAgentApi(app: FastifyInstance, deps: Deps) {
   app.get<{ Params: { id: string }; Querystring: { wait?: string } }>("/v1/approvals/:id", limit, async (req, reply) => {
     const who = await auth(req, reply);
     if (!who) return;
-    const id = z.string().max(64).safeParse(req.params.id);
-    const wait = z.coerce.number().min(0).max(30).default(0).safeParse(req.query.wait);
-    if (!id.success || !wait.success) return reply.code(400).send({ error: "invalid request" });
-    const status = await waitForApproval(deps, who.orgId, who.agentId, id.data, wait.data);
+    const params = ApprovalParams.safeParse(req.params);
+    const query = ApprovalQuery.safeParse({ wait: req.query.wait });
+    if (!params.success || !query.success) return reply.code(400).send({ error: "invalid request" });
+    const status = await waitForApproval(deps, who.orgId, who.agentId, params.data.id, query.data.wait);
     if (!status) return reply.code(404).send({ error: "No approval with that id for this agent." });
     return status;
   });

@@ -31,6 +31,7 @@ Secrets are split so no single component holds everything:
 | Secret | Holder | Used for |
 |---|---|---|
 | `GATE_MASTER_KEY` | Gate only | AES-256-GCM encryption of each org's Ed25519 signing key, all OAuth tokens and upstream MCP auth headers |
+| `GATE_MASTER_KEY` | Gate only | AES-256-GCM encryption (via the `KeyProvider`) of each org's Ed25519 signing keys, all OAuth tokens and webhook signing secrets |
 | `INTERNAL_API_SECRET` | Gate and web | HMAC on internal calls and OAuth `state` |
 | `APPROVAL_LINK_SECRET` | Gate and web | HMAC on emailed approval links |
 | `WEB_ENC_KEY` | Web only | AES-256-GCM encryption of TOTP secrets |
@@ -118,6 +119,37 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **I** | Bundle leaks personal data | Same minimised receipts as above | as above |
 | **D** | Zip bomb sent to the verifier | Uncompressed size capped at 512 MB before reading | `packages/core/src/bundle.ts` |
 
+### Webhooks
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | Someone forges a Gate event to a customer's endpoint | Every delivery carries `gate-signature: t=…,v1=HMAC-SHA256(secret, "t.body")` with a 256-bit per-endpoint secret, shown once and stored AES-GCM-encrypted; `verifyWebhook` in the SDK compares in constant time | `gate/webhooks.test.ts` "signed Stripe-style"; `sdk/webhook.test.ts` |
+| **T** | A captured delivery is replayed later | The timestamp is inside the signed text; `verifyWebhook` rejects anything more than 5 minutes off. `gate-delivery` lets receivers drop duplicates | `sdk/webhook.test.ts` "rejects old or future timestamps" |
+| **I** | SSRF: an admin points a webhook at the cloud metadata service or an internal host | http(s) only, no URL credentials, no redirects, 10 s timeout. The address is checked after DNS inside the socket's `lookup`, so the connection uses exactly the checked address (no DNS-rebinding window). Private, loopback, link-local, CGNAT, multicast, reserved and IPv4-mapped IPv6 ranges are refused unless `WEBHOOK_ALLOW_PRIVATE=true` (default only outside production) | `gate/webhooks.test.ts` "SSRF…", "classifies addresses", "does not follow redirects" |
+| **I** | Webhook payloads or logs leak personal data or tokens | Payloads are the already-minimised receipts; delivery errors are short fixed phrases (no URLs, headers or response bodies); receipts and logs name the endpoint's host, never its path or query | `gate/webhooks.test.ts` "creates an endpoint…" |
+| **D** | A slow or dead endpoint slows agents down | Events are enqueued after the receipt commits and delivered by background jobs; the guard never waits. At most 20 endpoints per org; 8 attempts, then the delivery is marked failed | `gate/webhooks.test.ts` "retries with backoff…" |
+| **E** | A viewer adds an endpoint to exfiltrate events | `webhooks:manage` is owner/admin only; writes go through the signed internal API and leave `webhook.created` / `webhook.deleted` receipts | `web/policy.test.ts`; `e2e/security.spec.ts` authz matrix; `e2e/platform.spec.ts` |
+
+### Signing keys and rotation
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | A stolen old key signs new receipts after rotation | Rotation retires the old key at the time of the `key.rotated` receipt, which the old key itself signs and which names the new key. Verifiers reject anything a key signed after its retirement, using both the signed key list in the bundle and the rotation receipt in the chain. Rulebooks are re-signed and the guard trusts only the active key | `core/keys.test.ts` "a retired key cannot keep signing"; `cli/cli.test.ts` "rejects a retired key's late receipt" |
+| **T** | A receipt's `kid` is changed to blame or excuse a key | `kid` is covered by the receipt hash and the signature; a key id must equal the fingerprint of its PEM | `core/keys.test.ts` "the kid is covered by the hash", "rejects a tampered key list" |
+| **T** | A write races the rotation and is signed by the retired key | Every chain write resolves its key after taking the org's chain lock, and rotation runs under the same lock | `gate/keys.test.ts` "writes racing a rotation never use the retired key" |
+| **R** | An org denies a rotation happened, or when | The handover is a receipt on the chain; bundles list each key with its retirement time in the signed manifest | `gate/keys.test.ts` "rotation…" |
+| **I** | Private keys at rest | Wrapped by a `KeyProvider` (env master key, AES-256-GCM, AAD bound to org and key id); a cloud KMS can implement the same interface | `gate/keys.test.ts` |
+| **E** | A non-owner rotates the key | `keys:rotate` is owner-only and needs a sign-in within 10 minutes | `web/policy.test.ts`; `e2e/security.spec.ts` authz matrix; `e2e/platform.spec.ts` |
+
+### Background jobs
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **T** | Several Gate instances double-run a sweep or skip one | pg-boss stores cron schedules in Postgres and sends one job per tick; the `stately` policy allows one queued and one running job per cron queue; jobs are idempotent (expiry and delivery claim rows atomically) | `gate/jobs.test.ts` |
+| **R** | A job silently stops | Each run logs `{ job, ms, counts }` (no personal data); failures log at warn and stay in pg-boss's tables | `gate/jobs.test.ts` "logs without personal data" |
+| **D** | A crash loses due work | Jobs are durable rows; overdue approvals are also expired on access, and `webhook-sweep` re-sends any delivery whose job was lost | `gate/jobs.test.ts` "the sweep picks up deliveries whose job was lost" |
+| **E** | The job queue becomes a way into tenant data | Job payloads carry only ids; handlers re-read rows through `forOrg(orgId)`; tables live in a separate `pgboss` schema | `db/isolation.test.ts` (tenant scan) |
+
 ## Configuration safety
 
 - All secrets come from the environment. `.env` is git-ignored; `.env.example` holds **dev-only** sample values so a fresh clone runs.
@@ -164,4 +196,5 @@ Run them all with `pnpm security` and `pnpm security:zap`.
 - **Allowed actions run before their receipt is written**, as the brief specifies. If that write then fails, the agent is refused and a health alert names the action and its connector reference (DECISIONS.md #15).
 - **Rate limits are per process.** Several instances need a shared store (planned).
 - **Daily limits are checked outside the chain lock**, so two simultaneous payments can both pass a limit they jointly exceed. Approvals are unaffected.
-- **Key management:** org signing keys are encrypted with one master key from the environment. A KMS/HSM interface and key rotation are planned.
+- **Key management:** org signing keys can be rotated (owner only; retired keys are kept for verification). They are wrapped through a `KeyProvider`; the shipped one uses a single master key from the environment. A cloud KMS provider plugs into the same interface (DECISIONS.md #36); signing inside an HSM is not done yet.
+- **Webhook events between commit and enqueue:** if Gate crashes in that instant, that event is not sent. The receipt itself is safe on the chain. An outbox table would close the gap (DECISIONS.md #29).

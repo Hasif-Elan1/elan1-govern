@@ -8,6 +8,7 @@
     "start": "tsx src/main.ts",
     "demo": "tsx src/demo/cli.ts",
     "seed": "tsx src/seed.ts",
+    "openapi": "tsx src/openapi-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,11 +19,12 @@
     "@gate/db": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "argon2": "0.45.1",
-    "pino": "9.14.0",
-    "fflate": "0.8.3",
     "fastify": "5.12.7",
+    "fflate": "0.8.3",
     "nodemailer": "10.2.1",
     "pdf-lib": "1.17.1",
+    "pg-boss": "12.38.0",
+    "pino": "9.14.0",
     "tsx": "4.23.15",
     "zod": "4.6.7"
   },

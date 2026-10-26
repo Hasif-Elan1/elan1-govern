@@ -59,6 +59,11 @@ const API: RouteCase[] = [
   { method: "PUT", path: "/api/compliance/profile", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/compliance/frameworks", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/compliance/report", body: {}, allowed: ["owner", "admin", "auditor"] },
+  { method: "POST", path: "/api/webhooks", body: {}, allowed: ADMINS },
+  { method: "DELETE", path: "/api/webhooks/wh_none", allowed: ADMINS },
+  { method: "POST", path: "/api/webhooks/wh_none/test", allowed: ADMINS },
+  // Owners only, with a fresh sign-in; the empty body fails validation (400), so nothing rotates.
+  { method: "POST", path: "/api/signing-key", body: {}, allowed: ["owner"] },
 ];
 
 test("authz matrix: API routes", async () => {

@@ -1,12 +1,13 @@
-import { forOrg } from "@gate/db";
+import { forOrg, orgPublicKeys } from "@gate/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, PageHeader, Section } from "@/components/ui/layout";
 import { Pill } from "@/components/ui/status";
-import { relative } from "@/lib/utils";
+import { fmtDateTime, relative } from "@/lib/utils";
 import { can, ROLE_HINTS, ROLE_LABELS, ROLES } from "@/server/policy";
 import { requireCtx } from "@/server/session";
 import { InviteForm, MemberRow, OrgForm, TwoStep } from "./client";
+import { RotateKey, WebhookForm, WebhookRow, type WebhookView } from "./platform";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -14,13 +15,27 @@ export default async function Settings() {
   const ctx = await requireCtx();
   const db = forOrg(ctx.org.id);
   const manage = can(ctx.role, "settings:manage");
-  const [org, members, invites, keys, agents] = await Promise.all([
+  const hooksAllowed = can(ctx.role, "webhooks:manage");
+  const [org, members, invites, keys, agents, signingKeys, hooks] = await Promise.all([
     db.org.findFirstOrThrow(),
     db.membership.findMany({ include: { user: { select: { id: true, email: true, name: true, totpEnabled: true } } }, orderBy: { createdAt: "asc" } }),
     db.invite.findMany({ where: { acceptedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } }),
     manage ? db.apiKey.findMany({ where: { revokedAt: null }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
     db.agent.findMany({ select: { id: true, slug: true, name: true } }),
+    orgPublicKeys(ctx.org.id),
+    hooksAllowed
+      ? db.webhook.findMany({ orderBy: { createdAt: "asc" }, include: { deliveries: { orderBy: { createdAt: "desc" }, take: 5 } } })
+      : Promise.resolve([]),
   ]);
+  const webhooks: WebhookView[] = hooks.map((h) => ({
+    id: h.id,
+    url: h.url,
+    events: h.events,
+    active: h.active,
+    createdAt: h.createdAt.toISOString(),
+    deliveries: h.deliveries.map((d) => ({ id: d.id, event: d.event, status: d.status, attempts: d.attempts, lastError: d.lastError, responseStatus: d.responseStatus, createdAt: d.createdAt.toISOString(), deliveredAt: d.deliveredAt?.toISOString() ?? null })),
+  }));
+  const activeKey = signingKeys.find((k) => !k.retiredAt) ?? signingKeys.at(-1);
 
   return (
     <>
@@ -99,6 +114,37 @@ export default async function Settings() {
               Set up single sign-on
             </Link>
           </Card>
+        </Section>
+
+        {hooksAllowed ? (
+          <Section title="Webhooks" description="Send receipts and approval events to your SIEM, log store or other tools. Each request is signed with a secret only you and Gate know.">
+            <div className="grid gap-3">
+              {webhooks.map((h) => (
+                <WebhookRow key={h.id} hook={h} />
+              ))}
+              {!webhooks.length ? <p className="text-sm text-ink-3">No endpoints yet.</p> : null}
+              <Card className="p-5">
+                <WebhookForm />
+              </Card>
+            </div>
+          </Section>
+        ) : null}
+
+        <Section
+          title="Signing keys"
+          description="Gate signs every receipt, checkpoint and evidence bundle with your organisation's key. Retired keys are kept so older evidence still checks out."
+          actions={can(ctx.role, "keys:rotate") && activeKey ? <RotateKey current={activeKey.kid} totpEnabled={ctx.user.totpEnabled} /> : null}
+        >
+          <Card className="divide-y divide-line text-sm">
+            {[...signingKeys].reverse().map((k) => (
+              <div key={k.kid} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+                <code className="font-mono text-[13px]">{k.kid}</code>
+                <span className="flex-1 text-ink-3">Created {fmtDateTime(k.createdAt)}</span>
+                {k.retiredAt ? <Pill>Retired {fmtDateTime(k.retiredAt)}</Pill> : <Pill tone="ok">In use</Pill>}
+              </div>
+            ))}
+          </Card>
+          {!can(ctx.role, "keys:rotate") ? <p className="mt-2 text-[13px] text-ink-3">Only owners can rotate the signing key.</p> : null}
         </Section>
 
         <Section title="Your sign-in" description="Two-step sign-in asks for a code from an authenticator app, such as Google Authenticator, when you sign in and before you approve.">

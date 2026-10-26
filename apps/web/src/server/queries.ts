@@ -1,7 +1,7 @@
 import "server-only";
 import { describeAction, keyFingerprint, verifyChain, type Receipt } from "@gate/core";
 import { frameworkById, packById } from "@gate/core/frameworks";
-import { forOrg, startOfDayIST, toCheckpoint } from "@gate/db";
+import { forOrg, orgPublicKeys, startOfDayIST, toCheckpoint } from "@gate/db";
 import type { ApprovalView } from "@/components/approval-card";
 import type { DecisionKind } from "@/components/ui/status";
 
@@ -84,6 +84,12 @@ export function adminTitle(r: Receipt): string {
       return `Approved the ${named(d.assessment)} for ${String(d.system ?? "an AI system")}${d.system_tier ? `, now ${String(d.system_tier)} risk` : ""}`;
     case "assessment.changes_requested":
       return `Asked for changes to the ${named(d.assessment)} for ${String(d.system ?? "an AI system")}`;
+    case "key.rotated":
+      return `Rotated the signing key${d.new_kid ? ` to ${String(d.new_kid)}` : ""}`;
+    case "webhook.created":
+      return `Added a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
+    case "webhook.deleted":
+      return `Deleted a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
     default:
       return r.action ?? "Setup change";
   }
@@ -125,17 +131,18 @@ export function toView(r: Receipt): ReceiptView {
 
 export async function chainStatus(orgId: string) {
   const db = forOrg(orgId);
-  const [org, rows, cps] = await Promise.all([
-    db.org.findFirstOrThrow({ select: { publicKey: true } }),
+  const [keys, rows, cps] = await Promise.all([
+    orgPublicKeys(orgId),
     db.receipt.findMany({ orderBy: { seq: "asc" }, select: { body: true } }),
     db.checkpoint.findMany({ orderBy: { seq: "asc" } }),
   ]);
   const r = verifyChain(
     rows.map((x) => x.body as unknown as Receipt),
-    org.publicKey,
+    keys,
     { checkpoints: cps.map(toCheckpoint) },
   );
-  return { ...r, fingerprint: keyFingerprint(org.publicKey), lastCheckpoint: cps.at(-1) ?? null };
+  const current = keys.find((k) => !k.retiredAt) ?? keys.at(-1);
+  return { ...r, fingerprint: current ? keyFingerprint(current.publicKeyPem) : "", keys, lastCheckpoint: cps.at(-1) ?? null };
 }
 
 export async function todayStats(orgId: string) {

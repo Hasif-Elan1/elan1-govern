@@ -4,6 +4,7 @@ export * from "./tools";
 export * from "./rulebook";
 export * from "./rulebook-sign";
 export * from "./engine";
+export * from "./keys";
 export * from "./receipt";
 export * from "./bundle";
 export * from "./describe";

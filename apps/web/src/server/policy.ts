@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   "inventory:manage": ["owner", "admin"],
   "assessments:draft": ["owner", "admin", "approver"],
   "assessments:approve": ["owner", "admin"],
+  "webhooks:manage": ["owner", "admin"],
+  "keys:rotate": ["owner"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

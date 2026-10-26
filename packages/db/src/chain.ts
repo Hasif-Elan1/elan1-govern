@@ -11,13 +11,35 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultClient } from "./client";
 import { forOrg } from "./tenant";
 
-type Tx = Parameters<Parameters<ReturnType<typeof forOrg>["$transaction"]>[0]>[0];
+export type ChainTx = Parameters<Parameters<ReturnType<typeof forOrg>["$transaction"]>[0]>[0];
+type Tx = ChainTx;
 export type Append = (input: ReceiptInput) => Promise<Receipt>;
+
+/** A signing key: the private key, and its id (fingerprint) to stamp on what it signs. */
+export interface ChainKey {
+  kid?: string;
+  privateKeyPem: string;
+}
+
+/**
+ * Where the signing key comes from. A function is called after the chain lock is taken, so a
+ * key rotation that commits while this call waits for the lock is always seen: nothing is ever
+ * signed with a key that was retired before the write.
+ */
+export type KeySource = string | ChainKey | ((tx: ChainTx) => Promise<ChainKey>);
+
+async function resolveKey(key: KeySource, tx: Tx): Promise<ChainKey> {
+  if (typeof key === "string") return { privateKeyPem: key };
+  if (typeof key === "function") return key(tx);
+  return key;
+}
 
 async function head(tx: Tx): Promise<ChainHead> {
   const last = await tx.receipt.findFirst({ orderBy: { seq: "desc" }, select: { seq: true, hash: true } });
   return last ? { seq: last.seq, hash: last.hash } : GENESIS;
 }
+
+const lock = (tx: Tx, orgId: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gate-chain:${orgId}`}))`;
 
 /**
  * Runs `fn` inside one transaction holding the org's chain lock, so receipts
@@ -26,17 +48,18 @@ async function head(tx: Tx): Promise<ChainHead> {
  */
 export async function withChain<T>(
   orgId: string,
-  privateKeyPem: string,
-  fn: (append: Append, tx: Tx) => Promise<T>,
+  key: KeySource,
+  fn: (append: Append, tx: Tx, signer: ChainKey) => Promise<T>,
   client: PrismaClient = defaultClient,
 ): Promise<T> {
   const db = forOrg(orgId, client);
   return db.$transaction(
     async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gate-chain:${orgId}`}))`;
+      await lock(tx, orgId);
+      const signer = await resolveKey(key, tx);
       let current = await head(tx);
       const append: Append = async (input) => {
-        const receipt = buildReceipt(input, { org: orgId, ts: new Date().toISOString(), head: current }, privateKeyPem);
+        const receipt = buildReceipt(input, { org: orgId, ts: new Date().toISOString(), head: current, kid: signer.kid }, signer.privateKeyPem);
         const amount = receipt.args_summary?.amount_inr;
         await tx.receipt.create({
           data: {
@@ -57,28 +80,31 @@ export async function withChain<T>(
         current = { seq: receipt.seq, hash: receipt.hash };
         return receipt;
       };
-      return fn(append, tx);
+      return fn(append, tx, signer);
     },
     { maxWait: 15_000, timeout: 30_000 },
   );
 }
 
-export async function appendReceipt(orgId: string, privateKeyPem: string, input: ReceiptInput, client?: PrismaClient) {
-  return withChain(orgId, privateKeyPem, (append) => append(input), client);
+export async function appendReceipt(orgId: string, key: KeySource, input: ReceiptInput, client?: PrismaClient) {
+  return withChain(orgId, key, (append) => append(input), client);
 }
 
-/** Sign the current chain head. Skips if nothing changed since the last checkpoint. */
-export async function createCheckpoint(orgId: string, privateKeyPem: string, client: PrismaClient = defaultClient): Promise<Checkpoint | null> {
-  const db = forOrg(orgId, client);
-  const [h, last] = await Promise.all([head(db as unknown as Tx), db.checkpoint.findFirst({ orderBy: { seq: "desc" } })]);
-  if (h.seq === 0 || (last && last.seq === h.seq)) return null;
-  const cp = signCheckpoint({ org: orgId, seq: h.seq, hash: h.hash, ts: new Date().toISOString() }, privateKeyPem);
-  await db.checkpoint.create({ data: { orgId, seq: cp.seq, hash: cp.hash, ts: new Date(cp.ts), sig: cp.sig } });
-  return cp;
+/** Sign the current chain head. Skips if nothing changed since the last checkpoint. Takes the chain lock. */
+export async function createCheckpoint(orgId: string, key: KeySource, client: PrismaClient = defaultClient): Promise<Checkpoint | null> {
+  return forOrg(orgId, client).$transaction(async (tx) => {
+    await lock(tx, orgId);
+    const [h, last] = await Promise.all([head(tx), tx.checkpoint.findFirst({ orderBy: { seq: "desc" } })]);
+    if (h.seq === 0 || (last && last.seq === h.seq)) return null;
+    const signer = await resolveKey(key, tx);
+    const cp = signCheckpoint({ org: orgId, seq: h.seq, hash: h.hash, ts: new Date().toISOString(), ...(signer.kid ? { kid: signer.kid } : {}) }, signer.privateKeyPem);
+    await tx.checkpoint.create({ data: { orgId, seq: cp.seq, hash: cp.hash, ts: new Date(cp.ts), kid: cp.kid ?? null, sig: cp.sig } });
+    return cp;
+  });
 }
 
-export function toCheckpoint(row: { orgId: string; seq: number; hash: string; ts: Date; sig: string }): Checkpoint {
-  return { org: row.orgId, seq: row.seq, hash: row.hash, ts: row.ts.toISOString(), sig: row.sig };
+export function toCheckpoint(row: { orgId: string; seq: number; hash: string; ts: Date; kid?: string | null; sig: string }): Checkpoint {
+  return { org: row.orgId, seq: row.seq, hash: row.hash, ts: row.ts.toISOString(), ...(row.kid ? { kid: row.kid } : {}), sig: row.sig };
 }
 
 /** Midnight today in an IANA time zone. */

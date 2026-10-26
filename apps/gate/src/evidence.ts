@@ -7,10 +7,11 @@ import {
   type Receipt,
 } from "@gate/core";
 import { CONTROLS, controlsFor, EVIDENCE_LABELS, frameworkById, frameworkCoverage, LEGAL_REVIEW_NOTE } from "@gate/core/frameworks";
-import { allOrgIds, createCheckpoint, enabledFrameworks, evidenceCounts, forOrg, startOfDayIST, toCheckpoint } from "@gate/db";
+import { allOrgIds, enabledFrameworks, evidenceCounts, forOrg, orgPublicKeys, startOfDayIST, toCheckpoint } from "@gate/db";
 import { strToU8, zipSync } from "fflate";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { adminEvent } from "./admin";
+import { checkpoint } from "./chain";
 import { orgKey, raiseAlert, type Deps } from "./deps";
 
 export interface Range {
@@ -40,15 +41,15 @@ async function rangeData(deps: Deps, orgId: string, r: Range) {
   }
   const last = receipts.at(-1);
   const cps = first && last ? await db.checkpoint.findMany({ where: { seq: { gte: first.seq, lte: last.seq } }, orderBy: { seq: "asc" } }) : [];
-  return { receipts, anchor, checkpoints: cps.map(toCheckpoint), dates: { from, to } };
+  return { receipts, anchor, checkpoints: cps.map(toCheckpoint), dates: { from, to }, keys: await orgPublicKeys(orgId, deps.db) };
 }
 
 export async function exportBundle(deps: Deps, orgId: string, r: Range, actor: string): Promise<Uint8Array> {
   const key = await orgKey(deps, orgId);
   await adminEvent(deps, orgId, actor, "evidence.exported", { from: r.from, to: r.to, kind: "bundle" });
-  await createCheckpoint(orgId, key.privateKeyPem, deps.db);
+  await checkpoint(deps, orgId);
   const data = await rangeData(deps, orgId, r);
-  return buildBundle({ org: { id: orgId, name: key.name }, range: { from: r.from, to: r.to }, anchor: data.anchor, receipts: data.receipts, checkpoints: data.checkpoints, publicKeyPem: key.publicKeyPem, privateKeyPem: key.privateKeyPem, generatedAt: new Date().toISOString() });
+  return buildBundle({ org: { id: orgId, name: key.name }, range: { from: r.from, to: r.to }, anchor: data.anchor, receipts: data.receipts, checkpoints: data.checkpoints, publicKeyPem: key.publicKeyPem, privateKeyPem: key.privateKeyPem, publicKeys: data.keys, generatedAt: new Date().toISOString() });
 }
 
 export async function exportPack(deps: Deps, orgId: string, r: Range, actor: string): Promise<Uint8Array> {
@@ -134,13 +135,15 @@ async function summaryPdf(deps: Deps, orgId: string, orgName: string, publicKeyP
   doc.setProducer("Gate");
   const w = new Writer(doc, await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold));
   const { receipts } = data;
-  const chain = verifyChain(receipts, publicKeyPem, { anchor: data.anchor, checkpoints: data.checkpoints });
+  const chain = verifyChain(receipts, data.keys, { anchor: data.anchor, checkpoints: data.checkpoints });
   const ist = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
   w.text("Gate · Auditor pack", { size: 10, color: [0.42, 0.42, 0.4] });
   w.text(orgName, { size: 22, bold: true, gap: 10 });
   w.text(`Period: ${r.from} to ${r.to} (India time)   ·   Generated ${ist} IST`, { color: [0.3, 0.3, 0.28] });
-  w.text(`Signing key fingerprint: ${keyFingerprint(publicKeyPem)}`, { color: [0.3, 0.3, 0.28], gap: 14 });
+  const retired = data.keys.filter((k) => k.retiredAt);
+  w.text(`Signing key fingerprint: ${keyFingerprint(publicKeyPem)}`, { color: [0.3, 0.3, 0.28], gap: retired.length ? 6 : 14 });
+  if (retired.length) w.text(`Earlier keys, kept for verification: ${retired.map((k) => `${k.kid} (retired ${k.retiredAt?.slice(0, 10)})`).join(", ")}`, { size: 9, color: [0.3, 0.3, 0.28], gap: 14 });
 
   w.text("Evidence chain", { size: 13, bold: true });
   if (chain.ok) {
@@ -282,12 +285,14 @@ export async function exportFrameworkReport(deps: Deps, orgId: string, framework
 }
 
 /** Hourly: sign the head of every org's chain. */
-export async function checkpointAll(deps: Deps) {
+export async function checkpointAll(deps: Deps): Promise<number> {
+  let signed = 0;
   for (const orgId of await allOrgIds(deps.db)) {
     try {
-      await createCheckpoint(orgId, (await orgKey(deps, orgId)).privateKeyPem, deps.db);
+      if (await checkpoint(deps, orgId)) signed++;
     } catch (e) {
       await raiseAlert(deps, "checkpoint-failed", (e as Error).message, orgId);
     }
   }
+  return signed;
 }

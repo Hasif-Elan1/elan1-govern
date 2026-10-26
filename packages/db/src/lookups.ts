@@ -27,6 +27,11 @@ export function dueApprovals(now: Date, client: PrismaClient = defaultClient) {
   return client.approval.findMany({ where: { status: "pending", expiresAt: { lte: now } }, select: { id: true, orgId: true }, take: 200 });
 }
 
+/** Webhook deliveries that are due (or whose worker vanished mid-attempt), oldest first. */
+export function dueWebhookDeliveries(now: Date, client: PrismaClient = defaultClient, take = 200) {
+  return client.webhookDelivery.findMany({ where: { status: "pending", nextAttemptAt: { lte: now } }, select: { id: true, orgId: true }, orderBy: { nextAttemptAt: "asc" }, take });
+}
+
 export function createOrgRow(data: { name: string; publicKey: string; privateKeyEnc: string; notifyEmail?: string }, client: PrismaClient = defaultClient) {
   return client.org.create({ data });
 }

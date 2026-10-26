@@ -91,3 +91,5 @@ export function createGate(opts: GateOptions) {
 }
 
 export type Gate = ReturnType<typeof createGate>;
+
+export { verifyWebhook } from "./webhook";
