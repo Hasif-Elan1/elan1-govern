@@ -1,7 +1,7 @@
 # One image for both services; docker-compose picks the target.
 FROM node:22.23-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/* \
-  && corepack enable && corepack prepare pnpm@9.15.0 --activate
+  && corepack enable && corepack prepare pnpm@10.34.9 --activate
 WORKDIR /app
 ENV CI=true
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
