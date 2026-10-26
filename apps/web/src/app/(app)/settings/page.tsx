@@ -32,7 +32,7 @@ export default async function Settings() {
           </Card>
         </Section>
 
-        <Section title="Members and roles" description="Approvers decide waiting actions. Auditors see everything and download evidence, and can belong to several organisations, such as your CA.">
+        <Section title="Members and roles" description="Approvers decide waiting actions. Auditors see everything and download evidence, and can belong to several organisations, such as an outside auditor or accountant.">
           <Card className="divide-y divide-line">
             {members.map((m) => (
               <MemberRow

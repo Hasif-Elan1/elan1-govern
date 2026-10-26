@@ -6,7 +6,8 @@ import {
   verifyChain,
   type Receipt,
 } from "@gate/core";
-import { allOrgIds, createCheckpoint, evidenceCounts, forOrg, startOfDayIST, toCheckpoint } from "@gate/db";
+import { CONTROLS, controlsFor, EVIDENCE_LABELS, frameworkById, frameworkCoverage, LEGAL_REVIEW_NOTE } from "@gate/core/frameworks";
+import { allOrgIds, createCheckpoint, enabledFrameworks, evidenceCounts, forOrg, startOfDayIST, toCheckpoint } from "@gate/db";
 import { strToU8, zipSync } from "fflate";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { adminEvent } from "./admin";
@@ -100,6 +101,23 @@ class Writer {
     });
     this.y -= 15;
   }
+  /** Text wrapped to the page width. */
+  para(s: string, opts: { size?: number; bold?: boolean; color?: [number, number, number]; x?: number; width?: number; gap?: number } = {}) {
+    const size = opts.size ?? 10;
+    const font = opts.bold ? this.bold : this.font;
+    const width = opts.width ?? 539 - (opts.x ?? 56);
+    const lines: string[] = [];
+    let line = "";
+    for (const word of pdfText(s).split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && font.widthOfTextAtSize(next, size) > width) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    lines.forEach((l, i) => this.text(l, { ...opts, gap: i === lines.length - 1 ? opts.gap : 3 }));
+  }
   rule() {
     this.ensure(10);
     this.page.drawLine({ start: { x: 56, y: this.y + 4 }, end: { x: 539, y: this.y + 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.83) });
@@ -172,17 +190,93 @@ async function summaryPdf(deps: Deps, orgId: string, orgName: string, publicKeyP
     w.space();
   }
 
-  const controls = await forOrg(orgId, deps.db).control.findMany({ orderBy: { code: "asc" } });
+  const enabled = (await enabledFrameworks(orgId, deps.db)).map((f) => frameworkById(f.frameworkId)!);
   const counts = await evidenceCounts(orgId, data.dates, deps.db);
   w.newPage();
   w.text("Compliance map", { size: 13, bold: true });
-  w.text("DRAFT — NEEDS LEGAL REVIEW. Clause references show where a reviewer might look; they are not a claim of compliance.", { size: 9, color: [0.6, 0.35, 0.05], gap: 10 });
+  w.text(`${LEGAL_REVIEW_NOTE.toUpperCase()}. References show where a reviewer might look; they are not a claim of compliance.`, { size: 9, color: [0.6, 0.35, 0.05], gap: 10 });
+  if (!enabled.length) {
+    w.text("No frameworks are switched on for this organisation. Turn them on under Compliance in Gate.");
+    return doc.save();
+  }
   w.row(["Control", "Framework references", "Evidence"], [190, 233, 60], true);
   w.rule();
-  for (const c of controls) {
-    const maps = (c.mappings as { framework: string; clause: string }[]).map((m) => `${m.framework} ${m.clause}`);
-    w.row([`${c.code} ${c.title}`, maps.slice(0, 2).join("; "), String(counts[c.evidence as keyof typeof counts] ?? 0)], [190, 233, 60]);
-    for (let i = 2; i < maps.length; i += 2) w.row(["", maps.slice(i, i + 2).join("; "), ""], [190, 233, 60]);
+  const shown = new Set(enabled.map((f) => f.id));
+  for (const c of CONTROLS.filter((x) => x.mappings.some((m) => shown.has(m.framework)))) {
+    const refs = c.mappings
+      .filter((x) => shown.has(x.framework))
+      .map((x) => `${frameworkById(x.framework)!.shortName} ${frameworkById(x.framework)!.requirements.find((q) => q.id === x.requirement)!.ref}`);
+    w.row([`${c.id} ${c.title}`, refs.slice(0, 2).join("; "), String(counts[c.evidence])], [190, 233, 60]);
+    for (let i = 2; i < refs.length; i += 2) w.row(["", refs.slice(i, i + 2).join("; "), ""], [190, 233, 60]);
+  }
+  return doc.save();
+}
+
+// ---- Framework report ----
+
+/**
+ * One framework: each requirement, the controls that map to it, their live evidence, and the
+ * gaps. Evidence counts cover all receipts to date. Logged as an evidence export.
+ */
+export async function exportFrameworkReport(deps: Deps, orgId: string, frameworkId: string, actor: string): Promise<Uint8Array | null> {
+  const framework = frameworkById(frameworkId);
+  if (!framework) return null;
+  const key = await orgKey(deps, orgId);
+  await adminEvent(deps, orgId, actor, "evidence.exported", { kind: "framework-report", framework: framework.id });
+  const counts = await evidenceCounts(orgId, undefined, deps.db);
+  const coverage = frameworkCoverage(framework.id, counts);
+  const enabled = (await enabledFrameworks(orgId, deps.db)).some((f) => f.frameworkId === framework.id);
+
+  const doc = await PDFDocument.create();
+  doc.setTitle(`Gate framework report — ${framework.shortName} — ${key.name}`);
+  doc.setProducer("Gate");
+  const w = new Writer(doc, await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold));
+  const grey: [number, number, number] = [0.3, 0.3, 0.28];
+  const when = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+
+  w.text("Gate · Framework report", { size: 10, color: [0.42, 0.42, 0.4], gap: 10 });
+  w.para(framework.name, { size: 18, bold: true, gap: 8 });
+  w.text(`${key.name}   ·   Generated ${when} IST   ·   Key ${keyFingerprint(key.publicKeyPem)}`, { color: grey });
+  w.text(`Jurisdiction: ${framework.jurisdiction}`, { color: grey });
+  w.text(`Official text: ${framework.url}`, { color: grey, gap: 10 });
+  w.para(`${LEGAL_REVIEW_NOTE.toUpperCase()}. The references and summaries were written by the Gate team as starting points. They are not legal advice and not a claim that using Gate meets this framework. Have your counsel review them.`, { size: 9, color: [0.6, 0.35, 0.05], gap: 12 });
+  if (!enabled) w.text("This framework is not switched on for the organisation.", { color: grey, gap: 10 });
+
+  w.text("Summary", { size: 13, bold: true });
+  w.para(framework.description, { gap: 8 });
+  const gaps = coverage.requirements.filter((x) => x.gap);
+  const waiting = coverage.requirements.filter((x) => !x.gap && !x.covered);
+  w.text(`${coverage.covered} of ${coverage.total} requirements have a control with live evidence (${coverage.percent}%).`, { bold: true });
+  w.text(`${waiting.length} have a control but no evidence yet. ${gaps.length} have no control at all.`, { gap: 14 });
+
+  w.text("Requirements", { size: 13, bold: true });
+  const cols = [72, 160, 140, 46, 65];
+  w.row(["Reference", "Requirement", "Controls", "Evidence", "Status"], cols, true);
+  w.rule();
+  for (const x of coverage.requirements) {
+    const ev = x.controls.reduce((n, c) => n + c.evidence, 0);
+    const status = x.gap ? "Gap" : x.covered ? "Covered" : "No evidence";
+    const ids = x.controls.map((c) => c.control.id);
+    w.row([x.requirement.ref, x.requirement.title, ids.slice(0, 3).join(", ") || "None", x.gap ? "—" : String(ev), status], cols);
+    for (let i = 3; i < ids.length; i += 3) w.row(["", "", ids.slice(i, i + 3).join(", "), "", ""], cols);
+  }
+  w.space();
+
+  if (gaps.length) {
+    w.text("Gaps: no control covers these yet", { size: 13, bold: true });
+    for (const x of gaps) {
+      w.text(`${x.requirement.ref}  ${x.requirement.title}`, { bold: true, gap: 3 });
+      w.para(x.requirement.summary, { color: grey, gap: 8 });
+    }
+    w.space();
+  }
+
+  w.text("Controls used for this framework", { size: 13, bold: true });
+  for (const c of controlsFor(framework.id)) {
+    w.text(`${c.id}  ${c.title}`, { bold: true, gap: 3 });
+    w.para(c.description, { color: grey, gap: 3 });
+    const refs = c.refs.map((r) => framework.requirements.find((q) => q.id === r.requirement)!.ref);
+    w.text(`Evidence: ${counts[c.evidence]} ${EVIDENCE_LABELS[c.evidence]}   ·   Maps to: ${[...new Set(refs)].join(", ")}`, { size: 9, color: grey, gap: 10 });
   }
   return doc.save();
 }

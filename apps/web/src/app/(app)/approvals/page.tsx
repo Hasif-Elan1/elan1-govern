@@ -35,7 +35,7 @@ export default async function Approvals() {
         <EmptyState
           icon={<Inbox />}
           title="Nothing is waiting"
-          body="When a rule says a person must decide, such as a payment over ₹50,000, the action waits here and the approvers get an email."
+          body="When a rule says a person must decide, such as a large payment, a refund or a production change, the action waits here and the approvers get an email."
           action={{ href: "/rulebooks", label: "See your rules" }}
         />
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bot, BookText, Boxes, Check, ChevronsUpDown, ClipboardCheck, FileCheck2, Inbox, LogOut, Menu, Monitor, Moon, Plug, Settings, Sun, SunMedium } from "lucide-react";
+import { Activity, Bot, BookText, Boxes, Check, ChevronsUpDown, ClipboardCheck, FileCheck2, Inbox, LogOut, Menu, Monitor, Moon, Plug, Scale, Settings, Sun, SunMedium } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { DropdownMenu as DM, Dialog as D } from "radix-ui";
@@ -19,6 +19,7 @@ const NAV = [
   { href: "/rulebooks", label: "Rulebooks", icon: BookText },
   { href: "/connectors", label: "Connectors", icon: Plug },
   { href: "/evidence", label: "Evidence", icon: FileCheck2 },
+  { href: "/compliance", label: "Compliance", icon: Scale },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

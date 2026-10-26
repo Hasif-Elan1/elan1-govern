@@ -342,4 +342,24 @@ describe("chain", () => {
     const cp = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/checkpoints`, { actor: d.owner.email });
     expect(cp.statusCode).toBe(200);
   });
+
+  it("auditor pack lists only enabled frameworks; framework reports are PDFs and are logged", async () => {
+    const d = await demoOrg(ctx.deps);
+    const { enableFrameworks } = await import("@gate/db");
+    await enableFrameworks(d.org.id, ["hipaa"], d.owner.email);
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const pack = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/export`, { from: today, to: today, kind: "pack", actor: d.owner.email });
+    expect(pack.statusCode).toBe(200);
+
+    const res = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/hipaa/report`, { actor: d.owner.email });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(Buffer.from(res.rawPayload).subarray(0, 5).toString()).toBe("%PDF-");
+    // Not enabled yet still renders (the report says so); unknown ids are 404, bad ids 400.
+    expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/nyc-ll144/report`, { actor: d.owner.email })).statusCode).toBe(200);
+    expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/made-up/report`, { actor: d.owner.email })).statusCode).toBe(404);
+    expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/BAD!/report`, { actor: d.owner.email })).statusCode).toBe(400);
+    const logged = await d.db.receipt.findMany({ where: { action: "evidence.exported" } });
+    expect(logged.map((r) => (r.body as { details?: { framework?: string } }).details?.framework).filter(Boolean)).toEqual(["hipaa", "nyc-ll144"]);
+  });
 });

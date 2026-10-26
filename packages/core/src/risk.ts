@@ -2,8 +2,8 @@ import type { RiskTier, Rule } from "./rulebook";
 
 export const RISK_QUESTIONS = [
   { id: "money", text: "Can this agent record or make payments?", options: [["no", "No"], ["yes", "Yes"]] },
-  { id: "external", text: "Can it send email to people outside your company?", options: [["no", "No"], ["yes", "Yes"]] },
-  { id: "personal", text: "Will it see personal details, such as PAN, phone numbers or bank accounts?", options: [["no", "No"], ["yes", "Yes"]] },
+  { id: "external", text: "Can it email or message people outside your company?", options: [["no", "No"], ["yes", "Yes"]] },
+  { id: "personal", text: "Will it see personal details, such as ID numbers, phone numbers or bank accounts?", options: [["no", "No"], ["yes", "Yes"]] },
   { id: "amount", text: "What is the largest single amount it could touch?", options: [["small", "Under ₹50,000"], ["medium", "₹50,000 to ₹5,00,000"], ["large", "More than ₹5,00,000"]] },
   { id: "oversight", text: "Does someone check its work today?", options: [["always", "Every action"], ["sometimes", "Now and then"], ["never", "No"]] },
 ] as const;

@@ -66,7 +66,7 @@ export function OrgForm({ name, notifyEmail, retentionDays, disabled }: { name: 
       <Field label="Notification email" htmlFor="org-notify" hint="Copied on approval emails and health alerts.">
         <Input id="org-notify" name="notifyEmail" type="email" defaultValue={notifyEmail} disabled={disabled} />
       </Field>
-      <Field label="Keep records for" htmlFor="org-retention" hint="Receipts older than this can be archived. Ask your CA how long your records must be kept.">
+      <Field label="Keep records for" htmlFor="org-retention" hint="Receipts older than this can be archived. Ask your auditor or legal team how long your records must be kept.">
         <Select id="org-retention" name="retentionDays" defaultValue={retentionDays} disabled={disabled}>
           {RETENTION.map(([d, l]) => (
             <option key={d} value={d}>
@@ -156,7 +156,7 @@ export function InviteForm({ actorRole }: { actorRole: string }) {
         }}
       >
         <Field label="Invite by email" htmlFor="invite-email">
-          <Input id="invite-email" name="email" type="email" required className="w-72" placeholder="ca@yourfirm.in" />
+          <Input id="invite-email" name="email" type="email" required className="w-72" placeholder="name@company.com" />
         </Field>
         <Select aria-label="Role" name="role" defaultValue="approver" className="w-36">
           {ROLE_OPTIONS.filter(([r]) => actorRole === "owner" || r !== "owner").map(([r, l]) => (
@@ -229,7 +229,7 @@ export function TwoStep({ enabled }: { enabled: boolean }) {
   if (!setup) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <p className="flex-1 text-sm text-ink-2">Off. Recommended for anyone who approves payments.</p>
+        <p className="flex-1 text-sm text-ink-2">Off. Recommended for anyone who approves actions.</p>
         <Button onClick={start}>Turn on two-step sign-in</Button>
       </div>
     );

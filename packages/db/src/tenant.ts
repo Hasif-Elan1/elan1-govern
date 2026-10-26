@@ -13,12 +13,12 @@ export const TENANT_MODELS = [
   "ApprovalLink",
   "Receipt",
   "Checkpoint",
-  "Control",
   "SsoConnection",
   "AiSystem",
   "Assessment",
   "UpstreamServer",
   "UpstreamTool",
+  "OrgFramework",
 ] as const;
 
 const WHERE_OPS = new Set([

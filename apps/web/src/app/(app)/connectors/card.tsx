@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 export type ConnectorRow = { kind: string; status: string; mode: string; accountLabel: string | null };
 
 const META = {
-  gmail: { name: "Gmail", icon: Mail, about: "Reads vendor invoices and replies on existing threads. No deleting, forwarding or settings." },
+  gmail: { name: "Gmail", icon: Mail, about: "Reads mail and replies on existing threads. No deleting, forwarding or settings." },
   zoho: { name: "Zoho Books", icon: ReceiptIndianRupee, about: "Creates bills and records payments in your Zoho Books organisation (India data centre)." },
 };
 

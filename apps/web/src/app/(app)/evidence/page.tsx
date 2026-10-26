@@ -1,7 +1,9 @@
-import { evidenceCounts, forOrg, FRAMEWORKS } from "@gate/db";
-import { ShieldCheck, ShieldX } from "lucide-react";
+import { CONTROLS, frameworkById, LEGAL_REVIEW_NOTE } from "@gate/core/frameworks";
+import { enabledFrameworks, evidenceCounts, forOrg } from "@gate/db";
+import { Scale, ShieldCheck, ShieldX } from "lucide-react";
 import type { Metadata } from "next";
-import { Card, KeyValue, PageHeader, Section } from "@/components/ui/layout";
+import Link from "next/link";
+import { Card, EmptyState, KeyValue, PageHeader, Section } from "@/components/ui/layout";
 import { Pill } from "@/components/ui/status";
 import { fmtDateTime, istDay, shortHash } from "@/lib/utils";
 import { can } from "@/server/policy";
@@ -14,12 +16,14 @@ export const metadata: Metadata = { title: "Evidence" };
 export default async function Evidence() {
   const ctx = await requireCtx();
   const db = forOrg(ctx.org.id);
-  const [chain, checkpoints, controls, counts] = await Promise.all([
+  const [chain, checkpoints, enabled, counts] = await Promise.all([
     chainStatus(ctx.org.id),
     db.checkpoint.findMany({ orderBy: { seq: "desc" }, take: 8 }),
-    db.control.findMany({ orderBy: { code: "asc" } }),
+    enabledFrameworks(ctx.org.id),
     evidenceCounts(ctx.org.id),
   ]);
+  const frameworks = enabled.map((f) => frameworkById(f.frameworkId)!);
+  const controls = CONTROLS.filter((c) => c.mappings.some((m) => frameworks.some((f) => f.id === m.framework)));
   const today = istDay();
   const monthStart = `${today.slice(0, 8)}01`;
 
@@ -63,38 +67,44 @@ export default async function Evidence() {
         </Card>
       </div>
 
-      <Section title="Compliance map" className="mt-12" description="Each control Gate enforces, where a reviewer might look in each framework, and how many real receipts back it." actions={<Pill tone="wait">Draft — needs legal review</Pill>}>
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-          <table className="w-full min-w-[880px] text-sm">
-            <thead className="border-b border-line bg-sunken/60 text-left text-[13px] text-ink-3">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Control</th>
-                {FRAMEWORKS.map((f) => (
-                  <th key={f} className="px-3 py-2.5 font-medium whitespace-nowrap">
-                    {f}
-                  </th>
-                ))}
-                <th className="px-4 py-2.5 text-right font-medium">Evidence</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line align-top">
-              {controls.map((c) => {
-                const maps = c.mappings as { framework: string; clause: string; note: string }[];
-                return (
-                  <tr key={c.code}>
+      <Section
+        title="Compliance map"
+        className="mt-12"
+        description="Each control Gate enforces, where a reviewer might look in each framework you have turned on, and how many real receipts back it."
+        actions={<Pill tone="wait">{LEGAL_REVIEW_NOTE}</Pill>}
+      >
+        {frameworks.length === 0 ? (
+          <EmptyState icon={<Scale />} title="No frameworks turned on" body="Pick the laws and standards that apply to you, and the map shows which of Gate's controls they touch." action={{ href: "/compliance", label: "Choose frameworks" }} />
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+            <table className="w-full text-sm" style={{ minWidth: `${300 + frameworks.length * 150}px` }}>
+              <thead className="border-b border-line bg-sunken/60 text-left text-[13px] text-ink-3">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Control</th>
+                  {frameworks.map((f) => (
+                    <th key={f.id} className="px-3 py-2.5 font-medium whitespace-nowrap">
+                      {f.shortName}
+                    </th>
+                  ))}
+                  <th className="px-4 py-2.5 text-right font-medium">Evidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line align-top">
+                {controls.map((c) => (
+                  <tr key={c.id}>
                     <td className="max-w-[300px] px-4 py-3">
                       <p className="font-medium">{c.title}</p>
                       <p className="mt-0.5 text-[13px] text-ink-3">{c.description}</p>
                     </td>
-                    {FRAMEWORKS.map((f) => {
-                      const m = maps.filter((x) => x.framework === f);
+                    {frameworks.map((f) => {
+                      const refs = c.mappings.filter((x) => x.framework === f.id).map((x) => ({ ...x, req: f.requirements.find((q) => q.id === x.requirement)! }));
                       return (
-                        <td key={f} className="px-3 py-3">
-                          {m.length ? (
-                            m.map((x) => (
-                              <span key={x.clause} title={x.note} className="mb-1 block text-[13px]">
-                                <span className="font-medium">{x.clause}</span>
-                                <span className="block text-ink-3">{x.note}</span>
+                        <td key={f.id} className="px-3 py-3">
+                          {refs.length ? (
+                            refs.map((x) => (
+                              <span key={x.requirement} title={x.req.summary} className="mb-1 block text-[13px]">
+                                <span className="font-medium">{x.req.ref}</span>
+                                <span className="block text-ink-3">{x.note ?? x.req.title}</span>
                               </span>
                             ))
                           ) : (
@@ -103,15 +113,19 @@ export default async function Evidence() {
                         </td>
                       );
                     })}
-                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{counts[c.evidence as keyof typeof counts] ?? 0}</td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{counts[c.evidence]}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <p className="mt-3 max-w-[72ch] text-[13px] text-ink-3">
-          These references are starting points written by the Gate team, not legal advice and not a claim of compliance. Have your counsel or CA review them. They live in <code className="font-mono">packages/db/src/controls.ts</code>.
+          These references are starting points written by the Gate team, not legal advice and not a claim of compliance. Have your counsel review them. Turn frameworks on or off, and see the gaps, under{" "}
+          <Link href="/compliance" className="font-medium text-accent hover:underline">
+            Compliance
+          </Link>
+          .
         </p>
       </Section>
 

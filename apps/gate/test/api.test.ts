@@ -117,13 +117,13 @@ describe("internal API", () => {
     expect((await post("/v1/check", rotated.apiKey, { tool: "gmail.search", args: { query: "" } })).statusCode).toBe(401);
   });
 
-  it("creates orgs with keys, controls and an admin receipt", async () => {
+  it("creates orgs with keys and an admin receipt, with no frameworks until onboarding picks them", async () => {
     const { makeUser } = await import("./helpers");
     const u = await makeUser();
     const res = await internal(ctx.app, "POST", "/internal/orgs", { name: "New Co", ownerUserId: u.id, ownerEmail: u.email });
     const orgId = res.json().orgId as string;
     const db = forOrg(orgId);
-    expect(await db.control.count()).toBe(10);
+    expect(await db.orgFramework.count()).toBe(0);
     expect((await db.org.findFirstOrThrow()).privateKeyEnc).toMatch(/^v1\./);
     expect((await db.receipt.findFirstOrThrow()).body).toMatchObject({ seq: 1, kind: "admin", action: "org.created" });
   });
