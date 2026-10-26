@@ -264,3 +264,20 @@ model HealthAlert {
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 }
+
+// Single sign-on (OIDC) for one organisation. The client secret is encrypted with WEB_ENC_KEY.
+model SsoConnection {
+  id              String    @id @default(cuid())
+  orgId           String    @unique
+  issuer          String
+  clientId        String
+  clientSecretEnc String
+  domains         String[]
+  verifyToken     String // put "gate-verify=<token>" in a DNS TXT record to prove each domain
+  verifiedDomains String[]
+  enforce         Boolean   @default(false) // verified domains must use SSO; password sign-in is refused
+  defaultRole     Role      @default(viewer)
+  enabled         Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}

@@ -42,3 +42,13 @@ export function recordHealthAlert(data: { orgId?: string; kind: string; message:
 export function openHealthAlerts(client: PrismaClient = defaultClient) {
   return client.healthAlert.findMany({ where: { resolvedAt: null }, orderBy: { createdAt: "desc" }, take: 20 });
 }
+
+/** SSO before sign-in: the connection that has verified this email domain, if any. */
+export function findSsoForDomain(domain: string, client: PrismaClient = defaultClient) {
+  return client.ssoConnection.findFirst({ where: { verifiedDomains: { has: domain.toLowerCase() }, enabled: true } });
+}
+
+/** A domain belongs to the one organisation that verified it (unverified claims don't block anyone). */
+export function domainClaimedElsewhere(domain: string, orgId: string, client: PrismaClient = defaultClient) {
+  return client.ssoConnection.findFirst({ where: { verifiedDomains: { has: domain.toLowerCase() }, orgId: { not: orgId } }, select: { id: true } });
+}

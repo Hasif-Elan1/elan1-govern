@@ -79,6 +79,9 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **I** | PII in logs | Structured JSON logs carry request ids and user ids, never emails, bodies or tokens; Gate redacts `authorization`, `cookie` and signature headers and logs paths without query strings | `apps/web/src/server/log.ts`, `apps/gate/src/app.ts` |
 | **D** | Flooding sign-in or approvals | Per-IP limits (login 10/min, sign-up 5/min, approvals 30/min, writes 120/min) plus per-account limits | `web/server.test.ts` "rate limits"; `e2e/security.spec.ts` |
 | **E** | A role does more than it should | One permission table (`apps/web/src/server/policy.ts`) used by every route; only owners can touch owners; the last owner can't be removed | `web/policy.test.ts`; `e2e/security.spec.ts` "authz matrix" (5 roles × every route and page) |
+| **S** | Someone signs in through another company's identity provider | SSO applies only to domains proven by a DNS TXT record; only verified claims block other orgs; the IdP's email must be verified and inside a verified domain | `web/sso.test.ts` |
+| **T** | SSO response forged or replayed into another browser | Authorization code flow with PKCE (S256), state and nonce, kept in an AES-GCM-encrypted httpOnly cookie that lasts 10 minutes; id_token signature, issuer and audience checked by `openid-client` | `web/sso.test.ts` |
+| **E** | SSO users granted too much | New SSO users get the org's default role, which can never be Owner; existing memberships are unchanged | `apps/web/src/app/api/settings/sso/route.ts` |
 | **E** | Clickjacking, sniffing | `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`, HSTS, strict `Referrer-Policy`, `Permissions-Policy` | `e2e/security.spec.ts` "security headers are set" |
 
 ### Connectors

@@ -92,6 +92,15 @@ export default async function Settings() {
           </Section>
         ) : null}
 
+        <Section title="Single sign-on" description="Sign in with your company's identity provider (OpenID Connect).">
+          <Card className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm">
+            <span className="text-ink-2">Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak and others.</span>
+            <Link href="/settings/sso" className="font-medium text-accent hover:underline">
+              Set up single sign-on
+            </Link>
+          </Card>
+        </Section>
+
         <Section title="Your sign-in" description="Two-step sign-in asks for a code from an authenticator app, such as Google Authenticator, when you sign in and before you approve.">
           <Card className="p-5">
             <TwoStep enabled={ctx.user.totpEnabled} />

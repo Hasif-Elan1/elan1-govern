@@ -3,12 +3,14 @@ import { HttpError, route } from "@/server/api";
 import { checkPassword } from "@/server/auth";
 import { hit, LIMITS } from "@/server/ratelimit";
 import { startSession } from "@/server/session";
+import { passwordBlockedBySso } from "@/server/sso";
 import { email, password, safeNext, totp } from "../route-helpers";
 
 const Body = z.object({ email, password, totp, next: z.string().max(500).optional() }).strict();
 
 export const POST = route({ auth: "public", body: Body, limit: { name: "login", ...LIMITS.login } }, async ({ body }) => {
   if (!hit(`login-email:${body.email}`, 10, 15 * 60_000).ok) throw new HttpError(429, "Too many attempts for this account. Wait 15 minutes and try again.");
+  if (await passwordBlockedBySso(body.email)) throw new HttpError(403, "Your company signs in with single sign-on.", { sso: true });
   const r = await checkPassword(body.email, body.password, body.totp);
   if (!r.ok) {
     if (r.reason === "totp_required") return { needTotp: true };

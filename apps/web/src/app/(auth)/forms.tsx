@@ -25,19 +25,58 @@ function useSubmit() {
   return { error, busy, run, setError };
 }
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, ssoError }: { next?: string; ssoError?: string }) {
   const router = useRouter();
-  const { error, busy, run } = useSubmit();
+  const { error, busy, run, setError } = useSubmit();
   const [needTotp, setNeedTotp] = useState(false);
+  const [sso, setSso] = useState(false);
+  const shownError = error ?? ssoError ?? null;
+
+  if (sso) {
+    return (
+      <form
+        className="grid gap-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const r = await run(() => api<{ url: string }>("/api/auth/sso/start", { email: f.get("email"), next }));
+          if (r?.url) window.location.href = r.url;
+        }}
+      >
+        <Field label="Work email" htmlFor="email" hint="We'll send you to your company's sign-in page.">
+          <Input id="email" name="email" type="email" autoComplete="username" required autoFocus />
+        </Field>
+        {shownError ? (
+          <p role="alert" className="rounded-md border border-no-line bg-no-soft px-3 py-2 text-sm text-no">
+            {shownError}
+          </p>
+        ) : null}
+        <Button variant="primary" size="lg" disabled={busy} className="mt-1 w-full">
+          {busy ? "Opening your sign-in page…" : "Continue with single sign-on"}
+        </Button>
+        <button type="button" className="cursor-pointer text-left text-sm font-medium text-accent hover:underline" onClick={() => (setSso(false), setError(null))}>
+          Use a password instead
+        </button>
+      </form>
+    );
+  }
+
   return (
     <form
       className="grid gap-4"
       onSubmit={async (e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
-        const r = await run(() =>
-          api<{ next?: string; needTotp?: boolean }>("/api/auth/login", { email: f.get("email"), password: f.get("password"), totp: f.get("totp") ?? undefined, next }),
-        );
+        let ssoRequired = false;
+        const r = await run(async () => {
+          try {
+            return await api<{ next?: string; needTotp?: boolean }>("/api/auth/login", { email: f.get("email"), password: f.get("password"), totp: f.get("totp") ?? undefined, next });
+          } catch (err) {
+            if (err instanceof ApiError && err.data.sso) ssoRequired = true;
+            throw err;
+          }
+        });
+        if (ssoRequired) setSso(true);
         if (r?.needTotp) setNeedTotp(true);
         else if (r?.next) {
           router.replace(r.next);
@@ -56,14 +95,17 @@ export function LoginForm({ next }: { next?: string }) {
           <Input id="totp" name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus />
         </Field>
       ) : null}
-      {error ? (
+      {shownError ? (
         <p role="alert" className="rounded-md border border-no-line bg-no-soft px-3 py-2 text-sm text-no">
-          {error}
+          {shownError}
         </p>
       ) : null}
       <Button variant="primary" size="lg" disabled={busy} className="mt-1 w-full">
         {busy ? "Signing in…" : "Sign in"}
       </Button>
+      <button type="button" className="cursor-pointer text-left text-sm font-medium text-accent hover:underline" onClick={() => (setSso(true), setError(null))}>
+        Use single sign-on
+      </button>
       <p className="text-sm text-ink-2">
         New to Gate?{" "}
         <Link href="/signup" className="font-medium text-accent hover:underline">

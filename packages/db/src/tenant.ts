@@ -14,6 +14,7 @@ export const TENANT_MODELS = [
   "Receipt",
   "Checkpoint",
   "Control",
+  "SsoConnection",
 ] as const;
 
 const WHERE_OPS = new Set([

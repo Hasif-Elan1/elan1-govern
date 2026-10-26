@@ -152,6 +152,19 @@ Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); th
 
 ---
 
+## Single sign-on
+
+Owners can turn on OIDC single sign-on (Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak…) in **Settings → Single sign-on**:
+
+1. In your identity provider, create an OIDC web app with the redirect URL shown on that page (`<WEB_URL>/api/auth/sso/callback`) and the scopes `openid email profile`.
+2. Enter the issuer URL, client ID, client secret and your email domains. Gate checks the issuer before saving and stores the secret encrypted.
+3. Prove you own each domain with the DNS TXT record shown (`gate-verify=…`), then press **Verify**.
+4. Optionally **require** single sign-on, which turns off password sign-in for those domains.
+
+People who sign in for the first time are added with the role you choose (never Owner). Sign-in uses the authorization code flow with PKCE, state and nonce.
+
+---
+
 ## What's inside
 
 ```

@@ -44,7 +44,8 @@
   "pnpm": {
     "overrides": {
       "postcss@<8.5.18": "^8.5.18",
-      "deepmerge-ts@<8": "^8.0.0"
+      "deepmerge-ts@<8": "^8.0.0",
+      "rollup": "4.64.9"
     }
   }
 }

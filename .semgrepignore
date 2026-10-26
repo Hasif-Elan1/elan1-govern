@@ -8,3 +8,4 @@ pnpm-lock.yaml
 # Dev-only sample secrets, by design: a fresh clone must run with just `cp .env.example .env`.
 # Gate refuses these exact values when APP_ENV=production. See SECURITY.md, "Scanner findings".
 .env.example
+.claude/

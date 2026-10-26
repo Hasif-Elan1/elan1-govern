@@ -5,14 +5,14 @@ import { LoginForm } from "../forms";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  const { next } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; sso_error?: string }> }) {
+  const { next, sso_error } = await searchParams;
   if (await currentSession()) redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
   return (
     <>
       <h1 className="text-2xl font-semibold">Sign in</h1>
       <p className="mt-1.5 mb-7 text-ink-2">Approve waiting actions and see what your agents did.</p>
-      <LoginForm next={next} />
+      <LoginForm next={next} ssoError={sso_error?.slice(0, 300)} />
     </>
   );
 }

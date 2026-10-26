@@ -14,6 +14,7 @@ const EXPECTED: Record<Permission, Role[]> = {
   "settings:manage": ["owner", "admin"],
   "members:manage": ["owner", "admin"],
   "demo:run": ["owner", "admin"],
+  "sso:manage": ["owner"],
 };
 
 describe("authz matrix (policy)", () => {
