@@ -1,5 +1,6 @@
 import "server-only";
 import { signRequest } from "@gate/core";
+import { HttpError } from "./api";
 import { env } from "./env";
 
 /** A signed call to the gate service's internal API. The web app never holds signing keys. */
@@ -33,4 +34,11 @@ export async function gateBytes(path: string, body: unknown): Promise<{ status: 
     return { status: res.status, bytes: new ArrayBuffer(0), error: j.error ?? "Gate could not build the file." };
   }
   return { status: res.status, bytes: await res.arrayBuffer() };
+}
+
+/** A gate() call whose { error } replies become the route's error: 400, 404 and 409 as they are, anything else as 502. */
+export async function gateOk<T = Record<string, unknown>>(method: "GET" | "POST", path: string, body: unknown, fallback: string): Promise<T> {
+  const r = await gate<T & { error?: string }>(method, path, body);
+  if (r.status === 200) return r.data;
+  throw new HttpError([400, 404, 409].includes(r.status) ? r.status : 502, r.data.error ?? fallback);
 }

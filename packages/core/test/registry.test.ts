@@ -3,7 +3,7 @@ import { describeRule } from "../src/describe";
 import { decide, quotasFor } from "../src/engine";
 import { parseRulebookYaml, publishProblems, quotasOf, rulebookToYaml, validateRulebook, type Rulebook } from "../src/rulebook";
 import { loadSignedRulebook, signRulebook } from "../src/rulebook-sign";
-import { builtinRegistry, createRegistry, lenientRegistry, mergeRegistries, specFromJsonSchema, validateArgs, isValidToolName, BUILTIN_TOOLS } from "../src/tools";
+import { builtinRegistry, createRegistry, lenientRegistry, mergeRegistries, specFromJsonSchema, suggestTags, validateArgs, isValidToolName, BUILTIN_TOOLS } from "../src/tools";
 import { KEYS } from "./fixtures";
 
 // A CRM connector discovered at runtime, e.g. from an upstream MCP server.
@@ -145,5 +145,25 @@ describe("quotas", () => {
   it("refuses when breached and there is nobody to ask", () => {
     const solo = book({ approvers: {}, rules: [{ id: "r", tool: "crm.lookup", decide: "allow" }], quotas: [{ id: "q", tool: "crm.lookup", window: "day", max_count: 1 }] });
     expect(decide(solo, "crm.lookup", {}, ctx({ q: { count: 1, sum: 0 } }))).toMatchObject({ decision: "refuse", quotaId: "q" });
+  });
+});
+
+describe("suggested tags", () => {
+  it("reads the tool name, splitting snake, kebab and camel case", () => {
+    expect(suggestTags("issue_refund")).toEqual(["moves_money", "writes_data"]);
+    expect(suggestTags("deleteContact")).toEqual(["deletes", "personal_data"]);
+    expect(suggestTags("send-email")).toEqual(["sends_external"]);
+    expect(suggestTags("grant_role")).toEqual(["changes_access"]);
+    expect(suggestTags("restart_service")).toEqual(["changes_production"]);
+    expect(suggestTags("update_ticket")).toEqual(["writes_data"]);
+    expect(suggestTags("lookup")).toEqual(["reads_data"]);
+    expect(suggestTags("list_patients")).toEqual(["reads_data", "personal_data"]);
+    expect(suggestTags("charges")).toEqual(["moves_money"]);
+  });
+  it("falls back to the description only when the name says nothing", () => {
+    expect(suggestTags("crm_thing", "Removes an order")).toEqual(["deletes"]);
+    expect(suggestTags("lookup", "Never deletes anything")).toEqual(["reads_data"]);
+    expect(suggestTags("frobnicate", "")).toEqual([]);
+    expect(suggestTags("frobnicate")).toEqual([]);
   });
 });

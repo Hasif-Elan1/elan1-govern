@@ -2,6 +2,7 @@ import { CONNECTOR_LABELS, ConnectorError, type Connector, type ConnectorContext
 import { decrypt, encrypt, type ToolSpec } from "@gate/core";
 import { forOrg } from "@gate/db";
 import type { Deps } from "./deps";
+import { upstreamConnector, upstreamFor } from "./upstream";
 
 export const tokenAad = (orgId: string, kind: string) => `oauth:${orgId}:${kind}`;
 
@@ -39,5 +40,7 @@ export function publicError(e: unknown): string {
 /** The connector behind a tool from the registry. */
 export async function resolveConnectorFor(deps: Deps, orgId: string, spec: ToolSpec): Promise<Resolved> {
   if (spec.connector === "gmail" || spec.connector === "zoho") return resolveConnector(deps, orgId, spec.connector);
-  return { ok: false, reason: `No connector is set up for ${spec.connector}` };
+  const server = await upstreamFor(deps, orgId, spec.connector);
+  if (!server) return { ok: false, reason: `No connector is set up for ${spec.connector}` };
+  return { ok: true, connector: upstreamConnector(deps, server), ctx: { orgId } };
 }

@@ -1,7 +1,13 @@
 "use client";
 
 import {
+  builtinRegistry,
   canonicalize,
+  createRegistry,
+  mergeRegistries,
+  specFromJsonSchema,
+  type ToolRegistry,
+  type ToolSpec,
   decide,
   describeRule,
   diffLines,
@@ -36,14 +42,16 @@ import { cn, fmtDate, shortHash } from "@/lib/utils";
 
 type Version = { version: number; yaml: string; hash: string; signedBy: string; createdAt: string };
 type Draft = Omit<Rulebook, "signature">;
+/** A tool from one of the org's MCP servers, as stored by Gate. */
+export type ExtraTool = { name: string; connector: string; description: string; inputSchema: Record<string, unknown>; tags: RiskTag[] };
 
 const FIELD_LABEL: Record<string, string> = { name: "name", email: "email", phone: "phone", address: "address", gstin: "GSTIN", bank_account: "bank account", ifsc: "IFSC" };
 const EXPIRY = [["1h", "1 hour"], ["4h", "4 hours"], ["24h", "24 hours"], ["3d", "3 days"], ["7d", "7 days"]] as const;
 const AMOUNT_TOOLS: ToolName[] = ["zoho.record_bill_payment", "zoho.create_bill"];
 
-function toDraft(yaml: string | undefined, slug: string, owner: string): Draft {
+function toDraft(yaml: string | undefined, slug: string, owner: string, registry: ToolRegistry): Draft {
   if (yaml) {
-    const p = parseRulebookYaml(yaml);
+    const p = parseRulebookYaml(yaml, registry);
     if (p.ok) {
       const { signature: _s, ...rest } = p.rulebook;
       return rest;
@@ -54,47 +62,95 @@ function toDraft(yaml: string | undefined, slug: string, owner: string): Draft {
 
 // ---- Conditions in plain controls ----
 
-type CondKind = "always" | "amount" | "recipient" | "fields" | "custom";
+type CondKind = "always" | "number" | "recipient" | "fields" | "custom";
+const NUMBER_OPS = ["gt", "gte", "lt", "lte"];
+const FIELD_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 
-function condKind(rule: Rule): CondKind {
+/** Number-typed arguments: amount_inr for the built-in tools, number fields of the input schema for the rest. */
+function numberFields(spec: ToolSpec | undefined): string[] {
+  if (!spec) return [];
+  if (spec.schema) return AMOUNT_TOOLS.includes(spec.name as ToolName) ? ["amount_inr"] : [];
+  const props = (spec.inputSchema?.properties ?? {}) as Record<string, { type?: unknown }>;
+  return Object.entries(props)
+    .filter(([f, p]) => FIELD_RE.test(f) && [p?.type].flat().some((t) => t === "number" || t === "integer"))
+    .map(([f]) => f);
+}
+
+/** For a tag rule, the number fields of every tool with that tag. */
+function numberFieldsFor(rule: Rule, registry: ToolRegistry): string[] {
+  if (rule.tool !== undefined) return numberFields(registry.get(rule.tool));
+  return [...new Set(registry.list().filter((t) => rule.tag && t.tags.includes(rule.tag)).flatMap(numberFields))];
+}
+
+function condKind(rule: Rule, numbers: string[]): CondKind {
   const keys = Object.keys(rule.when ?? {});
   if (!keys.length) return "always";
-  if (keys.length === 1 && keys[0] === "amount_inr") {
-    const c = rule.when!.amount_inr as Record<string, unknown>;
-    if (Object.keys(c).length === 1 && ["gt", "gte", "lt", "lte"].includes(Object.keys(c)[0]!)) return "amount";
+  if (keys.length === 1 && numbers.includes(keys[0]!)) {
+    const c = rule.when![keys[0]!] as Record<string, unknown>;
+    if (Object.keys(c).length === 1 && NUMBER_OPS.includes(Object.keys(c)[0]!)) return "number";
   }
   if (keys.length === 1 && keys[0] === "to_domain_in" && rule.when!.to_domain_in === "vendor_domains") return "recipient";
   if (keys.length === 1 && keys[0] === "fields_include") return "fields";
   return "custom";
 }
 
-function Condition({ rule, onChange, disabled }: { rule: Rule; onChange: (when: Rule["when"]) => void; disabled: boolean }) {
-  const tool = rule.tool as ToolName;
-  const kind = condKind(rule);
-  if (rule.tool === undefined) return kind === "always" ? <span className="text-sm text-ink-3">every time</span> : <span className="text-sm text-ink-3">when a condition holds (edit it in YAML)</span>;
-  if (kind === "custom") return <span className="text-sm text-ink-3">a custom condition (edit it in YAML)</span>;
-
-  if (AMOUNT_TOOLS.includes(tool)) {
-    const c = (rule.when?.amount_inr ?? {}) as Record<string, number>;
-    const op = Object.keys(c)[0] ?? "any";
-    return (
-      <span className="flex flex-wrap items-center gap-2">
-        <Select aria-label="Amount condition" className="h-9 w-auto" value={op} disabled={disabled} onChange={(e) => onChange(e.target.value === "any" ? undefined : { amount_inr: { [e.target.value]: c[op] ?? 50000 } })}>
-          <option value="any">for any amount</option>
-          <option value="lte">up to</option>
-          <option value="lt">under</option>
-          <option value="gt">over</option>
-          <option value="gte">at least</option>
+function NumberCondition({ rule, numbers, onChange, disabled }: { rule: Rule; numbers: string[]; onChange: (when: Rule["when"]) => void; disabled: boolean }) {
+  const [field, raw] = Object.entries(rule.when ?? {})[0] ?? [numbers[0]!, {}];
+  const c = raw as Record<string, number>;
+  const op = Object.keys(c)[0] ?? "any";
+  const rupees = field === "amount_inr";
+  const words = (f: string) => (f === "amount_inr" ? "the amount" : f.replace(/_/g, " "));
+  const single = numbers.length === 1;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {op !== "any" && !single ? (
+        <Select aria-label="Field" className="h-9 w-auto" value={field} disabled={disabled} onChange={(e) => onChange({ [e.target.value]: c })}>
+          {numbers.map((f) => (
+            <option key={f} value={f}>
+              when {words(f)} is
+            </option>
+          ))}
         </Select>
-        {op !== "any" ? (
-          <span className="relative">
-            <span className="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-3">₹</span>
-            <Input aria-label="Amount in rupees" type="number" min={0} step={1000} className="h-9 w-36 pl-7" value={c[op] ?? 0} disabled={disabled} onChange={(e) => onChange({ amount_inr: { [op]: Number(e.target.value) } })} />
-          </span>
-        ) : null}
-      </span>
-    );
-  }
+      ) : null}
+      <Select
+        aria-label={rupees ? "Amount condition" : "Number condition"}
+        className="h-9 w-auto"
+        value={op}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value === "any" ? undefined : { [field]: { [e.target.value]: c[op] ?? (rupees ? 50000 : 100) } })}
+      >
+        <option value="any">{rupees ? "for any amount" : single ? `for any ${words(field)}` : "for any values"}</option>
+        {[["lte", "up to"], ["lt", "under"], ["gt", "over"], ["gte", "at least"]].map(([v, l]) => (
+          <option key={v} value={v}>
+            {rupees || !single ? l : `when ${words(field)} is ${l}`}
+          </option>
+        ))}
+      </Select>
+      {op !== "any" ? (
+        <span className="relative">
+          {rupees ? <span className="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-3">₹</span> : null}
+          <Input
+            aria-label={rupees ? "Amount in rupees" : `Value of ${field}`}
+            type="number"
+            step={rupees ? 1000 : "any"}
+            className={cn("h-9 w-36", rupees && "pl-7")}
+            value={c[op] ?? 0}
+            disabled={disabled}
+            onChange={(e) => onChange({ [field]: { [op]: Number(e.target.value) } })}
+          />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function Condition({ rule, registry, onChange, disabled }: { rule: Rule; registry: ToolRegistry; onChange: (when: Rule["when"]) => void; disabled: boolean }) {
+  const tool = rule.tool as ToolName;
+  const numbers = numberFieldsFor(rule, registry);
+  const kind = condKind(rule, numbers);
+  if (kind === "custom") return <span className="text-sm text-ink-3">{rule.tool === undefined ? "when a condition holds" : "a custom condition"} (edit it in YAML)</span>;
+  if (kind !== "recipient" && kind !== "fields" && numbers.length) return <NumberCondition rule={rule} numbers={numbers} disabled={disabled} onChange={onChange} />;
+  if (rule.tool === undefined) return <span className="text-sm text-ink-3">every time</span>;
   if (tool === "gmail.send_reply") {
     return (
       <Select aria-label="Recipient" className="h-9 w-auto" value={kind === "recipient" ? "vendor" : "any"} disabled={disabled} onChange={(e) => onChange(e.target.value === "vendor" ? { to_domain_in: "vendor_domains" } : undefined)}>
@@ -135,7 +191,8 @@ const DECIDE_STYLES = {
   refuse: "data-[on=true]:border-no data-[on=true]:bg-no-soft data-[on=true]:text-no",
 };
 
-function RuleRow({ rule, groups, onChange, onRemove, disabled, index }: { rule: Rule; groups: string[]; onChange: (r: Rule) => void; onRemove: () => void; disabled: boolean; index: number }) {
+function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }: { rule: Rule; groups: string[]; registry: ToolRegistry; onChange: (r: Rule) => void; onRemove: () => void; disabled: boolean; index: number }) {
+  const extra = registry.list().filter((t) => !isKnownTool(t.name));
   const set = (patch: Partial<Rule>) => {
     const next: Rule = { ...rule, ...patch };
     if (next.decide !== "ask") {
@@ -166,8 +223,17 @@ function RuleRow({ rule, groups, onChange, onRemove, disabled, index }: { rule: 
                 {TOOLS[t].label.toLowerCase()} ({TOOLS[t].connector === "gmail" ? "Gmail" : "Zoho"})
               </option>
             ))}
-            {rule.tool !== undefined && !isKnownTool(rule.tool) ? <option value={rule.tool}>{rule.tool}</option> : null}
+            {rule.tool !== undefined && !registry.get(rule.tool) ? <option value={rule.tool}>{rule.tool}</option> : null}
           </optgroup>
+          {extra.length ? (
+            <optgroup label="Your MCP servers">
+              {extra.map((t) => (
+                <option key={t.name} value={t.name}>
+                  {t.label.toLowerCase()} ({t.connector})
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
           <optgroup label="Any action that…">
             {RISK_TAGS.map((t) => (
               <option key={t} value={`tag:${t}`}>
@@ -176,7 +242,7 @@ function RuleRow({ rule, groups, onChange, onRemove, disabled, index }: { rule: 
             ))}
           </optgroup>
         </Select>
-        <Condition rule={rule} disabled={disabled} onChange={(when) => set({ when })} />
+        <Condition rule={rule} registry={registry} disabled={disabled} onChange={(when) => set({ when })} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[15px]">
         <span className="text-ink-3">then</span>
@@ -239,14 +305,17 @@ function RuleRow({ rule, groups, onChange, onRemove, disabled, index }: { rule: 
 
 // ---- Try an action ----
 
-function TestPanel({ draft, vendorDomains }: { draft: Draft; vendorDomains: string[] }) {
+function TestPanel({ draft, vendorDomains, registry }: { draft: Draft; vendorDomains: string[]; registry: ToolRegistry }) {
   const [tool, setTool] = useState<string>("zoho.record_bill_payment");
   const [unknownName, setUnknownName] = useState("gmail.delete_message");
   const [amount, setAmount] = useState(200000);
   const [paid, setPaid] = useState(0);
   const [to, setTo] = useState("accounts@sharmatraders.in");
   const [fields, setFields] = useState<string[]>(["bank_account"]);
+  const [numbers, setNumbers] = useState<Record<string, number>>({});
   const name = tool === "__unknown" ? unknownName : tool;
+  const extra = registry.list().filter((t) => !isKnownTool(t.name));
+  const extraNumbers = useMemo(() => (isKnownTool(tool) ? [] : numberFields(registry.get(tool))), [registry, tool]);
 
   const result: DecisionResult | null = useMemo(() => {
     const args: Record<string, unknown> =
@@ -258,9 +327,9 @@ function TestPanel({ draft, vendorDomains }: { draft: Draft; vendorDomains: stri
             ? { message_id: "m_test", to, body: "" }
             : tool === "zoho.update_vendor"
               ? { vendor_id: "v_test", fields: Object.fromEntries(fields.map((f) => [f, "new value"])) }
-              : {};
-    return decide({ ...draft, signature: undefined } as Rulebook, name, args, { lists: { vendor_domains: vendorDomains }, usage: { daily_payments_inr: paid } });
-  }, [draft, tool, name, amount, to, fields, paid, vendorDomains]);
+              : Object.fromEntries(extraNumbers.map((f) => [f, numbers[f] ?? 0]));
+    return decide({ ...draft, signature: undefined } as Rulebook, name, args, { registry, lists: { vendor_domains: vendorDomains }, usage: { daily_payments_inr: paid } });
+  }, [draft, tool, name, amount, to, fields, paid, vendorDomains, registry, numbers, extraNumbers]);
 
   return (
     <div className="grid gap-4">
@@ -271,6 +340,11 @@ function TestPanel({ draft, vendorDomains }: { draft: Draft; vendorDomains: stri
               {TOOLS[t].label}
             </option>
           ))}
+          {extra.map((t) => (
+            <option key={t.name} value={t.name}>
+              {t.label} ({t.connector})
+            </option>
+          ))}
           <option value="__unknown">A tool Gate doesn't know</option>
         </Select>
       </Field>
@@ -279,6 +353,11 @@ function TestPanel({ draft, vendorDomains }: { draft: Draft; vendorDomains: stri
           <Input id="try-unknown" value={unknownName} onChange={(e) => setUnknownName(e.target.value)} />
         </Field>
       ) : null}
+      {extraNumbers.map((f) => (
+        <Field key={f} label={f.replace(/_/g, " ")} htmlFor={`try-${f}`}>
+          <Input id={`try-${f}`} type="number" value={numbers[f] ?? 0} onChange={(e) => setNumbers({ ...numbers, [f]: Number(e.target.value) })} />
+        </Field>
+      ))}
       {AMOUNT_TOOLS.includes(tool as ToolName) ? (
         <Field label="Amount (₹)" htmlFor="try-amount">
           <Input id="try-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
@@ -399,12 +478,32 @@ function History({ versions, onRestore, canPublish }: { versions: Version[]; onR
 
 // ---- The builder ----
 
-export function Builder({ slug, owner, tier, canPublish, approverEmails, vendorDomains, versions }: { slug: string; owner: string; tier: RiskTier; canPublish: boolean; approverEmails: string[]; vendorDomains: string[]; versions: Version[] }) {
+export function Builder({
+  slug,
+  owner,
+  tier,
+  canPublish,
+  approverEmails,
+  vendorDomains,
+  versions,
+  extraTools,
+}: {
+  slug: string;
+  owner: string;
+  tier: RiskTier;
+  canPublish: boolean;
+  approverEmails: string[];
+  vendorDomains: string[];
+  versions: Version[];
+  extraTools: ExtraTool[];
+}) {
+  // The built-in tools plus the org's enabled MCP server tools, the same set Gate checks against.
+  const [registry] = useState<ToolRegistry>(() => (extraTools.length ? mergeRegistries(builtinRegistry, createRegistry(extraTools.map(specFromJsonSchema))) : builtinRegistry));
   const router = useRouter();
   const toast = useToast();
   const latest = versions[0];
-  const [draft, setDraftState] = useState<Draft>(() => toDraft(latest?.yaml, slug, owner));
-  const [yamlText, setYamlText] = useState(() => rulebookToYaml(toDraft(latest?.yaml, slug, owner) as Rulebook));
+  const [draft, setDraftState] = useState<Draft>(() => toDraft(latest?.yaml, slug, owner, registry));
+  const [yamlText, setYamlText] = useState(() => rulebookToYaml(toDraft(latest?.yaml, slug, owner, registry) as Rulebook));
   const [yamlErrors, setYamlErrors] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -419,7 +518,7 @@ export function Builder({ slug, owner, tier, canPublish, approverEmails, vendorD
   };
   const onYaml = (text: string) => {
     setYamlText(text);
-    const p = parseRulebookYaml(text);
+    const p = parseRulebookYaml(text, registry);
     if (p.ok) {
       const { signature: _s, ...rest } = p.rulebook;
       setDraftState(rest);
@@ -427,11 +526,11 @@ export function Builder({ slug, owner, tier, canPublish, approverEmails, vendorD
     } else setYamlErrors(p.errors);
   };
 
-  const validation = validateRulebook(draft);
-  const problems = validation.ok ? publishProblems(validation.rulebook, tier) : [];
+  const validation = validateRulebook(draft, registry);
+  const problems = validation.ok ? publishProblems(validation.rulebook, tier, registry) : [];
   const errors = [...yamlErrors, ...(validation.ok ? [] : validation.errors), ...problems, ...serverErrors];
   const groups = Object.keys(draft.approvers);
-  const original = latest ? toDraft(latest.yaml, slug, owner) : null;
+  const original = latest ? toDraft(latest.yaml, slug, owner, registry) : null;
   const changed = !original || canonicalize({ ...original, version: 0 }) !== canonicalize({ ...draft, version: 0 });
 
   const updateRule = (i: number, r: Rule) => setDraft({ ...draft, rules: draft.rules.map((x, j) => (j === i ? r : x)) });
@@ -471,7 +570,7 @@ export function Builder({ slug, owner, tier, canPublish, approverEmails, vendorD
           {draft.rules.length ? (
             <ol className="grid gap-3">
               {draft.rules.map((r, i) => (
-                <RuleRow key={i} index={i} rule={r} groups={groups} disabled={readOnly} onChange={(x) => updateRule(i, x)} onRemove={() => setDraft({ ...draft, rules: draft.rules.filter((_, j) => j !== i) })} />
+                <RuleRow key={i} index={i} rule={r} groups={groups} registry={registry} disabled={readOnly} onChange={(x) => updateRule(i, x)} onRemove={() => setDraft({ ...draft, rules: draft.rules.filter((_, j) => j !== i) })} />
               ))}
             </ol>
           ) : (
@@ -561,10 +660,10 @@ export function Builder({ slug, owner, tier, canPublish, approverEmails, vendorD
             <p className="mt-2 text-[13px] text-ink-3">Edits here and in the rules on the left stay in sync. Gate adds the version and signature when you publish.</p>
           </TabsContent>
           <TabsContent value="try">
-            <TestPanel draft={draft} vendorDomains={vendorDomains} />
+            <TestPanel draft={draft} vendorDomains={vendorDomains} registry={registry} />
           </TabsContent>
           <TabsContent value="history">
-            <History versions={versions} canPublish={canPublish} onRestore={(y) => onYaml(rulebookToYaml(toDraft(y, slug, owner) as Rulebook))} />
+            <History versions={versions} canPublish={canPublish} onRestore={(y) => onYaml(rulebookToYaml(toDraft(y, slug, owner, registry) as Rulebook))} />
           </TabsContent>
         </Tabs>
       </aside>

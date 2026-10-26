@@ -1,13 +1,14 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { TOOLS, TOOL_ARGS, TOOL_NAMES } from "@gate/core";
+import { isKnownTool, TOOLS, TOOL_ARGS, TOOL_NAMES } from "@gate/core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { waitForApproval } from "./approvals";
 import { authenticateAgent } from "./auth";
 import type { Deps } from "./deps";
 import { guard, type AgentIdentity, type GuardResult } from "./guard";
+import { registryFor } from "./registry";
 
 export const STATUS_TOOL = "gate.approval_status";
 
@@ -16,10 +17,12 @@ function jsonSchema(tool: (typeof TOOL_NAMES)[number]) {
   return schema as { type: "object"; [k: string]: unknown };
 }
 
+const CHECKED = "Every call is checked by Gate: it may run, wait for a person, or be refused.";
+
 export const MCP_TOOLS = [
   ...TOOL_NAMES.map((name) => ({
     name,
-    description: `${TOOLS[name].description} Every call is checked by Gate: it may run, wait for a person, or be refused.`,
+    description: `${TOOLS[name].description} ${CHECKED}`,
     inputSchema: jsonSchema(name),
   })),
   {
@@ -33,6 +36,15 @@ export const MCP_TOOLS = [
     },
   },
 ];
+
+/** Built-in tools, the org's enabled upstream tools (with the upstream's input schemas), and the status tool. */
+async function listTools(deps: Deps, orgId: string) {
+  const upstream = (await registryFor(deps, orgId))
+    .list()
+    .filter((s) => !isKnownTool(s.name))
+    .map((s) => ({ name: s.name, description: `${s.description} ${CHECKED}`.trim(), inputSchema: { ...s.inputSchema, type: "object" as const } }));
+  return [...MCP_TOOLS.slice(0, -1), ...upstream, MCP_TOOLS[MCP_TOOLS.length - 1]!];
+}
 
 const text = (t: string) => [{ type: "text" as const, text: t }];
 
@@ -56,7 +68,7 @@ export function toMcpResult(r: GuardResult): CallToolResult {
 
 function buildServer(deps: Deps, who: AgentIdentity) {
   const server = new Server({ name: "gate", version: "0.1.0" }, { capabilities: { tools: {} } });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: MCP_TOOLS }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await listTools(deps, who.orgId) }));
   server.setRequestHandler(CallToolRequestSchema, async (req): Promise<CallToolResult> => {
     const { name, arguments: args } = req.params;
     if (name === STATUS_TOOL) {

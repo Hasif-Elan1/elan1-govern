@@ -43,7 +43,7 @@ export interface InvoiceDoc {
 }
 
 export interface Connector {
-  kind: ConnectorKind;
+  kind: ConnectorKind | "upstream";
   call(tool: string, args: Record<string, unknown>, ctx: ConnectorContext): Promise<ToolResult>;
   /** Display names for a receipt summary (vendor and bill numbers, never bodies). */
   describe(tool: string, args: Record<string, unknown>, ctx: ConnectorContext): Promise<Record<string, string>>;

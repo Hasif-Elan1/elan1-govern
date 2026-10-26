@@ -92,22 +92,19 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     const rb = loaded.rulebook;
     const rulebook = { version: rbRow.version, hash: rbRow.hash };
 
+    // Unknown, removed or disabled tools: refused, whatever a rule naming them says.
     const spec = registry.get(tool);
-    let args: Record<string, unknown> = {};
-    if (spec) {
-      const v = validateArgs(spec, rawArgs ?? {});
-      if (!v.ok) return refuse("invalid-arguments", `The arguments are not valid (${v.error}).`, { rulebook });
-      args = v.args;
-    } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
-      args = rawArgs as Record<string, unknown>;
-    }
+    if (!spec) return refuse("default", `"${tool}" is not a tool Gate knows, so it is refused by default.`, { rulebook });
+    const v = validateArgs(spec, rawArgs ?? {});
+    if (!v.ok) return refuse("invalid-arguments", `The arguments are not valid (${v.error}).`, { rulebook });
+    const args = v.args;
 
-    const conn = spec ? await resolveConnectorFor(deps, orgId, spec) : undefined;
+    const conn = await resolveConnectorFor(deps, orgId, spec);
     const ctx: DecideContext = { registry, usage: await usageFor(deps, orgId, rb, tool, registry) };
-    if (conn?.ok && usesList(rb, tool, "vendor_domains")) ctx.lists = { vendor_domains: await conn.connector.vendorDomains(conn.ctx) };
+    if (conn.ok && usesList(rb, tool, "vendor_domains")) ctx.lists = { vendor_domains: await conn.connector.vendorDomains(conn.ctx) };
 
     const d = decide(rb, tool, args, ctx);
-    const display = conn?.ok ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
+    const display = conn.ok ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
     const common: ReceiptInput = { ...base, args_summary: { ...d.argsSummary, ...display }, rulebook, rule_id: d.ruleId, reason: d.reason };
 
     if (d.decision === "refuse") {
@@ -130,8 +127,8 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
 
     let outcome: NonNullable<ReceiptInput["outcome"]>;
     let result: unknown;
-    if (!conn?.ok) {
-      outcome = { status: "error", error: conn?.reason ?? "no connector" };
+    if (!conn.ok) {
+      outcome = { status: "error", error: conn.reason };
     } else {
       try {
         const res = await conn.connector.call(tool, args, conn.ctx);

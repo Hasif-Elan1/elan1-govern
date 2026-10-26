@@ -1,6 +1,6 @@
 import { createCheckpoint, forOrg, openHealthAlerts } from "@gate/db";
-import { verifyRequest } from "@gate/core";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import { RISK_TAGS, verifyRequest } from "@gate/core";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   adminEvent,
@@ -19,6 +19,7 @@ import { resetMockState } from "@gate/connectors";
 import { runDemoAgent } from "../demo/agent";
 import { orgKey, type Deps } from "../deps";
 import { exportBundle, exportPack } from "../evidence";
+import { addUpstream, removeUpstream, syncUpstream, updateUpstreamTool, type UpstreamFail } from "../upstream";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -65,6 +66,17 @@ const schemas = {
   export: z.object({ from: day, to: day, kind: z.enum(["bundle", "pack"]), actor }).strict(),
   connector: z.object({ action: z.enum(["connect", "disconnect"]), mode: z.enum(["mock", "live"]).optional(), actor }).strict(),
   demo: z.object({ userId: id, email, run: z.boolean().default(true) }).strict(),
+  upstream: z
+    .object({
+      name: z.string().trim().min(1).max(80),
+      url: z.string().trim().min(1).max(2000),
+      authHeader: z.string().trim().min(1).max(4000).optional(),
+      slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/).optional(),
+      actor,
+    })
+    .strict(),
+  actorOnly: z.object({ actor }).strict(),
+  upstreamTool: z.object({ enabled: z.boolean().optional(), tags: z.array(z.enum(RISK_TAGS)).max(RISK_TAGS.length).optional(), actor }).strict(),
 };
 
 export function registerInternal(app: FastifyInstance, deps: Deps) {
@@ -85,7 +97,8 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       if (!id.safeParse(orgId).success || !(await forOrg(orgId, deps.db).org.findFirst())) throw Object.assign(new Error("no such org"), { statusCode: 404 });
       return orgId;
     };
-    type P = { Params: { org: string; id: string; kind: string } };
+    type P = { Params: { org: string; id: string; kind: string; tool: string } };
+    const done = (reply: FastifyReply, r: { ok: true } | UpstreamFail) => (r.ok ? r : reply.code(r.status).send({ error: r.error }));
 
     internal.get("/internal/health", async () => ({ ok: true, alerts: deps.alerts.slice(-10), stored: await openHealthAlerts(deps.db).catch(() => []) }));
 
@@ -161,6 +174,31 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       const b = parse(schemas.connector, req.body);
       const r = b.action === "connect" ? await connectConnector(deps, orgId, kind, b.actor, b.mode) : await disconnectConnector(deps, orgId, kind, b.actor);
       return r.ok ? r : reply.code(400).send(r);
+    });
+
+    // Upstream MCP servers. Gate keeps the auth header; it never comes back out.
+    internal.post<P>("/internal/orgs/:org/upstreams", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const { actor: a, ...b } = parse(schemas.upstream, req.body);
+      return done(reply, await addUpstream(deps, orgId, { ...b, actor: a }));
+    });
+
+    internal.post<P>("/internal/orgs/:org/upstreams/:id/sync", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      return done(reply, await syncUpstream(deps, orgId, parse(id, req.params.id), b.actor));
+    });
+
+    internal.post<P>("/internal/orgs/:org/upstreams/:id/remove", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      return done(reply, await removeUpstream(deps, orgId, parse(id, req.params.id), b.actor));
+    });
+
+    internal.post<P>("/internal/orgs/:org/upstreams/:id/tools/:tool", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.upstreamTool, req.body);
+      return done(reply, await updateUpstreamTool(deps, orgId, parse(id, req.params.id), parse(id, req.params.tool), b));
     });
 
     // Dev only: give the demo agent's org a fresh mock mailbox and ledger.

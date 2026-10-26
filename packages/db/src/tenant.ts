@@ -17,6 +17,8 @@ export const TENANT_MODELS = [
   "SsoConnection",
   "AiSystem",
   "Assessment",
+  "UpstreamServer",
+  "UpstreamTool",
 ] as const;
 
 const WHERE_OPS = new Set([

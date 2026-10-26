@@ -23,13 +23,14 @@ Report a vulnerability privately to **hello@elan1.ai**. Please don't open a publ
 | Browser → Web | People using the console | Untrusted until signed in; role-checked on every request. |
 | Web → Gate (internal API) | Approvals, publishing, org creation, exports | Authenticated with HMAC over method, path, body and time (±60 s). |
 | Gate → Gmail/Zoho | OAuth access | Tokens exist only inside Gate, encrypted at rest. |
+| Gate → upstream MCP servers | Allowed tool calls, with the org's stored auth header | The URL is customer-supplied: only http(s), no internal addresses in production, no redirects, timeouts and a size cap. The header exists only inside Gate, encrypted at rest. |
 | Bundle → Auditor | Evidence zip | Verified offline with the org's public key. No trust in Gate needed. |
 
 Secrets are split so no single component holds everything:
 
 | Secret | Holder | Used for |
 |---|---|---|
-| `GATE_MASTER_KEY` | Gate only | AES-256-GCM encryption of each org's Ed25519 signing key and all OAuth tokens |
+| `GATE_MASTER_KEY` | Gate only | AES-256-GCM encryption of each org's Ed25519 signing key, all OAuth tokens and upstream MCP auth headers |
 | `INTERNAL_API_SECRET` | Gate and web | HMAC on internal calls and OAuth `state` |
 | `APPROVAL_LINK_SECRET` | Gate and web | HMAC on emailed approval links |
 | `WEB_ENC_KEY` | Web only | AES-256-GCM encryption of TOTP secrets |
@@ -93,7 +94,18 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **S** | OAuth callback forged (login CSRF / account mix-up) | `state` is HMAC-signed `{org, connector, actor, expiry, nonce}`; wrong kind, expired or forged state is rejected | `gate/api.test.ts` "rejects forged, expired and mismatched OAuth state" |
 | **T** | Header injection when sending email | CR/LF stripped from every header value | `connectors/live.test.ts` "refuses header injection in replies" |
 | **I** | Tokens at rest | AES-256-GCM with 16-byte tags, AAD bound to org and connector | `core/canonical-crypto.test.ts` "AES-256-GCM" |
-| **E** | Agent reaches beyond the allowed tools | Only 10 tools exist; no delete, forward or settings tools; Gmail scopes are `readonly` + `compose` | `gate/flow.test.ts` "lists only the allowed tools" |
+| **E** | Agent reaches beyond the allowed tools | Only 10 built-in tools exist; no delete, forward or settings tools; Gmail scopes are `readonly` + `compose` | `gate/flow.test.ts` "lists only the allowed tools" |
+
+### Upstream MCP servers
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | A server URL that points Gate at its own network or cloud metadata (SSRF) | Only `http(s)`, no credentials in the URL; with `UPSTREAM_ALLOW_PRIVATE=false` (the production default) loopback, private, link-local, CGNAT, multicast, IPv4-mapped and NAT64 addresses are refused, checked when the server is added **and** inside the socket's DNS lookup on every connection, so DNS rebinding cannot swap the address; redirects are never followed; 15 s timeout and 5 MB response cap | `gate/upstream.test.ts` "refuses private, loopback and non-http addresses…", "checks the address again on every connection", "classifies addresses" |
+| **I** | Upstream auth header stolen from the database, logs or responses | AES-256-GCM with AAD bound to org and server id; write-only in the web app (a password field, never shown again); never in receipts (only the URL's origin), errors, tool lists or results; an upstream that echoes it gets `[redacted]` | `gate/upstream.test.ts` "adds, syncs, governs…" (scans every response, receipt and approval), "reports a rejected auth header without echoing anything" |
+| **I** | Upstream error text leaks headers or personal data into receipts | Upstream errors become short fixed messages (timeout, HTTP status, "reported an error"); receipts keep the same minimised summaries as built-in tools | `gate/upstream.test.ts` "reports a rejected auth header…" |
+| **E** | Confused deputy: an agent uses Gate's stored credentials for something its rules don't allow | Gate forwards only calls the guard allowed or a person approved, under the calling agent's own signed rulebook; default refuse; tools are switched off until a person reviews their tags; unknown, disabled and removed tools are refused before any rule runs; arguments are checked against the upstream's input schema | `gate/upstream.test.ts` (delete refused and never reaches the upstream, disabled tool refused, invalid arguments refused, refund held until approved) |
+| **E** | An upstream shadows a built-in tool or another server | Tool names are `<server>.<tool>`; `gate`, `gmail` and `zoho` are reserved; server names are unique per org | `gate/upstream.test.ts` "reports a rejected auth header…" (reserved and duplicate names) |
+| **T** | A malicious upstream changes a tool's behaviour or schema after review | Re-sync refreshes descriptions and schemas but keeps the person's tags and on/off choice; every sync and change writes an admin receipt. Tool descriptions come from the upstream and reach the agent's model, so only add servers you trust | admin receipts in `gate/upstream.test.ts` |
 
 ### Evidence chain
 
@@ -148,6 +160,7 @@ Run them all with `pnpm security` and `pnpm security:zap`.
 
 ## Known limits
 
+- **Upstream MCP servers** authenticate with one `Authorization` header value; OAuth to upstreams is not supported yet. Tool descriptions from an upstream are passed to agents as they are.
 - **Allowed actions run before their receipt is written**, as the brief specifies. If that write then fails, the agent is refused and a health alert names the action and its connector reference (DECISIONS.md #15).
 - **Rate limits are per process.** Several instances need a shared store (planned).
 - **Daily limits are checked outside the chain lock**, so two simultaneous payments can both pass a limit they jointly exceed. Approvals are unaffected.

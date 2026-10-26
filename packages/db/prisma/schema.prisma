@@ -334,3 +334,38 @@ model Assessment {
   @@index([orgId, status])
   @@index([orgId, systemId])
 }
+
+// ---- Upstream MCP servers (tenant-scoped) ----
+
+// An MCP server the org puts behind Gate. Its tools reach agents only through the guard.
+model UpstreamServer {
+  id            String         @id @default(cuid())
+  orgId         String
+  slug          String // tool names are "<slug>.<tool>"
+  name          String
+  url           String
+  authHeaderEnc String? // AES-GCM, key only in the gate service env
+  status        String         @default("new") // new | ok | error
+  lastSyncedAt  DateTime?
+  error         String?
+  createdAt     DateTime       @default(now())
+  tools         UpstreamTool[]
+
+  @@unique([orgId, slug])
+}
+
+model UpstreamTool {
+  id          String         @id @default(cuid())
+  orgId       String
+  serverId    String
+  server      UpstreamServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name        String // namespaced: "<slug>.<tool>"
+  description String         @default("")
+  inputSchema Json
+  tags        String[] // RiskTag values
+  enabled     Boolean        @default(false) // new tools stay off until a person has checked their tags
+  createdAt   DateTime       @default(now())
+
+  @@unique([orgId, name])
+  @@index([serverId])
+}
