@@ -32,7 +32,12 @@ export const GateEnvSchema = z.object({
   ZOHO_ACCOUNTS_URL: z.string().url().default("https://accounts.zoho.in"),
   ZOHO_API_URL: z.string().url().default("https://www.zohoapis.in"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  APP_ENV: z.string().default("development"),
+  /** Let upstream MCP servers live on private, loopback or link-local addresses. Defaults to on outside production. */
+  UPSTREAM_ALLOW_PRIVATE: z.enum(["true", "false"]).optional(),
 });
+
+export const allowPrivateUpstreams = (env: GateEnv) => (env.UPSTREAM_ALLOW_PRIVATE ? env.UPSTREAM_ALLOW_PRIVATE === "true" : env.APP_ENV !== "production");
 
 export type GateEnv = z.infer<typeof GateEnvSchema>;
 

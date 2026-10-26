@@ -14,6 +14,7 @@ import {
 } from "@gate/core";
 import { addMembership, appendReceipt, createOrgRow, forOrg, seedControls, withChain, type RiskTier } from "@gate/db";
 import { orgKey, type Deps } from "./deps";
+import { registryFor } from "./registry";
 
 export async function adminEvent(deps: Deps, orgId: string, actor: string, action: string, details: Record<string, unknown> = {}, extra: Partial<ReceiptInput> = {}) {
   const key = await orgKey(deps, orgId);
@@ -80,7 +81,8 @@ export async function setAgentStatus(deps: Deps, orgId: string, agentId: string,
 export type PublishResult = { ok: true; version: number; hash: string; yaml: string } | { ok: false; errors: string[] };
 
 export async function publishRulebook(deps: Deps, orgId: string, agentId: string, yaml: string, actor: string): Promise<PublishResult> {
-  const parsed = parseRulebookYaml(yaml);
+  const registry = await registryFor(deps, orgId);
+  const parsed = parseRulebookYaml(yaml, registry);
   if (!parsed.ok) return parsed;
   const db = forOrg(orgId, deps.db);
   const agent = await db.agent.findFirst({ where: { id: agentId } });
@@ -94,7 +96,7 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
       const latest = await tx.rulebook.findFirst({ where: { agentId }, orderBy: { version: "desc" }, select: { version: true } });
       const { signature: _old, ...rest } = parsed.rulebook;
       const rb = { ...rest, version: (latest?.version ?? 0) + 1, agent: agent.slug };
-      const problems = publishProblems(rb, agent.riskTier);
+      const problems = publishProblems(rb, agent.riskTier, registry);
       if (problems.length) return { ok: false as const, errors: problems };
       const signed = signRulebook(rb, key.privateKeyPem);
       const text = rulebookToYaml(signed);

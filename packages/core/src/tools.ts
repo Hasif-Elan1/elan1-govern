@@ -180,6 +180,38 @@ export function specFromJsonSchema(input: { name: string; connector: string; des
   };
 }
 
+// ---- Suggested tags for tools discovered at runtime. A person reviews them before a tool is enabled. ----
+
+const TAG_WORDS: [RiskTag, string[]][] = [
+  ["deletes", ["delete", "remove", "destroy", "purge", "erase", "drop"]],
+  ["moves_money", ["refund", "pay", "payment", "payout", "charge", "transfer", "withdraw", "disburse"]],
+  ["sends_external", ["send", "email", "message", "post", "notify", "sms", "reply", "publish"]],
+  ["changes_access", ["grant", "revoke", "role", "permission", "invite", "access"]],
+  ["changes_production", ["deploy", "restart", "scale", "rollback", "reboot", "shutdown"]],
+  ["writes_data", ["create", "update", "set", "add", "edit", "modify", "insert", "upsert", "write", "issue"]],
+  ["reads_data", ["get", "list", "search", "read", "find", "lookup", "fetch", "query", "view", "show", "describe"]],
+  ["personal_data", ["contact", "customer", "patient", "employee", "person", "people", "phone", "address"]],
+];
+
+function words(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function tagsIn(tokens: string[]): RiskTag[] {
+  const has = (w: string) => tokens.some((t) => t === w || t === `${w}s` || t === `${w}es` || t === `${w}ed` || t === `${w}d` || t === `${w}ing`);
+  return TAG_WORDS.filter(([, ws]) => ws.some(has)).map(([tag]) => tag);
+}
+
+/** Deterministic guess from the tool's name, or from its description when the name says nothing. */
+export function suggestTags(name: string, description = ""): RiskTag[] {
+  const fromName = tagsIn(words(name));
+  return fromName.length ? fromName : tagsIn(words(description));
+}
+
 /** Validate arguments: zod for built-in tools; for runtime tools, an object with only known top-level fields. */
 export function validateArgs(spec: ToolSpec, args: unknown): { ok: true; args: Record<string, unknown> } | { ok: false; error: string } {
   if (spec.schema) {
