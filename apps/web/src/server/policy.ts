@@ -15,6 +15,11 @@ export const PERMISSIONS = {
   "settings:manage": ["owner", "admin"],
   "members:manage": ["owner", "admin"],
   "demo:run": ["owner", "admin"],
+  // AI inventory: everyone reads it; admins keep the register. Approvers can draft and
+  // submit assessments; only owners and admins sign them off, never their own (see reviewProblem).
+  "inventory:manage": ["owner", "admin"],
+  "assessments:draft": ["owner", "admin", "approver"],
+  "assessments:approve": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -34,7 +39,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HINTS: Record<Role, string> = {
   owner: "Everything, including removing admins.",
   admin: "Sets up agents, rules, tools and members.",
-  approver: "Approves or rejects actions that wait for a person.",
+  approver: "Approves or rejects actions that wait for a person, and drafts assessments.",
   viewer: "Sees activity. Changes nothing.",
   auditor: "Sees everything and downloads evidence. Changes nothing.",
 };

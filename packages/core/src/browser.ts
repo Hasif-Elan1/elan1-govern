@@ -6,3 +6,5 @@ export * from "./engine";
 export * from "./describe";
 export * from "./risk";
 export * from "./diff";
+export * from "./inventory";
+export * from "./assessments";
