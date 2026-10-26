@@ -1,10 +1,10 @@
-import { TOOLS, isKnownTool, parseRulebookYaml } from "@gate/core/browser";
+import { TOOLS, builtinRegistry, isKnownTool, lenientRegistry, parseRulebookYaml } from "@gate/core/browser";
 import { Mail, ReceiptIndianRupee } from "lucide-react";
 import { Pill } from "@/components/ui/status";
 
 export function connectorsOf(yaml: string | undefined): ("gmail" | "zoho")[] {
   if (!yaml) return [];
-  const p = parseRulebookYaml(yaml);
+  const p = parseRulebookYaml(yaml, lenientRegistry(builtinRegistry));
   if (!p.ok) return [];
   return [...new Set(p.rulebook.rules.filter((r) => r.decide !== "refuse" && r.tool !== undefined && isKnownTool(r.tool)).map((r) => TOOLS[r.tool as keyof typeof TOOLS].connector))];
 }

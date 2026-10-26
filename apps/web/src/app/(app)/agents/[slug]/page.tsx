@@ -1,4 +1,4 @@
-import { describeRule, parseRulebookYaml, RISK_QUESTIONS } from "@gate/core";
+import { builtinRegistry, describeRule, lenientRegistry, parseRulebookYaml, RISK_QUESTIONS } from "@gate/core";
 import { forOrg, prisma } from "@gate/db";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -28,7 +28,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
     activity(ctx.org.id, { agent: agent.slug, limit: 12 }),
     agent.createdById ? prisma.user.findUnique({ where: { id: agent.createdById }, select: { email: true } }) : null,
   ]);
-  const parsed = rb ? parseRulebookYaml(rb.yaml) : null;
+  const parsed = rb ? parseRulebookYaml(rb.yaml, lenientRegistry(builtinRegistry)) : null; // upstream tools are not in the built-in registry
   const rules = parsed?.ok ? parsed.rulebook.rules : [];
   const answers = (agent.riskAnswers ?? {}) as Record<string, string>;
   const manage = can(ctx.role, "agents:manage");
