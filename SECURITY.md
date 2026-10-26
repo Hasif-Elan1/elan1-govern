@@ -185,6 +185,7 @@ Run them all with `pnpm security` and `pnpm security:zap`.
 | Scanner | Finding | Why it is accepted |
 |---|---|---|
 | gitleaks, semgrep | "Generic secret" in `.env.example` | Deliberate dev-only sample values so `cp .env.example .env` works. Refused at startup when `APP_ENV=production`. The file is excluded in `.gitleaks.toml` and `.semgrepignore`, with this reason. |
+| gitleaks | "Generic API key" in README examples | It matched a public signing-key fingerprint in sample `gate verify` output. Fingerprints identify public keys and are meant to be shared with auditors. Only that exact pattern is allowlisted in `.gitleaks.toml`. |
 | ZAP 10055 (Medium) | CSP `style-src 'unsafe-inline'` | React and Next.js set inline styles. Scripts, the real XSS vector, are locked to per-request nonces with `strict-dynamic`. |
 | ZAP 10010 (Low) | Cookie without HttpOnly | That is `gate_csrf`, a double-submit CSRF token that same-origin JavaScript must read. The session cookie is HttpOnly. |
 | ZAP 10024 (Info) | Sensitive information in URL | Emailed approval links carry a signed, single-use, expiring token. |

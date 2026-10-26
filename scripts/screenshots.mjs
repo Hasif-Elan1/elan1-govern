@@ -77,6 +77,11 @@ await shot(page, "08-rule-builder", "/rulebooks/ap-bot", { before: async (p) => 
 await shot(page, "09-connectors", "/connectors");
 await shot(page, "10-evidence", "/evidence");
 await shot(page, "11-settings", "/settings");
+await shot(page, "15-inventory", "/inventory");
+await shot(page, "16-assessments", "/assessments");
+await shot(page, "17-compliance", "/compliance");
+await shot(page, "18-compliance-eu-ai-act", "/compliance/eu-ai-act");
+await shot(page, "19-single-sign-on", "/settings/sso");
 await ctx.close();
 
 // Dark mode

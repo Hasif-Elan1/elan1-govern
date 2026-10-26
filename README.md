@@ -72,7 +72,11 @@ Then look around:
 | ![Rule builder](docs/screenshots/08-rule-builder.png) **Rulebooks**: build rules visually or in YAML (kept in sync), try an action, compare versions, sign and publish. | ![Evidence](docs/screenshots/10-evidence.png) **Evidence**: chain status, checkpoints, the auditor pack, and the compliance map with live evidence counts. |
 | ![Agents](docs/screenshots/06-agent.png) **Agents**: owner, risk tier, keys, and a kill switch. | ![Add agent](docs/screenshots/07-add-agent.png) **Add agent**: name, five risk questions, connect tools, copy the MCP address and key. |
 
-More: [connectors](docs/screenshots/09-connectors.png), [settings](docs/screenshots/11-settings.png), [dark mode](docs/screenshots/12-today-dark.png), [sign-in](docs/screenshots/01-sign-in.png).
+| ![Inventory](docs/screenshots/15-inventory.png) **Inventory**: every AI system you use, with owner, data, risk and next review. | ![Compliance](docs/screenshots/17-compliance.png) **Compliance**: frameworks that apply to you, with coverage from live evidence. |
+
+More: [assessments](docs/screenshots/16-assessments.png), [a framework's requirements](docs/screenshots/18-compliance-eu-ai-act.png), [connectors and MCP servers](docs/screenshots/09-connectors.png), [settings](docs/screenshots/11-settings.png), [single sign-on](docs/screenshots/19-single-sign-on.png), [dark mode](docs/screenshots/12-today-dark.png), [sign-in](docs/screenshots/01-sign-in.png).
+
+New here? Start with [docs/GUIDE.md](docs/GUIDE.md), the plain-English guide to what Gate does and how to run it.
 
 **Check the evidence yourself.** On the Evidence page, download the auditor pack, then:
 

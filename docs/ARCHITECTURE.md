@@ -34,13 +34,13 @@ This document explains how the pieces fit, the invariants that keep it safe, and
 
 | Package | Responsibility | Depends on |
 |---|---|---|
-| `packages/core` | Pure logic, no I/O: canonical JSON, crypto, tool registry, rulebook schema, decision engine, receipts, chain and bundle verification, plain-language descriptions, risk questionnaire. Browser-safe subset at `@gate/core/browser`. | zod, yaml, fflate |
+| `packages/core` | Pure logic, no I/O: canonical JSON, crypto, key rings, tool registry, rulebook schema, decision engine, receipts, chain and bundle verification, plain-language descriptions, risk questionnaire, assessment templates and scoring, and the framework library and industry packs (`@gate/core/frameworks`). Browser-safe subset at `@gate/core/browser`. | zod, yaml, fflate |
 | `packages/db` | Prisma schema and migrations, `forOrg()` tenant scoping, serialized chain writer, quota usage, lookups that start from a secret. | core, Prisma |
 | `packages/connectors` | Gmail, Zoho Books (India data centre) and mock connectors behind one `Connector` interface. OAuth helpers. | core |
 | `packages/sdk` | `check` / `record` / `waitForApproval` for agents with their own loop. | none |
 | `packages/cli` | `gate verify`, `gate sign`, `gate keygen`. | core |
-| `apps/gate` | The guard: MCP server, REST Event API, approvals, evidence export, internal admin API, OAuth callbacks. | core, db, connectors |
-| `apps/web` | The console. Reads with `forOrg`, writes chain-affecting state only through the gate service. | core, db |
+| `apps/gate` | The guard: MCP server, REST Event API (+ OpenAPI), approvals, upstream MCP proxy, evidence and framework reports, webhooks, pg-boss jobs, key provider and rotation, internal admin API, OAuth callbacks. | core, db, connectors |
+| `apps/web` | The console: operations (Today, Approvals, Activity, Agents, Rulebooks, Connectors) and governance (Inventory, Assessments, Evidence, Compliance), plus SSO. Reads with `forOrg`, writes chain-affecting state only through the gate service. | core, db |
 
 Dependency direction is one way: `core ← db ← apps`, `core ← connectors ← gate`. Core never imports I/O; the web app never imports connectors (it can't hold OAuth tokens).
 
@@ -90,7 +90,7 @@ Rules can target a tool (`tool: zoho.record_bill_payment`) or every tool with a 
 ## Operations
 
 - **Configuration:** environment only, validated at startup; missing or weak secrets stop the process. `APP_ENV=production` also refuses the development sample secrets.
-- **Scaling:** both services are stateless apart from the database. Rate limits are per process today (planned: shared store). Background work moves to a Postgres-backed job queue so several Gate instances are safe.
+- **Scaling:** both services are stateless apart from the database. Background work (approval expiry, checkpoints, webhook delivery) runs on pg-boss in Postgres, so several Gate instances are safe. Rate limits are per process today (planned: shared store).
 - **Observability:** structured JSON logs with request ids and no personal data; `/healthz` reports the database and recent health alerts (for example a receipt that could not be written).
 
 See [SECURITY.md](../SECURITY.md) for the threat model and [DECISIONS.md](../DECISIONS.md) for the choices behind all this.

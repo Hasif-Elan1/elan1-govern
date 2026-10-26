@@ -1,7 +1,10 @@
-# gitleaks: default rules, plus one documented exception.
+# gitleaks: default rules, plus documented exceptions (see SECURITY.md, "Accepted findings").
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Dev-only sample secrets in .env.example. Gate refuses these exact values when APP_ENV=production. See SECURITY.md, Scanner findings."
+description = "Dev-only sample secrets in .env.example (refused when APP_ENV=production), and public signing-key fingerprints shown in docs."
 paths = ['''^\.env\.example$''']
+# Fingerprints identify PUBLIC keys (first 16 hex of SHA-256 of the public key); auditors are meant to see them.
+regexTarget = "line"
+regexes = ['''key fingerprint: [0-9a-f]{16}''', '''signing keys: [0-9a-f]{16}''']
