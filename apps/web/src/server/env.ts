@@ -21,6 +21,12 @@ const Schema = z.object({
   COOKIE_SECURE: z.enum(["true", "false"]).default("true"),
 });
 
+/** The value of NAME= in a dotenv file, without regular expressions. */
+function exampleValue(text: string, name: string): string {
+  const line = text.split("\n").find((l) => l.startsWith(`${name}=`));
+  return line ? line.slice(name.length + 1).trim() : "";
+}
+
 export type WebEnv = z.infer<typeof Schema>;
 let cached: WebEnv | undefined;
 
@@ -32,7 +38,7 @@ export function env(): WebEnv {
     if (!existsSync(file)) continue;
     const text = readFileSync(file, "utf8");
     registerExampleSecrets(
-      ["WEB_ENC_KEY", "INTERNAL_API_SECRET", "APPROVAL_LINK_SECRET"].map((n) => new RegExp(`^${n}=(.*)$`, "m").exec(text)?.[1]?.trim() ?? "").filter(Boolean),
+      ["WEB_ENC_KEY", "INTERNAL_API_SECRET", "APPROVAL_LINK_SECRET"].map((n) => exampleValue(text, n)).filter(Boolean),
     );
     break;
   }

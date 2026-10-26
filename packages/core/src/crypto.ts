@@ -73,7 +73,7 @@ function parseKey(keyHex: string): Buffer {
 
 export function encrypt(keyHex: string, plaintext: string, aad = ""): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", parseKey(keyHex), iv);
+  const cipher = createCipheriv("aes-256-gcm", parseKey(keyHex), iv, { authTagLength: 16 });
   cipher.setAAD(Buffer.from(aad, "utf8"));
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -83,9 +83,11 @@ export function encrypt(keyHex: string, plaintext: string, aad = ""): string {
 export function decrypt(keyHex: string, payload: string, aad = ""): string {
   const [v, iv, tag, ct] = payload.split(".");
   if (v !== "v1" || !iv || !tag || ct === undefined) throw new Error("bad ciphertext");
-  const decipher = createDecipheriv("aes-256-gcm", parseKey(keyHex), Buffer.from(iv, "base64"));
+  const tagBytes = Buffer.from(tag, "base64");
+  if (tagBytes.length !== 16) throw new Error("bad ciphertext");
+  const decipher = createDecipheriv("aes-256-gcm", parseKey(keyHex), Buffer.from(iv, "base64"), { authTagLength: 16 });
   decipher.setAAD(Buffer.from(aad, "utf8"));
-  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  decipher.setAuthTag(tagBytes);
   return Buffer.concat([decipher.update(Buffer.from(ct, "base64")), decipher.final()]).toString("utf8");
 }
 

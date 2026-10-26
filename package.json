@@ -2,7 +2,7 @@
   "name": "gate",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.34.9",
   "engines": {
     "node": ">=22.12"
   },
@@ -21,7 +21,7 @@
     "db:seed": "pnpm --filter @gate/gate seed",
     "gate": "pnpm --filter @gate/cli exec gate",
     "security:audit": "pnpm audit --audit-level high",
-    "security:semgrep": "semgrep scan --config auto --error --severity ERROR --exclude-rule generic.secrets.security.detected-generic-secret.detected-generic-secret",
+    "security:semgrep": "semgrep scan --config auto --error --metrics=on --quiet",
     "security:gitleaks": "gitleaks detect --no-banner --redact -v",
     "security:zap": "node scripts/zap-baseline.mjs",
     "security": "pnpm security:audit && pnpm security:semgrep && pnpm security:gitleaks"

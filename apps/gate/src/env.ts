@@ -5,6 +5,12 @@ import { z } from "zod";
 
 const SECRET_NAMES = ["GATE_MASTER_KEY", "INTERNAL_API_SECRET", "APPROVAL_LINK_SECRET"] as const;
 
+/** The value of NAME= in a dotenv file, without regular expressions. */
+function exampleValue(text: string, name: string): string {
+  const line = text.split("\n").find((l) => l.startsWith(`${name}=`));
+  return line ? line.slice(name.length + 1).trim() : "";
+}
+
 export const GateEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().url(),
@@ -36,7 +42,7 @@ function registerExamples() {
     const file = resolve(dir, ".env.example");
     if (!existsSync(file)) continue;
     const text = readFileSync(file, "utf8");
-    registerExampleSecrets(SECRET_NAMES.map((n) => new RegExp(`^${n}=(.*)$`, "m").exec(text)?.[1]?.trim() ?? "").filter(Boolean));
+    registerExampleSecrets(SECRET_NAMES.map((n) => exampleValue(text, n)).filter(Boolean));
     return;
   }
 }

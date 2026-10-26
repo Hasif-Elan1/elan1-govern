@@ -138,7 +138,7 @@ describe("internal API", () => {
 });
 
 describe("live connectors and OAuth", () => {
-  const SECRET = "ya29.SECRET-ACCESS-TOKEN";
+  const SECRET = "test-oauth-access-SECRET-not-real";
   const fakeFetch = (async (url: string | URL | Request) => {
     const u = String(url);
     const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });

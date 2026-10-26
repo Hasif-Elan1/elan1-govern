@@ -1,0 +1,7 @@
+# gitleaks: default rules, plus one documented exception.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dev-only sample secrets in .env.example. Gate refuses these exact values when APP_ENV=production. See SECURITY.md, Scanner findings."
+paths = ['''^\.env\.example$''']
