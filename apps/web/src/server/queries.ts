@@ -25,6 +25,9 @@ export interface ReceiptView {
 
 const CONNECTOR_NAME: Record<string, string> = { gmail: "Gmail", zoho: "Zoho Books" };
 
+/** "Data protection check" reads as "the data protection check" mid-sentence; "AI risk triage" stays. */
+const named = (v: unknown) => (typeof v === "string" && v ? (/^[A-Z][a-z]/.test(v) ? v[0]!.toLowerCase() + v.slice(1) : v) : "assessment");
+
 export function adminTitle(r: Receipt): string {
   const d = (r.details ?? {}) as Record<string, unknown>;
   const agent = r.agent ? ` for ${r.agent}` : "";
@@ -63,6 +66,16 @@ export function adminTitle(r: Receipt): string {
       return "Turned on two-step sign-in";
     case "user.2fa_disabled":
       return "Turned off two-step sign-in";
+    case "system.created":
+      return `Added ${String(d.system ?? "an AI system")} to the inventory`;
+    case "system.updated":
+      return d.lifecycle === "retired" && String(d.changed ?? "").includes("lifecycle") ? `Retired ${String(d.system ?? "an AI system")}` : `Updated ${String(d.system ?? "an AI system")} in the inventory`;
+    case "assessment.submitted":
+      return `Submitted the ${named(d.assessment)} for ${String(d.system ?? "an AI system")}${d.tier ? `: ${String(d.tier)} risk` : ""}`;
+    case "assessment.approved":
+      return `Approved the ${named(d.assessment)} for ${String(d.system ?? "an AI system")}${d.system_tier ? `, now ${String(d.system_tier)} risk` : ""}`;
+    case "assessment.changes_requested":
+      return `Asked for changes to the ${named(d.assessment)} for ${String(d.system ?? "an AI system")}`;
     default:
       return r.action ?? "Setup change";
   }

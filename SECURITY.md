@@ -65,6 +65,8 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **R** | Approver denies approving | The second receipt names the approver, time, result and (if so) that they set up the agent | `gate/flow.test.ts` "ask -> approve"; `e2e/security.spec.ts` self-approval |
 | **E** | Link replay or use after expiry | Single-use DB row consumed atomically with the decision; expiry checked; expired approvals are refused with a receipt | `gate/flow.test.ts` "approval links are single-use", "ask -> expire"; `e2e/security.spec.ts` |
 | **E** | Self-approval hides a conflict of interest | Allowed but warned in the UI and flagged on the receipt | `e2e/flows.spec.ts`, `e2e/security.spec.ts` |
+| **E** | Someone signs off their own AI assessment | The submitter can never approve or send back their own assessment (checked by user id, and again in the update itself); only owners and admins review | `core/assessments.test.ts` "separation of duties"; `e2e/security.spec.ts` "assessments: drafters submit…" |
+| **R** | An inventory change or sign-off leaves no record | Each one is a signed receipt; if Gate cannot write it, the change is undone | `web/inventory.test.ts` "undoes the change"; `e2e/governance.spec.ts` |
 
 ### Web app
 

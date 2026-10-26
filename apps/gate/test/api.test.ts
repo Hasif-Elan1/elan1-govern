@@ -90,6 +90,16 @@ describe("internal API", () => {
     expect((await internal(ctx.app, "GET", "/internal/health")).json()).toMatchObject({ ok: true });
   });
 
+  it("signs inventory and assessment events from the web app", async () => {
+    const d = await demoOrg(ctx.deps);
+    for (const action of ["system.created", "system.updated", "assessment.submitted", "assessment.approved", "assessment.changes_requested"]) {
+      const res = await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/events`, { actor: d.owner.email, action, details: { system: "Resume screener", tier: "high" } });
+      expect(res.json(), action).toMatchObject({ seq: expect.any(Number) });
+    }
+    const last = await forOrg(d.org.id).receipt.findFirstOrThrow({ orderBy: { seq: "desc" } });
+    expect(last).toMatchObject({ kind: "admin", action: "assessment.changes_requested" });
+  });
+
   it("creates agents with keys, rotates and revokes keys", async () => {
     const d = await demoOrg(ctx.deps);
     const yaml = (await forOrg(d.org.id).rulebook.findFirstOrThrow()).yaml.replace("agent: ap-bot", "agent: other");

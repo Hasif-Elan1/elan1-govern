@@ -281,3 +281,56 @@ model SsoConnection {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
+
+// ---- AI inventory and assessments ----
+// Plain string columns: the accepted values are the lists in @gate/core (inventory.ts,
+// assessments.ts), checked with zod at the API. Templates live in code, not in a table.
+
+model AiSystem {
+  id             String       @id @default(cuid())
+  orgId          String
+  name           String
+  kind           String // agent | model | vendor_tool | internal_app
+  vendor         String?
+  purpose        String
+  ownerEmail     String
+  businessUnit   String?
+  lifecycle      String       @default("proposed") // proposed | in_review | approved | live | retired
+  riskTier       String       @default("unassessed") // low | medium | high | unassessed
+  dataCategories String[]
+  affectedPeople String[]
+  decisionImpact String       @default("none") // none | supports_humans | makes_decisions
+  agentId        String? // the Gate agent this system is, when kind = agent
+  nextReviewAt   DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  assessments    Assessment[]
+
+  @@unique([orgId, agentId])
+  @@index([orgId])
+}
+
+model Assessment {
+  id              String    @id @default(cuid())
+  orgId           String
+  systemId        String
+  system          AiSystem  @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  templateKey     String
+  templateVersion Int
+  answers         Json      @default("{}")
+  score           Int?
+  resultTier      String?
+  status          String    @default("draft") // draft | submitted | approved | changes_requested
+  createdBy       String // email
+  submittedBy     String? // email
+  submittedById   String? // user id, for separation of duties
+  submittedAt     DateTime?
+  reviewedBy      String? // email
+  reviewedAt      DateTime?
+  reviewNote      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([orgId, status])
+  @@index([orgId, systemId])
+}

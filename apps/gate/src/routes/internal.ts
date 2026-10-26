@@ -26,7 +26,20 @@ const actor = email;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Admin actions the web app may log on its own (it writes the row; Gate writes the receipt). */
-export const WEB_EVENTS = ["settings.updated", "member.invited", "member.joined", "member.role_changed", "member.removed", "user.2fa_enabled", "user.2fa_disabled"] as const;
+export const WEB_EVENTS = [
+  "settings.updated",
+  "member.invited",
+  "member.joined",
+  "member.role_changed",
+  "member.removed",
+  "user.2fa_enabled",
+  "user.2fa_disabled",
+  "system.created",
+  "system.updated",
+  "assessment.submitted",
+  "assessment.approved",
+  "assessment.changes_requested",
+] as const;
 
 const schemas = {
   org: z.object({ name: z.string().trim().min(1).max(120), ownerUserId: id, ownerEmail: email }).strict(),

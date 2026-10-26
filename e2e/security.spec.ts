@@ -1,6 +1,6 @@
 import { hmacSign } from "@gate/core";
 import { request as pwRequest, expect, test } from "@playwright/test";
-import { approvalLinkFor, Client, signInUI, WEB } from "./helpers";
+import { approvalLinkFor, Client, signInUI, TRIAGE_MEDIUM, WEB } from "./helpers";
 
 // HTTP-level security tests against the running web app. The gate service has its own
 // integration tests (fail-closed, token isolation, signature checks).
@@ -32,6 +32,7 @@ test.beforeAll(async () => {
 type RouteCase = { method: "GET" | "POST" | "PATCH" | "DELETE"; path: string; body?: unknown; allowed: Role[] };
 const ALL = ROLES;
 const ADMINS: Role[] = ["owner", "admin"];
+const DRAFTERS: Role[] = ["owner", "admin", "approver"];
 // Bodies are deliberately invalid: an allowed role gets past the permission check and fails validation (400),
 // a denied role is stopped first (403). Nothing is changed either way.
 const API: RouteCase[] = [
@@ -47,6 +48,12 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/members", body: {}, allowed: ADMINS },
   { method: "PATCH", path: "/api/members/nobody", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/approvals/apr_none", body: {}, allowed: ["owner", "admin", "approver"] },
+  { method: "POST", path: "/api/inventory", body: {}, allowed: ADMINS },
+  { method: "PATCH", path: "/api/inventory/nobody", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/assessments", body: {}, allowed: DRAFTERS },
+  { method: "PATCH", path: "/api/assessments/nobody", body: {}, allowed: DRAFTERS },
+  { method: "POST", path: "/api/assessments/nobody/submit", body: {}, allowed: DRAFTERS },
+  { method: "POST", path: "/api/assessments/nobody/review", body: {}, allowed: ADMINS },
 ];
 
 test("authz matrix: API routes", async () => {
@@ -74,7 +81,7 @@ test("authz matrix: side-effect routes", async () => {
 });
 
 test("authz matrix: pages", async () => {
-  const pages = ["/", "/approvals", "/activity", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/settings"];
+  const pages = ["/", "/approvals", "/activity", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/settings", "/inventory", "/assessments"];
   const anon = await Client.anonymous();
   for (const p of [...pages, "/agents/new"]) {
     const res = await anon.get(p);
@@ -87,6 +94,56 @@ test("authz matrix: pages", async () => {
   }
   // Anonymous API calls are refused, not redirected.
   expect((await anon.get("/api/activity")).status()).toBe(401);
+});
+
+// ---- Assessments: separation of duties ----
+
+test("assessments: drafters submit, only another owner or admin approves, and approval sets the tier", async () => {
+  const sys = await users.admin.send("POST", "/api/inventory", { name: "Support chatbot", kind: "vendor_tool", vendor: "ChatCo", purpose: "Answers customer questions on the website.", ownerEmail: users.admin.email, lifecycle: "live", dataCategories: ["personal"], affectedPeople: ["customers"], decisionImpact: "supports_humans" });
+  expect(sys.status(), await sys.text()).toBe(200);
+  const systemId = ((await sys.json()) as { id: string }).id;
+  // Viewers and auditors read the inventory but cannot change it or draft.
+  expect((await users.viewer.get(`/inventory/${systemId}`)).status()).toBe(200);
+  expect((await users.auditor.send("POST", "/api/assessments", { systemId, templateKey: "triage" })).status()).toBe(403);
+  expect((await users.approver.send("PATCH", `/api/inventory/${systemId}`, { lifecycle: "retired" })).status()).toBe(403);
+
+  const start = await users.approver.send("POST", "/api/assessments", { systemId, templateKey: "triage" });
+  expect(start.status(), await start.text()).toBe(200);
+  const id = ((await start.json()) as { id: string }).id;
+  expect((await users.approver.send("PATCH", `/api/assessments/${id}`, { answers: { autonomy: "maybe" } })).status()).toBe(400);
+  expect((await users.approver.send("PATCH", `/api/assessments/${id}`, { answers: { autonomy: "informs" } })).status()).toBe(200);
+  const incomplete = await users.approver.send("POST", `/api/assessments/${id}/submit`, { answers: { autonomy: "informs" } });
+  expect(incomplete.status()).toBe(400);
+  expect((await incomplete.json()).missing).toContain("areas");
+
+  // The owner submits; the owner cannot then approve their own submission.
+  const submit = await users.owner.send("POST", `/api/assessments/${id}/submit`, { answers: TRIAGE_MEDIUM });
+  expect(submit.status(), await submit.text()).toBe(200);
+  expect(await submit.json()).toMatchObject({ tier: "medium", score: 7 });
+  const own = await users.owner.send("POST", `/api/assessments/${id}/review`, { decision: "approve" });
+  expect(own.status()).toBe(403);
+  expect((await own.json()).error).toMatch(/someone else has to review/);
+  expect((await users.approver.send("POST", `/api/assessments/${id}/review`, { decision: "approve" })).status()).toBe(403);
+  expect((await users.owner.send("PATCH", `/api/assessments/${id}`, { answers: {} })).status()).toBe(409);
+  expect((await users.admin.send("POST", `/api/assessments/${id}/review`, { decision: "request_changes" })).status()).toBe(400);
+
+  const ok = await users.admin.send("POST", `/api/assessments/${id}/review`, { decision: "approve", note: "Looks right." });
+  expect(ok.status(), await ok.text()).toBe(200);
+  expect(await ok.json()).toMatchObject({ status: "approved", tier: "medium" });
+  expect((await users.admin.send("POST", `/api/assessments/${id}/review`, { decision: "approve" })).status()).toBe(409);
+  const act = (await (await users.viewer.get("/api/activity?q=Support%20chatbot")).json()) as { items: { title: string }[] };
+  expect(act.items.map((i) => i.title)).toEqual([
+    "Approved the AI risk triage for Support chatbot, now medium risk",
+    "Submitted the AI risk triage for Support chatbot: medium risk",
+    "Added Support chatbot to the inventory",
+  ]);
+
+  // Another org sees none of it.
+  expect((await other.get(`/inventory/${systemId}`)).status()).toBe(404);
+  expect((await other.get(`/assessments/${id}`)).status()).toBe(404);
+  expect((await other.send("PATCH", `/api/inventory/${systemId}`, { lifecycle: "retired" })).status()).toBe(404);
+  expect((await other.send("POST", "/api/assessments", { systemId, templateKey: "triage" })).status()).toBe(404);
+  expect((await other.send("POST", `/api/assessments/${id}/review`, { decision: "approve" })).status()).toBe(404);
 });
 
 // ---- Tenant isolation ----
@@ -220,11 +277,13 @@ test("SQL injection and XSS payloads in text fields are stored as text and rende
     void d.dismiss();
   });
   await signInUI(page, c.email);
-  for (const p of ["/", "/settings", "/agents", `/agents/${slug}`, "/activity", `/rulebooks/${slug}`, "/evidence"]) {
+  for (const p of ["/", "/settings", "/agents", `/agents/${slug}`, "/activity", `/rulebooks/${slug}`, "/evidence", "/inventory"]) {
     await page.goto(p);
     await page.waitForLoadState("networkidle");
   }
   await page.goto("/agents");
+  await expect(page.getByText(`Bot ${XSS}`)).toBeVisible();
+  await page.goto("/inventory");
   await expect(page.getByText(`Bot ${XSS}`)).toBeVisible();
   await page.goto(`/rulebooks/${slug}`);
   await expect(page.getByTestId("yaml")).toHaveValue(/onerror/);

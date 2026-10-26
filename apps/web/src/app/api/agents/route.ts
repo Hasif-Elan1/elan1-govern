@@ -3,6 +3,7 @@ import { forOrg } from "@gate/db";
 import { z } from "zod";
 import { HttpError, route } from "@/server/api";
 import { gate } from "@/server/gate";
+import { syncAgentSystems } from "@/server/inventory";
 
 const Answers = z.object({
   money: z.enum(["no", "yes"]),
@@ -62,5 +63,7 @@ export const POST = route({ auth: "org", permission: "agents:manage", body: Body
     actor: ctx.user.email,
   });
   if (r.status !== 200) throw new HttpError(r.status === 409 ? 409 : 502, r.data.error ?? "Gate could not create the agent.");
+  // The new agent joins the AI inventory straight away (the inventory page also catches up on load).
+  await syncAgentSystems(ctx.org.id);
   return { slug, tier, apiKey: r.data.apiKey, rulebook: r.data.rulebook };
 });
