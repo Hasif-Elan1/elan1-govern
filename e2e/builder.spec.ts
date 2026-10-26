@@ -40,6 +40,7 @@ test("build a rule visually and keep the YAML in sync, both ways", async ({ page
   await page.getByRole("button", { name: "Sign and publish" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sign and publish" }).click();
   await expect(page.getByText("Version 2 is signed and live.")).toBeVisible();
+  await expect(page.getByText("No changes since the published version.")).toBeVisible();
   await page.getByRole("tab", { name: "History" }).click();
   await expect(page.getByTestId("diff")).toContainText("+     tool: gmail.send_reply");
 });
