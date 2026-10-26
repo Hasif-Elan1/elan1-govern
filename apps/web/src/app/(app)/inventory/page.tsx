@@ -30,14 +30,14 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Inventory"
-        description="Every AI system your company uses, including ones Gate does not guard: who owns it, what data it touches, how risky it is and when it is next reviewed."
+        description="Every AI system your company uses, including ones Elan1 Govern does not guard: who owns it, what data it touches, how risky it is and when it is next reviewed."
         actions={manage && total > 0 ? <SystemDialog me={ctx.user.email} trigger="add" /> : null}
       />
       {total === 0 ? (
         <EmptyState
           icon={<Boxes />}
           title="No AI systems yet"
-          body={manage ? "Add the AI tools and models your teams use, such as a chat assistant, a resume screener or a forecasting model. Gate agents appear here on their own." : "An owner or admin can add the AI systems your company uses. Gate agents appear here on their own."}
+          body={manage ? "Add the AI tools and models your teams use, such as a chat assistant, a resume screener or a forecasting model. Elan1 Govern agents appear here on their own." : "An owner or admin can add the AI systems your company uses. Elan1 Govern agents appear here on their own."}
           action={manage ? <SystemDialog me={ctx.user.email} trigger="add-first" /> : undefined}
         />
       ) : (

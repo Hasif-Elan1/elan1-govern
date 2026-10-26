@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { signRequest } from "@gate/core";
 import { runDemoAgent, type DemoStep } from "./agent";
 
-// `pnpm demo`: run the scripted AP agent against a running Gate.
+// `pnpm demo`: run the scripted AP agent against a running Elan1 Govern.
 
 function loadDotEnv() {
   const file = resolve(import.meta.dirname, "../../../../.env");
@@ -37,12 +37,12 @@ async function main() {
       body: "{}",
     }).catch(() => null);
     if (!res) {
-      console.error(`Cannot reach Gate at ${gate}. Start it with \`pnpm dev\`.`);
+      console.error(`Cannot reach Elan1 Govern at ${gate}. Start it with \`pnpm dev\`.`);
       process.exit(1);
     }
   }
 
-  console.log(`\n${c("1", "Gate demo")} · AP agent → ${gate}/mcp\n`);
+  console.log(`\n${c("1", "Elan1 Govern demo")} · AP agent → ${gate}/mcp\n`);
   const steps = await runDemoAgent({
     url: `${gate}/mcp`,
     apiKey: key,

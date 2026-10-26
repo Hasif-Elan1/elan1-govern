@@ -20,7 +20,7 @@ export default async function Connectors({ searchParams }: { searchParams: Promi
   const tools = await db.upstreamTool.findMany({ orderBy: { name: "asc" }, select: { id: true, serverId: true, name: true, description: true, tags: true, enabled: true } });
   return (
     <>
-      <PageHeader title="Connectors" description="The accounts your agents work in. Gate holds the access tokens, encrypted. Agents only ever talk to Gate." />
+      <PageHeader title="Connectors" description="The accounts your agents work in. Elan1 Govern holds the access tokens, encrypted. Agents only ever talk to Elan1 Govern." />
       <OAuthResult connected={sp.connected} error={sp.error} />
       <div className="grid gap-4 md:grid-cols-2">
         {(["gmail", "zoho"] as const).map((k) => (

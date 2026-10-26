@@ -4,7 +4,7 @@ import https from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
 
-// Outbound requests to upstream MCP servers. The URL comes from a customer, so Gate must not
+// Outbound requests to upstream MCP servers. The URL comes from a customer, so Elan1 Govern must not
 // become a way to reach its own network (SSRF): only http(s), and unless allowed, no private,
 // loopback, link-local or otherwise internal addresses. The check runs inside the socket's DNS
 // lookup, so the address that is checked is the address that is connected to (no rebinding gap).
@@ -27,7 +27,7 @@ export function isPrivateAddress(ip: string): boolean {
   return v === 0 || blocked.check(ip, v === 4 ? "ipv4" : "ipv6");
 }
 
-const NOT_PUBLIC = "That address is on a private network. Gate only connects to public MCP servers here.";
+const NOT_PUBLIC = "That address is on a private network. Elan1 Govern only connects to public MCP servers here.";
 
 /** Resolves the host and refuses internal addresses. Used before saving a server, for a clear message. */
 export async function checkUpstreamUrl(raw: string, allowPrivate: boolean): Promise<URL> {

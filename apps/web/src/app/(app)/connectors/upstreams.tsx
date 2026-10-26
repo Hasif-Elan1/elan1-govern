@@ -19,7 +19,7 @@ export type UpstreamRow = { id: string; slug: string; name: string; url: string;
 type SyncResult = { ok: boolean; tools?: number; added?: number; error?: string };
 
 function syncMessage(name: string, s: SyncResult) {
-  if (!s.ok) return `${name} was saved, but Gate could not list its tools: ${s.error ?? "unknown error"}. Fix it and press Sync tools.`;
+  if (!s.ok) return `${name} was saved, but Elan1 Govern could not list its tools: ${s.error ?? "unknown error"}. Fix it and press Sync tools.`;
   return `${name} has ${s.tools} tools${s.added ? `, ${s.added} new` : ""}. New tools stay off until you check their tags and switch them on.`;
 }
 
@@ -54,7 +54,7 @@ function AddServer({ open, onOpenChange }: { open: boolean; onOpenChange: (o: bo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="Add an MCP server" description="Gate connects to the server, lists its tools and suggests a risk tag for each. Agents reach the tools only through Gate, and only the ones you switch on.">
+      <DialogContent title="Add an MCP server" description="Elan1 Govern connects to the server, lists its tools and suggests a risk tag for each. Agents reach the tools only through Elan1 Govern, and only the ones you switch on.">
         <form className="grid gap-4" onSubmit={submit}>
           <Field label="Name" htmlFor="up-name" hint="Tool names start with it, for example crm.issue_refund.">
             <Input id="up-name" required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="CRM" />
@@ -62,7 +62,7 @@ function AddServer({ open, onOpenChange }: { open: boolean; onOpenChange: (o: bo
           <Field label="URL" htmlFor="up-url" hint="The server's streamable HTTP address.">
             <Input id="up-url" required type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://mcp.example.com/mcp" />
           </Field>
-          <Field label="Authorization header (optional)" htmlFor="up-auth" hint="Sent as the Authorization header, for example Bearer sk_live_…. Gate stores it encrypted and never shows it again.">
+          <Field label="Authorization header (optional)" htmlFor="up-auth" hint="Sent as the Authorization header, for example Bearer sk_live_…. Elan1 Govern stores it encrypted and never shows it again.">
             <Input id="up-auth" type="password" autoComplete="off" value={auth} onChange={(e) => setAuth(e.target.value)} />
           </Field>
           {error ? (
@@ -209,7 +209,7 @@ function ServerCard({ server, manage }: { server: UpstreamRow; manage: boolean }
       )}
 
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent title={`Remove ${server.name}?`} description={`Agents will be refused every ${server.slug}.* tool. Gate deletes the stored auth header. Rules that name these tools stay in your rulebooks and simply stop matching.`}>
+        <DialogContent title={`Remove ${server.name}?`} description={`Agents will be refused every ${server.slug}.* tool. Elan1 Govern deletes the stored auth header. Rules that name these tools stay in your rulebooks and simply stop matching.`}>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirm(false)}>Cancel</Button>
             <Button variant="danger" disabled={busy} onClick={remove}>
@@ -233,7 +233,7 @@ export function UpstreamServers({ servers, manage }: { servers: UpstreamRow[]; m
     <Section
       className="mt-10"
       title="Your MCP servers"
-      description="Put any MCP server behind Gate: a CRM, ticketing, health records, cloud tools. Tag each tool with what it can do, then write rules by tag."
+      description="Put any MCP server behind Elan1 Govern: a CRM, ticketing, health records, cloud tools. Tag each tool with what it can do, then write rules by tag."
       actions={manage && servers.length ? add : undefined}
     >
       {servers.length ? (
@@ -246,7 +246,7 @@ export function UpstreamServers({ servers, manage }: { servers: UpstreamRow[]; m
         <EmptyState
           icon={<Server />}
           title="No MCP servers yet"
-          body={manage ? "Add the address of an MCP server your agents use. Gate lists its tools, and agents reach them only through your rules." : "An owner or admin can add an MCP server here."}
+          body={manage ? "Add the address of an MCP server your agents use. Elan1 Govern lists its tools, and agents reach them only through your rules." : "An owner or admin can add an MCP server here."}
           action={manage ? add : undefined}
         />
       )}

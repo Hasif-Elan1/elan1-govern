@@ -30,10 +30,10 @@ function Message({ title, body }: { title: string; body: string }) {
 export default async function ApproveLink({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const t = hmacVerify<LinkToken>(env().APPROVAL_LINK_SECRET, decodeURIComponent(token));
-  if (!t) return <Message title="This link doesn't work" body="It may have been copied incompletely. Open Approvals in Gate to find the action." />;
+  if (!t) return <Message title="This link doesn't work" body="It may have been copied incompletely. Open Approvals in Elan1 Govern to find the action." />;
   if (t.x * 1000 < Date.now()) return <Message title="This link has expired" body="The action was refused because nobody decided in time." />;
   const link = await forOrg(t.o).approvalLink.findFirst({ where: { id: t.l, approvalId: t.a } });
-  if (!link) return <Message title="This link doesn't work" body="Open Approvals in Gate to find the action." />;
+  if (!link) return <Message title="This link doesn't work" body="Open Approvals in Elan1 Govern to find the action." />;
   if (link.usedAt) return <Message title="This link was already used" body="Each approval link works once. Open Approvals to see what was decided." />;
 
   const session = await currentSession();

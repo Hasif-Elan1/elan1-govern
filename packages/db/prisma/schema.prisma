@@ -190,7 +190,7 @@ model Approval {
   resolvedBy    String?
   note          String?
   selfApproval  Boolean        @default(false)
-  executor      String         @default("gate") // gate (MCP: Gate runs it) | agent (SDK: the agent runs it)
+  executor      String         @default("gate") // gate (MCP: Elan1 Govern runs it) | agent (SDK: the agent runs it)
   result        Json?
   expiresAt     DateTime
   resolvedAt    DateTime?
@@ -301,7 +301,7 @@ model AiSystem {
   dataCategories String[]
   affectedPeople String[]
   decisionImpact String       @default("none") // none | supports_humans | makes_decisions
-  agentId        String? // the Gate agent this system is, when kind = agent
+  agentId        String? // the Elan1 Govern agent this system is, when kind = agent
   nextReviewAt   DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -338,7 +338,7 @@ model Assessment {
 
 // ---- Upstream MCP servers (tenant-scoped) ----
 
-// An MCP server the org puts behind Gate. Its tools reach agents only through the guard.
+// An MCP server the org puts behind Elan1 Govern. Its tools reach agents only through the guard.
 model UpstreamServer {
   id            String         @id @default(cuid())
   orgId         String

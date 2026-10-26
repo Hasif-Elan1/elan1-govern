@@ -17,7 +17,7 @@ function jsonSchema(tool: (typeof TOOL_NAMES)[number]) {
   return schema as { type: "object"; [k: string]: unknown };
 }
 
-const CHECKED = "Every call is checked by Gate: it may run, wait for a person, or be refused.";
+const CHECKED = "Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.";
 
 export const MCP_TOOLS = [
   ...TOOL_NAMES.map((name) => ({

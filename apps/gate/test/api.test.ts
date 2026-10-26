@@ -22,7 +22,7 @@ describe("REST Event API (SDK)", () => {
     const d = await demoOrg(ctx.deps);
     const check = await post("/v1/check", d.apiKey, { tool: "zoho.record_bill_payment", args: { bill_id: "bill_1187", amount_inr: 18000 } });
     expect(check.json()).toMatchObject({ decision: "allow", rule_id: "pay-small", check_id: expect.any(Number) });
-    expect(mockState(d.org.id).payments).toHaveLength(0); // Gate did not run it
+    expect(mockState(d.org.id).payments).toHaveLength(0); // Elan1 Govern did not run it
     const rec = await post("/v1/record", d.apiKey, { check_id: check.json().check_id, status: "ok", ref: "UTR-1" });
     expect(rec.json()).toMatchObject({ recorded: true });
     const dup = await post("/v1/record", d.apiKey, { check_id: check.json().check_id, status: "ok" });

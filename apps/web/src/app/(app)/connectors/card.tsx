@@ -86,7 +86,7 @@ export function ConnectorCard({ kind, row, manage, liveAvailable, compact }: { k
               <Button size="sm" variant="primary" disabled={busy} onClick={() => act("connect", "mock")}>
                 Use demo data
               </Button>
-              <Button size="sm" disabled={busy || !liveAvailable} onClick={() => act("connect", "live")} title={liveAvailable ? undefined : "Add the OAuth client to Gate's settings first (see the README)."}>
+              <Button size="sm" disabled={busy || !liveAvailable} onClick={() => act("connect", "live")} title={liveAvailable ? undefined : "Add the OAuth client to Elan1 Govern's settings first (see the README)."}>
                 Connect {kind === "gmail" ? "a Google account" : "Zoho Books"}
               </Button>
             </>
@@ -96,7 +96,7 @@ export function ConnectorCard({ kind, row, manage, liveAvailable, compact }: { k
       {!connected && manage && !liveAvailable && !compact ? <p className="mt-2 text-[12.5px] text-ink-3">Real accounts need an OAuth client set up on the server. The README explains how.</p> : null}
 
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent title={`Disconnect ${m.name}?`} description={`Agents will get an error for every ${m.name} tool until you connect it again. Gate deletes the stored access tokens.`}>
+        <DialogContent title={`Disconnect ${m.name}?`} description={`Agents will get an error for every ${m.name} tool until you connect it again. Elan1 Govern deletes the stored access tokens.`}>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirm(false)}>Cancel</Button>
             <Button variant="danger" disabled={busy} onClick={() => act("disconnect")}>

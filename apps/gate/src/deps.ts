@@ -60,7 +60,7 @@ export async function orgKey(deps: Deps, orgId: string): Promise<{ kid: string; 
   return { ...(await activeKey(deps, orgId)), name: org.name };
 }
 
-/** Record that Gate could not do its job. Never throws. */
+/** Record that Elan1 Govern could not do its job. Never throws. */
 export async function raiseAlert(deps: Deps, kind: string, message: string, orgId?: string) {
   deps.alerts.push({ at: new Date().toISOString(), kind, message, orgId });
   if (deps.alerts.length > 100) deps.alerts.shift();

@@ -4,7 +4,7 @@ import { ensureServices, existsSync, loadEnv, root, run } from "./lib.mjs";
 
 const [major, minor] = process.versions.node.split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 12)) {
-  console.error(`✖ Gate needs Node 22.12 or newer (you have ${process.versions.node}).`);
+  console.error(`✖ Elan1 Govern needs Node 22.12 or newer (you have ${process.versions.node}).`);
   process.exit(1);
 }
 if (!existsSync(`${root}.env`)) {

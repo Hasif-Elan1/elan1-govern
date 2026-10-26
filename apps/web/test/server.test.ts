@@ -41,7 +41,7 @@ describe("passwords and lockout", () => {
   it("asks for and checks a TOTP code", async () => {
     const e = email();
     const t = newTotp(e);
-    expect(t.uri).toMatch(/^otpauth:\/\/totp\/Gate:/);
+    expect(t.uri).toMatch(/^otpauth:\/\/totp\/Elan1%20Govern:/);
     await prisma.user.create({ data: { email: e, name: "T", passwordHash: await hashPassword("correct horse battery"), totpSecret: t.secretEnc, totpEnabled: true } });
     expect(await checkPassword(e, "correct horse battery")).toEqual({ ok: false, reason: "totp_required" });
     expect(await checkPassword(e, "correct horse battery", "000000")).toMatchObject({ reason: "totp_invalid" });

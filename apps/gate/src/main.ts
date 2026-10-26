@@ -14,7 +14,7 @@ async function main() {
   await app.listen({ port: env.GATE_PORT, host: "0.0.0.0" });
 
   // Approval expiry (every minute), hourly checkpoints and webhook delivery run on pg-boss,
-  // so they survive restarts and run once across several Gate instances.
+  // so they survive restarts and run once across several Elan1 Govern instances.
   const jobs = await startJobs(deps);
   const stop = async () => {
     await jobs.stop().catch((e: Error) => app.log.warn({ err: e.message }, "job queue did not stop cleanly"));

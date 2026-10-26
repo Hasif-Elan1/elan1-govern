@@ -43,7 +43,7 @@ export function approvalEmail(opts: { to: string; agent: string; action: string;
   const html = `<!doctype html><html><body style="margin:0;background:#f6f6f4;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1c1a">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:1px solid #e6e5e1;border-radius:12px">
-<tr><td style="padding:28px 28px 8px;font-size:13px;color:#6b6a65">Gate · waiting for you</td></tr>
+<tr><td style="padding:28px 28px 8px;font-size:13px;color:#6b6a65">Elan1 Govern · waiting for you</td></tr>
 <tr><td style="padding:0 28px;font-size:20px;font-weight:600;line-height:1.35">${esc(opts.action)}</td></tr>
 <tr><td style="padding:12px 28px 0;font-size:14px;color:#4a4945;line-height:1.5">Requested by <b>${esc(opts.agent)}</b>. ${esc(opts.reason)}</td></tr>
 <tr><td style="padding:24px 28px"><a href="${esc(opts.link)}" style="display:inline-block;background:#1f3a5f;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px">Review and decide</a></td></tr>

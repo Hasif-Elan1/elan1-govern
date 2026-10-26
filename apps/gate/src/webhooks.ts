@@ -83,7 +83,7 @@ export function isPrivateAddress(ip: string): boolean {
 
 export class BlockedAddressError extends Error {
   constructor() {
-    super("the address is private or reserved, so Gate did not connect");
+    super("the address is private or reserved, so Elan1 Govern did not connect");
   }
 }
 
@@ -264,7 +264,7 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
     const res = await postJson(
       checked.url,
       body,
-      { "content-type": "application/json", "user-agent": "Gate-Webhooks/1", "gate-signature": signWebhook(secret, body), "gate-event": d.event, "gate-delivery": d.id },
+      { "content-type": "application/json", "user-agent": "Elan1 Govern-Webhooks/1", "gate-signature": signWebhook(secret, body), "gate-event": d.event, "gate-delivery": d.id },
       { allowPrivate: deps.env.WEBHOOK_ALLOW_PRIVATE },
     );
     if (res.status >= 200 && res.status < 300) return finish(true, { status: res.status });
@@ -308,7 +308,7 @@ export async function testWebhook(deps: Deps, orgId: string, id: string): Promis
   const hook = await db.webhook.findFirst({ where: { id } });
   if (!hook) return null;
   const d = await db.webhookDelivery.create({
-    data: { orgId, webhookId: id, event: TEST_EVENT, payload: { message: "This is a test event from Gate. No action happened." }, nextAttemptAt: new Date() },
+    data: { orgId, webhookId: id, event: TEST_EVENT, payload: { message: "This is a test event from Elan1 Govern. No action happened." }, nextAttemptAt: new Date() },
   });
   return { deliveryId: d.id, outcome: await deliverWebhook(deps, orgId, d.id) };
 }

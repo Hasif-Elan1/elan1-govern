@@ -15,7 +15,7 @@ export interface DecideContext {
    * (The legacy shape `{ daily_payments_inr: number }` is still accepted.)
    */
   usage?: Record<string, QuotaUsage | number | undefined>;
-  /** Lists Gate knows about at decision time (e.g. vendor_domains). */
+  /** Lists Elan1 Govern knows about at decision time (e.g. vendor_domains). */
   lists?: Record<string, string[]>;
   /** Tools beyond the built-in Gmail and Zoho Books ones. */
   registry?: ToolRegistry;
@@ -133,7 +133,7 @@ export function decide(rb: Rulebook, tool: string, args: Args, ctx: DecideContex
     return {
       decision: "refuse",
       ruleId: "default",
-      reason: registry.get(tool) ? "No rule allows this action, so it is refused by default." : `"${tool}" is not a tool Gate knows, so it is refused by default.`,
+      reason: registry.get(tool) ? "No rule allows this action, so it is refused by default." : `"${tool}" is not a tool Elan1 Govern knows, so it is refused by default.`,
       matched: [],
       argsSummary,
     };

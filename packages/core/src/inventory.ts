@@ -1,4 +1,4 @@
-// The AI inventory's vocabulary: every AI system a company uses, not only Gate agents.
+// The AI inventory's vocabulary: every AI system a company uses, not only Elan1 Govern agents.
 // Values are stored as plain strings; these lists are the only accepted values.
 
 const labels = <T extends string>(pairs: readonly (readonly [T, string])[]) => pairs;

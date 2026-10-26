@@ -39,7 +39,7 @@ export default async function Settings() {
 
   return (
     <>
-      <PageHeader title="Settings" description={manage ? "Your organisation, the people in it, and how long Gate keeps records." : "Your organisation and your own sign-in security. Only owners and admins can change organisation settings."} />
+      <PageHeader title="Settings" description={manage ? "Your organisation, the people in it, and how long Elan1 Govern keeps records." : "Your organisation and your own sign-in security. Only owners and admins can change organisation settings."} />
       <div className="grid gap-12">
         <Section title="Organisation">
           <Card className="p-5">
@@ -84,7 +84,7 @@ export default async function Settings() {
         </Section>
 
         {manage ? (
-          <Section title="API keys" description="Active keys for all agents. Gate shows a key once when it is made and keeps only its hash.">
+          <Section title="API keys" description="Active keys for all agents. Elan1 Govern shows a key once when it is made and keeps only its hash.">
             {keys.length ? (
               <Card className="divide-y divide-line text-sm">
                 {keys.map((k) => {
@@ -117,7 +117,7 @@ export default async function Settings() {
         </Section>
 
         {hooksAllowed ? (
-          <Section title="Webhooks" description="Send receipts and approval events to your SIEM, log store or other tools. Each request is signed with a secret only you and Gate know.">
+          <Section title="Webhooks" description="Send receipts and approval events to your SIEM, log store or other tools. Each request is signed with a secret only you and Elan1 Govern know.">
             <div className="grid gap-3">
               {webhooks.map((h) => (
                 <WebhookRow key={h.id} hook={h} />
@@ -132,7 +132,7 @@ export default async function Settings() {
 
         <Section
           title="Signing keys"
-          description="Gate signs every receipt, checkpoint and evidence bundle with your organisation's key. Retired keys are kept so older evidence still checks out."
+          description="Elan1 Govern signs every receipt, checkpoint and evidence bundle with your organisation's key. Retired keys are kept so older evidence still checks out."
           actions={can(ctx.role, "keys:rotate") && activeKey ? <RotateKey current={activeKey.kid} totpEnabled={ctx.user.totpEnabled} /> : null}
         >
           <Card className="divide-y divide-line text-sm">

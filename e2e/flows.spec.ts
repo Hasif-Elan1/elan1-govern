@@ -23,7 +23,7 @@ test("sign up, run the demo agent, approve on a phone, see it in Activity, downl
   await page.waitForURL("**/onboarding?step=industry");
   await page.getByText("Finance and accounting").click();
   await page.getByText("India", { exact: true }).click();
-  await expect(page.getByText(/Gate will turn on: .*RBI FREE-AI/)).toBeVisible();
+  await expect(page.getByText(/Elan1 Govern will turn on: .*RBI FREE-AI/)).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/onboarding?step=demo");
   await page.getByRole("button", { name: "Try the demo agent" }).click();

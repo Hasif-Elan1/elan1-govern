@@ -23,7 +23,7 @@ function bundle(n: number) {
   return buildBundle({ org: { id: "o", name: "Acme" }, range: { from: "2026-10-26", to: "2026-10-26" }, anchor: GENESIS, receipts, checkpoints: [], publicKeyPem: keys.publicKeyPem, privateKeyPem: keys.privateKeyPem, generatedAt: "2026-10-26T00:00:00Z" });
 }
 
-describe("gate verify", () => {
+describe("govern verify", () => {
   const dir = mkdtempSync(join(tmpdir(), "gate-cli-"));
   it("says the chain is intact", async () => {
     const file = join(dir, "ok.zip");
@@ -93,7 +93,7 @@ describe("gate verify", () => {
   });
 });
 
-describe("gate keygen and sign", () => {
+describe("govern keygen and sign", () => {
   it("creates keys, signs a rulebook, and refuses bad input", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gate-cli-"));
     const c = capture();
@@ -116,7 +116,7 @@ describe("gate keygen and sign", () => {
   it("prints help", async () => {
     const c = capture();
     expect(await main([], c.out, c.err)).toBe(0);
-    expect(c.lines[0]).toMatch(/^gate/);
+    expect(c.lines[0]).toMatch(/^govern/);
     expect(await main(["nope"], c.out, c.err)).toBe(2);
   });
 });

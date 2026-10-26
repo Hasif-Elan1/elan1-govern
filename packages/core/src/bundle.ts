@@ -31,16 +31,16 @@ const ManifestSchema = z
   .strict();
 export type Manifest = z.infer<typeof ManifestSchema>;
 
-const README = `Gate evidence bundle
+const README = `Elan1 Govern evidence bundle
 
 receipts.jsonl    one signed receipt per line, in chain order
 checkpoints.json  signed chain heads
-public_key.pem    the organisation's current Gate public key
-public_keys.json  every Gate public key the organisation has used, by key id
+public_key.pem    the organisation's current Elan1 Govern public key
+public_keys.json  every Elan1 Govern public key the organisation has used, by key id
 manifest.json     what this bundle covers, signed
 
-Verify it offline:  gate verify <this-file>.zip
-Compare the key fingerprint printed by the verifier with the one shown in Gate under Evidence.
+Verify it offline:  govern verify <this-file>.zip
+Compare the key fingerprint printed by the verifier with the one shown in Elan1 Govern under Evidence.
 `;
 
 export function buildBundle(input: {

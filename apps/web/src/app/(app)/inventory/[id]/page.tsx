@@ -68,7 +68,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
                 ["Affects", list(AFFECTED_PEOPLE, s.affectedPeople)],
                 ["Decisions", labelOf(DECISION_IMPACTS, s.decisionImpact)],
                 [
-                  "Gate agent",
+                  "Elan1 Govern agent",
                   agent ? (
                     <Link key="a" href={`/agents/${agent.slug}`} className="font-medium text-accent hover:underline">
                       {agent.name}
@@ -76,7 +76,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
                   ) : s.agentId ? (
                     "The linked agent was removed"
                   ) : (
-                    "Not guarded by Gate"
+                    "Not guarded by Elan1 Govern"
                   ),
                 ],
                 ["Added", fmtDate(s.createdAt)],

@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * Checks a Gate webhook. `header` is the `gate-signature` header, `body` the raw request body
+ * Checks an Elan1 Govern webhook. `header` is the `gate-signature` header, `body` the raw request body
  * (as received, before JSON parsing). Rejects signatures older than `toleranceSeconds` (default
  * 5 minutes) to stop replays.
  *

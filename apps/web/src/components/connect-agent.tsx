@@ -11,7 +11,7 @@ function Code({ code }: { code: string }) {
   );
 }
 
-/** How to point a real agent at Gate: MCP URL and key, or the SDK. */
+/** How to point a real agent at Elan1 Govern: MCP URL and key, or the SDK. */
 export function ConnectAgent({ mcpUrl, gateUrl, apiKey }: { mcpUrl: string; gateUrl: string; apiKey?: string }) {
   const key = apiKey ?? "gk_your_key_here";
   const mcpConfig = JSON.stringify({ mcpServers: { gate: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${key}` } } } }, null, 2);
@@ -39,10 +39,10 @@ if (check.decision === "allow") {
           {apiKey ? (
             <>
               <Secret value={apiKey} label="Copy key" />
-              <p className="mt-1.5 text-[13px] text-wait">This is the only time Gate shows this key. Store it in your agent's secrets.</p>
+              <p className="mt-1.5 text-[13px] text-wait">This is the only time Elan1 Govern shows this key. Store it in your agent's secrets.</p>
             </>
           ) : (
-            <p className="text-sm text-ink-2">Create a key on the Keys tab. Gate shows each key once and keeps only a hash.</p>
+            <p className="text-sm text-ink-2">Create a key on the Keys tab. Elan1 Govern shows each key once and keeps only a hash.</p>
           )}
         </div>
       </div>
@@ -52,11 +52,11 @@ if (check.decision === "allow") {
           <TabsTrigger value="sdk">TypeScript SDK</TabsTrigger>
         </TabsList>
         <TabsContent value="mcp" className="pt-4">
-          <p className="mb-3 text-sm text-ink-2">Add Gate as an MCP server in your agent (Claude, Cursor, or any client that speaks streamable HTTP). The agent sees only the tools your rules mention, and never sees the passwords or tokens of your connected accounts.</p>
+          <p className="mb-3 text-sm text-ink-2">Add Elan1 Govern as an MCP server in your agent (Claude, Cursor, or any client that speaks streamable HTTP). The agent sees only the tools your rules mention, and never sees the passwords or tokens of your connected accounts.</p>
           <Code code={mcpConfig} />
         </TabsContent>
         <TabsContent value="sdk" className="pt-4">
-          <p className="mb-3 text-sm text-ink-2">For your own agent loop: ask Gate before acting, tell it what happened after.</p>
+          <p className="mb-3 text-sm text-ink-2">For your own agent loop: ask Elan1 Govern before acting, tell it what happened after.</p>
           <Code code={sdk} />
         </TabsContent>
       </Tabs>

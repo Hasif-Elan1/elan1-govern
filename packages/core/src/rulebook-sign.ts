@@ -23,7 +23,7 @@ export function verifyRulebook(rb: Rulebook, publicKeyPem: string): boolean {
 export type LoadResult = { ok: true; rulebook: Rulebook } | { ok: false; reason: string };
 
 /**
- * Parse, validate and verify. Gate only ever runs a rulebook that passes this.
+ * Parse, validate and verify. Elan1 Govern only ever runs a rulebook that passes this.
  * Tool names are checked strictly when publishing; here a tool that has since gone away
  * (e.g. removed from an upstream MCP server) must not make the whole rulebook unloadable.
  */

@@ -39,7 +39,7 @@ export function KillSwitch({ slug, name, paused }: { slug: string; name: string;
         <span className="font-medium">{paused ? "Paused" : "Running"}</span>
       </label>
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent title={`Pause ${name}?`} description="Gate will refuse every call this agent makes, starting with its next one. Actions waiting for approval stay waiting.">
+        <DialogContent title={`Pause ${name}?`} description="Elan1 Govern will refuse every call this agent makes, starting with its next one. Actions waiting for approval stay waiting.">
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirm(false)}>Keep running</Button>
             <Button variant="danger" disabled={busy} onClick={() => set("paused")}>
@@ -82,7 +82,7 @@ function Keys({ slug, keys, manage, mcpUrl, gateUrl }: { slug: string; keys: Key
       ) : null}
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-ink-2">Gate stores only a hash of each key. A revoked key stops working at once.</p>
+          <p className="text-sm text-ink-2">Elan1 Govern stores only a hash of each key. A revoked key stops working at once.</p>
           {manage ? (
             <Button onClick={create} disabled={busy}>
               <KeyRound /> {busy ? "Creating…" : "Create key"}

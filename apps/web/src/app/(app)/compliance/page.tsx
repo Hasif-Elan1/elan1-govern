@@ -27,7 +27,7 @@ export default async function Compliance() {
     <>
       <PageHeader
         title="Compliance"
-        description="The frameworks that apply to you, which of their requirements Gate's controls cover, and how much live evidence backs each one."
+        description="The frameworks that apply to you, which of their requirements Elan1 Govern's controls cover, and how much live evidence backs each one."
         actions={manage && cards.length ? <AddFramework options={options} /> : null}
       />
 
@@ -52,7 +52,7 @@ export default async function Compliance() {
         <EmptyState
           icon={<Scale />}
           title="No frameworks yet"
-          body="Turn on the laws and standards that apply to you. Gate shows which requirements its controls cover and where the gaps are."
+          body="Turn on the laws and standards that apply to you. Elan1 Govern shows which requirements its controls cover and where the gaps are."
           action={manage ? <AddFramework options={options} primary /> : undefined}
         />
       ) : (
@@ -92,7 +92,7 @@ export default async function Compliance() {
 
       <p className="mt-10 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
         <Pill tone="wait">{LEGAL_REVIEW_NOTE}</Pill>
-        References and summaries are starting points written by the Gate team, not legal advice and not a claim of compliance.
+        References and summaries are starting points written by the Elan1 Govern team, not legal advice and not a claim of compliance.
       </p>
     </>
   );

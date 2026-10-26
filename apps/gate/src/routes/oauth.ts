@@ -14,7 +14,7 @@ interface State {
   x: number;
 }
 
-/** OAuth callbacks land on Gate, so tokens never pass through the web app or the agent. */
+/** OAuth callbacks land on Elan1 Govern, so tokens never pass through the web app or the agent. */
 export function registerOAuth(app: FastifyInstance, deps: Deps) {
   app.get<{ Params: { kind: string }; Querystring: { code?: string; state?: string; error?: string } }>(
     "/oauth/:kind/callback",

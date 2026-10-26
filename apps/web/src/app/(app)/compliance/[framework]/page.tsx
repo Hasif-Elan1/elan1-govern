@@ -116,7 +116,7 @@ export default async function FrameworkPage({ params }: Props) {
         </table>
       </div>
       <p className="mt-3 max-w-[72ch] text-[13px] text-ink-3">
-        A gap is not a failure: some requirements are about things Gate does not do, such as staff training or technical documentation. Cover them with your own process and keep the proof alongside the framework report.
+        A gap is not a failure: some requirements are about things Elan1 Govern does not do, such as staff training or technical documentation. Cover them with your own process and keep the proof alongside the framework report.
       </p>
     </>
   );

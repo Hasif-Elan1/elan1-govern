@@ -1,4 +1,4 @@
-// Gate SDK for agents with their own tool loop. Ask Gate before acting, tell it after.
+// Elan1 Govern SDK for agents with their own tool loop. Ask Elan1 Govern before acting, tell it after.
 //
 //   const gate = createGate({ url: "http://localhost:4000", apiKey: process.env.GATE_KEY! });
 //   const check = await gate.check("zoho.record_bill_payment", { bill_id, amount_inr });
@@ -32,7 +32,7 @@ export class GateError extends Error {
 }
 
 export interface GateOptions {
-  /** Base URL of the Gate service, e.g. http://localhost:4000 */
+  /** Base URL of the Elan1 Govern service, e.g. http://localhost:4000 */
   url: string;
   apiKey: string;
   fetch?: typeof fetch;
@@ -49,12 +49,12 @@ export function createGate(opts: GateOptions) {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!res.ok) throw new GateError(typeof json.error === "string" ? json.error : `Gate returned ${res.status}`, res.status);
+    if (!res.ok) throw new GateError(typeof json.error === "string" ? json.error : `Elan1 Govern returned ${res.status}`, res.status);
     return json as T;
   }
 
   return {
-    /** Ask Gate whether the agent may run this tool with these arguments. Nothing is run. */
+    /** Ask Elan1 Govern whether the agent may run this tool with these arguments. Nothing is run. */
     async check(tool: string, args: Record<string, unknown> = {}): Promise<CheckResult> {
       const r = await req<Record<string, unknown>>("POST", "/v1/check", { tool, args });
       return {
@@ -66,7 +66,7 @@ export function createGate(opts: GateOptions) {
       };
     },
 
-    /** Tell Gate what happened after you ran an allowed (or approved) action. */
+    /** Tell Elan1 Govern what happened after you ran an allowed (or approved) action. */
     async record(input: { checkId?: number; approvalId?: string; status: "ok" | "error"; ref?: string; error?: string }): Promise<{ receiptSeq: number }> {
       const r = await req<{ receipt_seq: number }>("POST", "/v1/record", {
         ...(input.checkId !== undefined ? { check_id: input.checkId } : {}),
@@ -78,7 +78,7 @@ export function createGate(opts: GateOptions) {
       return { receiptSeq: r.receipt_seq };
     },
 
-    /** Wait for a person to decide. Long-polls Gate in 30-second steps. */
+    /** Wait for a person to decide. Long-polls Elan1 Govern in 30-second steps. */
     async waitForApproval(approvalId: string, timeoutMs = 10 * 60_000): Promise<ApprovalStatus> {
       const until = Date.now() + timeoutMs;
       for (;;) {

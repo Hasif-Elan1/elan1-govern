@@ -227,7 +227,7 @@ function statusOf(a: { id: string; status: ApprovalStatus["status"]; expiresAt: 
   const r = (a.result ?? undefined) as { status?: string; ref?: string; error?: string; data?: unknown } | undefined;
   const message = {
     pending: "Still waiting for a person to decide.",
-    approved: a.executor === "agent" ? `Approved by ${a.resolvedBy}. You may run the action now, then record the outcome.` : !r ? `Approved by ${a.resolvedBy}. Gate is running it now; ask again for the result.` : r.status === "ok" ? `Approved by ${a.resolvedBy} and done.` : `Approved by ${a.resolvedBy}, but it did not complete: ${r.error ?? "unknown error"}.`,
+    approved: a.executor === "agent" ? `Approved by ${a.resolvedBy}. You may run the action now, then record the outcome.` : !r ? `Approved by ${a.resolvedBy}. Elan1 Govern is running it now; ask again for the result.` : r.status === "ok" ? `Approved by ${a.resolvedBy} and done.` : `Approved by ${a.resolvedBy}, but it did not complete: ${r.error ?? "unknown error"}.`,
     rejected: `Rejected by ${a.resolvedBy}. Do not retry this action.`,
     expired: "Nobody decided in time, so the action was refused.",
   }[a.status];
@@ -253,7 +253,7 @@ export async function waitForApproval(deps: Deps, orgId: string, agentId: string
       await expireApproval(deps, orgId, approvalId);
       continue;
     }
-    // An approved call that Gate runs is "settled" only once its result is stored.
+    // An approved call that Elan1 Govern runs is "settled" only once its result is stored.
     const running = a.status === "approved" && a.executor === "gate" && a.result === null;
     if ((a.status !== "pending" && !running) || Date.now() >= deadline) return statusOf(a);
     await new Promise((r) => setTimeout(r, 300));

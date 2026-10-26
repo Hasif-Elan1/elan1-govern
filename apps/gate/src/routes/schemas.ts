@@ -51,8 +51,8 @@ export const ApprovalStatusResponse = z
     expires_at: z.string(),
     rule_id: z.string(),
     message: z.string().meta({ description: "What to do next, in plain words." }),
-    outcome: z.object({ status: z.string(), ref: z.string().optional(), error: z.string().optional() }).optional().meta({ description: "For actions Gate ran: how it went." }),
-    result: z.unknown().optional().meta({ description: "For actions Gate ran: the tool's result." }),
+    outcome: z.object({ status: z.string(), ref: z.string().optional(), error: z.string().optional() }).optional().meta({ description: "For actions Elan1 Govern ran: how it went." }),
+    result: z.unknown().optional().meta({ description: "For actions Elan1 Govern ran: the tool's result." }),
   });
 
 export const ErrorResponse = z.object({ error: z.string().meta({ description: "A plain-English message." }) });

@@ -31,7 +31,7 @@ export async function gateBytes(path: string, body: unknown): Promise<{ status: 
   });
   if (!res.ok) {
     const j = (await res.json().catch(() => ({}))) as { error?: string };
-    return { status: res.status, bytes: new ArrayBuffer(0), error: j.error ?? "Gate could not build the file." };
+    return { status: res.status, bytes: new ArrayBuffer(0), error: j.error ?? "Elan1 Govern could not build the file." };
   }
   return { status: res.status, bytes: await res.arrayBuffer() };
 }

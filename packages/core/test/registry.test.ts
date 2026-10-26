@@ -73,7 +73,7 @@ describe("rules by risk tag", () => {
     expect(decide(rb, "crm.issue_refund", { order_id: "o", amount: 500 }, ctx)).toMatchObject({ decision: "ask", ruleId: "money-needs-a-lead", approvers: ["lead@acme.com"] });
     expect(decide(rb, "crm.delete_contact", { contact_id: "c" }, ctx)).toMatchObject({ decision: "refuse", ruleId: "never-delete" });
     expect(decide(rb, "crm.lookup", {}, ctx).decision).toBe("allow");
-    expect(decide(rb, "crm.unknown", {}, ctx)).toMatchObject({ decision: "refuse", ruleId: "default", reason: expect.stringMatching(/not a tool Gate knows/) });
+    expect(decide(rb, "crm.unknown", {}, ctx)).toMatchObject({ decision: "refuse", ruleId: "default", reason: expect.stringMatching(/not a tool Elan1 Govern knows/) });
     // Without the CRM tools in the registry, tag rules can't see their tags.
     expect(decide(rb, "crm.delete_contact", {}).ruleId).toBe("default");
   });

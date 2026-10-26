@@ -17,7 +17,7 @@ type LinkToken = { o: string; a: string; l: string; x: number };
 
 /**
  * Approve or reject. Needs the approver role, a sign-in within the last 10 minutes, and
- * (checked again by Gate) a place on the rule's approver list. An emailed link adds a
+ * (checked again by Elan1 Govern) a place on the rule's approver list. An emailed link adds a
  * single-use, expiring token.
  */
 export const POST = route(
@@ -35,7 +35,7 @@ export const POST = route(
       `/internal/orgs/${ctx.org.id}/approvals/${encodeURIComponent(params.id ?? "")}/resolve`,
       { userId: ctx.user.id, email: ctx.user.email, result: body.result, ...(body.note ? { note: body.note } : {}), ...(linkId ? { linkId } : {}) },
     );
-    if (r.status !== 200) throw new HttpError(r.status === 404 ? 404 : r.status >= 500 ? 502 : r.status, r.data.message ?? "Gate could not record the decision.");
+    if (r.status !== 200) throw new HttpError(r.status === 404 ? 404 : r.status >= 500 ? 502 : r.status, r.data.message ?? "Elan1 Govern could not record the decision.");
     return { status: r.data.status, outcome: r.data.outcome, selfApproval: r.data.selfApproval };
   },
 );

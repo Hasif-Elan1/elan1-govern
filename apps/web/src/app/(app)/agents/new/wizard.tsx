@@ -182,7 +182,7 @@ export function Wizard({ me, industry, connectors, mcpUrl, gateUrl, liveAvailabl
           </div>
         ) : (
           <div className="grid gap-6">
-            <p className="text-ink-2">The agent reaches your tools only through Gate. Connect the ones it needs here; their tokens stay inside Gate.</p>
+            <p className="text-ink-2">The agent reaches your tools only through Elan1 Govern. Connect the ones it needs here; their tokens stay inside Elan1 Govern.</p>
             <div className="grid gap-4 sm:grid-cols-2">
               {(["gmail", "zoho"] as const).map((k) => (
                 <ConnectorCard key={k} kind={k} row={connectors.find((c) => c.kind === k)} manage liveAvailable={liveAvailable[k]} compact />

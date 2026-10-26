@@ -33,7 +33,7 @@ test("an owner adds a webhook, sends a test event, deletes it and rotates the si
   await page.fill("#wh-url", receiver);
   await page.getByLabel(/Action waiting for approval/).check();
   await page.getByRole("button", { name: "Add endpoint" }).click();
-  await expect(page.getByText("Copy it now: Gate will not show it again.")).toBeVisible();
+  await expect(page.getByText("Copy it now: Elan1 Govern will not show it again.")).toBeVisible();
   const secret = await page.locator("code", { hasText: "whsec_" }).innerText();
   expect(secret).toMatch(/^whsec_/);
   await expect(page.getByText("127.0.0.1", { exact: false }).first()).toBeVisible();

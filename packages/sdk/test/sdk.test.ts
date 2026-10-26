@@ -42,6 +42,6 @@ describe("sdk", () => {
     const { f } = fake({ "POST /v1/check": [{ status: 401, body: { error: "Missing or invalid agent API key" } }, { status: 500, body: {} }] });
     const gate = createGate({ url: "http://gate", apiKey: "bad", fetch: f });
     await expect(gate.check("x")).rejects.toEqual(new GateError("Missing or invalid agent API key", 401));
-    await expect(gate.check("x")).rejects.toThrow("Gate returned 500");
+    await expect(gate.check("x")).rejects.toThrow("Elan1 Govern returned 500");
   });
 });

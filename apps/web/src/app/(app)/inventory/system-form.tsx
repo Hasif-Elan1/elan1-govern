@@ -100,13 +100,13 @@ export function SystemDialog({ id, initial, me, linkedAgent, trigger }: { id?: s
           <Plus /> {trigger === "add-first" ? "Add your first AI system" : "Add AI system"}
         </Button>
       )}
-      <DialogContent wide title={id ? `Edit ${initial?.name ?? "system"}` : "Add an AI system"} description={id ? undefined : "Any AI your company uses: a model, a vendor tool, an internal app or an agent outside Gate. You can assess it next."}>
+      <DialogContent wide title={id ? `Edit ${initial?.name ?? "system"}` : "Add an AI system"} description={id ? undefined : "Any AI your company uses: a model, a vendor tool, an internal app or an agent outside Elan1 Govern. You can assess it next."}>
         <form className="grid gap-5" onSubmit={save}>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Name" htmlFor="sys-name">
               <Input id="sys-name" value={v.name} onChange={(e) => set("name", e.target.value)} required minLength={2} maxLength={120} autoFocus />
             </Field>
-            <Field label="Kind" htmlFor="sys-kind" hint={linkedAgent ? "Linked to a Gate agent, so it stays an agent." : undefined}>
+            <Field label="Kind" htmlFor="sys-kind" hint={linkedAgent ? "Linked to an Elan1 Govern agent, so it stays an agent." : undefined}>
               <Select id="sys-kind" value={v.kind} onChange={(e) => set("kind", e.target.value)} disabled={linkedAgent}>
                 {SYSTEM_KINDS.map(([k, label]) => (
                   <option key={k} value={k}>

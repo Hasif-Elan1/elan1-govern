@@ -131,7 +131,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
         actions={manage ? <KillSwitch slug={agent.slug} name={agent.name} paused={agent.status === "paused"} /> : null}
       />
       {agent.status === "paused" ? (
-        <p className="-mt-2 mb-6 rounded-lg border border-no-line bg-no-soft px-4 py-3 text-sm text-ink">This agent is paused. Gate refuses every call it makes until someone resumes it.</p>
+        <p className="-mt-2 mb-6 rounded-lg border border-no-line bg-no-soft px-4 py-3 text-sm text-ink">This agent is paused. Elan1 Govern refuses every call it makes until someone resumes it.</p>
       ) : null}
       <AgentTabs
         overview={overview}

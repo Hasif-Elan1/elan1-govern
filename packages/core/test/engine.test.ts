@@ -27,7 +27,7 @@ describe("decide: documented example", () => {
   it("refuses unknown tools and unmatched calls by default", () => {
     const unknown = decide(rb, "shell.exec", { cmd: "ls" });
     expect(unknown).toMatchObject({ decision: "refuse", ruleId: "default", argsSummary: {} });
-    expect(unknown.reason).toMatch(/not a tool Gate knows/);
+    expect(unknown.reason).toMatch(/not a tool Elan1 Govern knows/);
     const unmatched = decide(rb, "zoho.update_vendor", { vendor_id: "v1", fields: { phone: "1" } });
     expect(unmatched).toMatchObject({ decision: "refuse", ruleId: "default" });
     expect(unmatched.reason).toMatch(/No rule allows/);

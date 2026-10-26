@@ -166,7 +166,7 @@ describe("upstream MCP servers", () => {
     expect(agent.rulebook, created.body).toMatchObject({ ok: true });
     const key = agent.apiKey;
 
-    // Gate lists the upstream tools with their input schemas.
+    // Elan1 Govern lists the upstream tools with their input schemas.
     const listed = (await mcp(ctx.app, key, "tools/list")).body.result!.tools as unknown as { name: string; inputSchema: { properties?: Record<string, unknown> } }[];
     expect(listed.map((t) => t.name)).toEqual(expect.arrayContaining(["crm.lookup", "crm.issue_refund", "crm.delete_contact", "gmail.search", "gate.approval_status"]));
     expect(listed.find((t) => t.name === "crm.issue_refund")!.inputSchema.properties).toMatchObject({ amount: { type: "number" } });
@@ -242,7 +242,7 @@ describe("upstream MCP servers", () => {
     const wrong = "Bearer wrong_key_value_123456";
     const res = await admin(`/internal/orgs/${org.id}/upstreams`, { name: "CRM", url: upstreamUrl, authHeader: wrong, actor: owner.email });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ sync: { ok: false, error: expect.stringMatching(/refused Gate's credentials \(HTTP 401\)/) } });
+    expect(res.json()).toMatchObject({ sync: { ok: false, error: expect.stringMatching(/refused Elan1 Govern's credentials \(HTTP 401\)/) } });
     expect(res.body).not.toContain("wrong_key_value");
     const row = await forOrg(org.id).upstreamServer.findFirstOrThrow();
     expect(row).toMatchObject({ status: "error" });

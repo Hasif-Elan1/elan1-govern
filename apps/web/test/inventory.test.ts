@@ -38,7 +38,7 @@ describe("system fields", () => {
 });
 
 describe("agents in the inventory", () => {
-  it("adds every Gate agent once, however often it runs", async () => {
+  it("adds every Elan1 Govern agent once, however often it runs", async () => {
     const o = await newOrg();
     const db = forOrg(o.id);
     const agent = await db.agent.create({ data: { orgId: o.id, slug: "ap-bot", name: "AP bot", purpose: "Pays vendor bills", ownerEmail: "owner@x.in", riskTier: "high" } });
@@ -78,10 +78,10 @@ describe("approving assessments", () => {
 });
 
 describe("receipts for inventory changes", () => {
-  it("undoes the change when Gate cannot write the receipt", async () => {
+  it("undoes the change when Elan1 Govern cannot write the receipt", async () => {
     const o = await newOrg();
     const db = forOrg(o.id);
-    // This org exists only in the test database, so Gate (running or not) cannot sign for it.
+    // This org exists only in the test database, so Elan1 Govern (running or not) cannot sign for it.
     await expect(
       withReceipt(
         o.id,

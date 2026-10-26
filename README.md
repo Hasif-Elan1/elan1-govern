@@ -1,8 +1,8 @@
-# Gate
+# Elan1 Govern
 
 **Rules, approvals and proof for AI agents that do real work.**
 
-1. Your agent calls its tools through Gate. Before anything runs, Gate checks a signed rulebook and answers **allow**, **ask a person**, or **refuse**. Anything no rule allows is refused, and if Gate itself fails, it refuses.
+1. Your agent calls its tools through Elan1 Govern. Before anything runs, Elan1 Govern checks a signed rulebook and answers **allow**, **ask a person**, or **refuse**. Anything no rule allows is refused, and if Elan1 Govern itself fails, it refuses.
 2. Every decision becomes a **receipt**: hash-chained and signed, so any later edit is detectable. An auditor can check an exported bundle offline with one command, no account needed.
 3. A **registry** of agents, owners, risk tiers and rulebooks, mapped to a library of ten frameworks (EU AI Act, NIST AI RMF, ISO/IEC 42001, GDPR, HIPAA, SOC 2, India DPDP, RBI FREE-AI and more). The auditor pack is generated from real receipts, not written by hand.
 4. One rulebook both **blocks** actions and **produces the compliance proof**. It works with any MCP agent or through a tiny SDK.
@@ -34,7 +34,7 @@ pnpm run setup && pnpm dev
 
 Sign in at **http://localhost:3000** as `owner@demo.test`, with the password in `.env` (`DEMO_OWNER_PASSWORD`). Approval emails land in Mailpit at **http://localhost:8025**.
 
-The values in `.env.example` are **for development only**. For production, generate real ones with `pnpm run secrets` and set `APP_ENV=production`; Gate refuses to start with the sample secrets in that mode.
+The values in `.env.example` are **for development only**. For production, generate real ones with `pnpm run secrets` and set `APP_ENV=production`; Elan1 Govern refuses to start with the sample secrets in that mode.
 
 ---
 
@@ -44,10 +44,10 @@ The values in `.env.example` are **for development only**. For production, gener
 pnpm demo
 ```
 
-A scripted accounts-payable agent connects to Gate over MCP, using mock Gmail and Zoho Books with Indian vendor invoices:
+A scripted accounts-payable agent connects to Elan1 Govern over MCP, using mock Gmail and Zoho Books with Indian vendor invoices:
 
 ```
-Gate demo · AP agent → http://localhost:4000/mcp
+Elan1 Govern demo · AP agent → http://localhost:4000/mcp
 
 1  Read 3 invoice emails                            allowed  read-mail
 2  Pay ₹18,000 to Kaveri Logistics for KL-1187      allowed  pay-small  PAY-8801
@@ -55,12 +55,12 @@ Gate demo · AP agent → http://localhost:4000/mcp
    http://localhost:3000/approvals/apr_…
 3  Pay ₹2,00,000 to Sharma Traders for INV-2291     waiting  pay-large  approved · PAY-8802
 4  Change Sharma Traders' bank account and IFSC     refused  no-bank-change
-5  Delete an email (a tool Gate does not offer)     refused  default
+5  Delete an email (a tool Elan1 Govern does not offer)     refused  default
 
 All 5 steps behaved as the rulebook says.
 ```
 
-**Step 3 waits for you.** Open the link (or the email in Mailpit), check the vendor, the bill and the invoice, and press **Approve**. Gate runs the payment and the demo finishes. It works the same on a phone:
+**Step 3 waits for you.** Open the link (or the email in Mailpit), check the vendor, the bill and the invoice, and press **Approve**. Elan1 Govern runs the payment and the demo finishes. It works the same on a phone:
 
 <img src="docs/screenshots/14-approval-phone.png" width="300" alt="Approving on a phone">
 
@@ -76,12 +76,12 @@ Then look around:
 
 More: [assessments](docs/screenshots/16-assessments.png), [a framework's requirements](docs/screenshots/18-compliance-eu-ai-act.png), [connectors and MCP servers](docs/screenshots/09-connectors.png), [settings](docs/screenshots/11-settings.png), [single sign-on](docs/screenshots/19-single-sign-on.png), [dark mode](docs/screenshots/12-today-dark.png), [sign-in](docs/screenshots/01-sign-in.png).
 
-New here? Start with [docs/GUIDE.md](docs/GUIDE.md), the plain-English guide to what Gate does and how to run it.
+New here? Start with [docs/GUIDE.md](docs/GUIDE.md), the plain-English guide to what Elan1 Govern does and how to run it.
 
 **Check the evidence yourself.** On the Evidence page, download the auditor pack, then:
 
 ```bash
-pnpm gate verify ~/Downloads/auditor-pack-2026-10-01-to-2026-10-26.zip
+pnpm govern verify ~/Downloads/auditor-pack-2026-10-01-to-2026-10-26.zip
 # Chain intact: 31 receipts
 #   receipts 1–31, 2 signed checkpoints
 #   organisation: Demo Traders Pvt Ltd
@@ -96,7 +96,7 @@ New users get the same demo from the **Try the demo agent** button after sign-up
 
 ## Connect a real agent
 
-Every agent gets an **MCP address** and an **API key** (Agents → your agent → *Keys and connection*). The key is shown once; Gate stores only its hash.
+Every agent gets an **MCP address** and an **API key** (Agents → your agent → *Keys and connection*). The key is shown once; Elan1 Govern stores only its hash.
 
 **Any MCP client** (Claude, Cursor, your own), using streamable HTTP:
 
@@ -112,7 +112,7 @@ Every agent gets an **MCP address** and an **API key** (Agents → your agent �
 }
 ```
 
-The agent sees the tools, Gate decides each call. A refusal comes back as a tool error naming the rule. An action that needs a person returns `status: pending` and an `approval_id`; the agent calls `gate.approval_status` to wait up to 30 seconds at a time for the decision and the result.
+The agent sees the tools, Elan1 Govern decides each call. A refusal comes back as a tool error naming the rule. An action that needs a person returns `status: pending` and an `approval_id`; the agent calls `gate.approval_status` to wait up to 30 seconds at a time for the decision and the result.
 
 **Your own agent loop**, with the TypeScript SDK (`packages/sdk`):
 
@@ -137,7 +137,7 @@ REST equivalents: `POST /v1/check`, `POST /v1/record`, `GET /v1/approvals/:id?wa
 
 The agent-facing API (`/v1/check`, `/v1/record`, `/v1/approvals/{id}`) and the MCP endpoint are described in **OpenAPI 3.1**:
 
-- served by Gate, no key needed: `GET http://localhost:4000/v1/openapi.json`
+- served by Elan1 Govern, no key needed: `GET http://localhost:4000/v1/openapi.json`
 - checked in: [`docs/openapi.json`](docs/openapi.json)
 
 It is generated from the same zod schemas the routes validate with, including response and error shapes (every error is `{ "error": "plain-English message" }`). After changing a schema, run `pnpm --filter @gate/gate openapi`; a test fails if the file is out of date.
@@ -146,7 +146,7 @@ It is generated from the same zod schemas the routes validate with, including re
 
 ## Webhooks
 
-Send Gate's events to a SIEM, a log store or your own tools. In **Settings → Webhooks** (owners and admins), add an endpoint URL and pick events:
+Send Elan1 Govern's events to a SIEM, a log store or your own tools. In **Settings → Webhooks** (owners and admins), add an endpoint URL and pick events:
 
 | Event | When | `data` |
 |---|---|---|
@@ -154,7 +154,7 @@ Send Gate's events to a SIEM, a log store or your own tools. In **Settings → W
 | `approval.pending` | An action waits for a person | Approval id, agent, tool, rule, summary, expiry |
 | `approval.resolved` | It was approved, rejected or expired | The same, plus who decided and the outcome |
 
-Gate shows the endpoint's **signing secret once**. Each delivery is a `POST` with `content-type: application/json` and:
+Elan1 Govern shows the endpoint's **signing secret once**. Each delivery is a `POST` with `content-type: application/json` and:
 
 ```
 gate-signature: t=1793000000,v1=<hex HMAC-SHA256 of "1793000000.<raw body>">
@@ -177,16 +177,16 @@ app.post("/gate-events", express.raw({ type: "application/json" }), (req, res) =
 });
 ```
 
-Any 2xx counts as delivered. Anything else (or no answer within 10 seconds) is retried with backoff, up to 8 attempts over about an hour; Settings shows each delivery's status and last error, and **Send a test event** checks an endpoint at once. Events are sent after the receipt is committed, from a durable job queue, so agents never wait for them. Gate refuses to call private, loopback or link-local addresses unless `WEBHOOK_ALLOW_PRIVATE=true` (the default outside production, so a local receiver works in development).
+Any 2xx counts as delivered. Anything else (or no answer within 10 seconds) is retried with backoff, up to 8 attempts over about an hour; Settings shows each delivery's status and last error, and **Send a test event** checks an endpoint at once. Events are sent after the receipt is committed, from a durable job queue, so agents never wait for them. Elan1 Govern refuses to call private, loopback or link-local addresses unless `WEBHOOK_ALLOW_PRIVATE=true` (the default outside production, so a local receiver works in development).
 
 ## Rotating keys
 
 Each organisation signs receipts, checkpoints, rulebooks and evidence with its own Ed25519 key. To replace it (a scheduled rotation, or someone left who could have seen it), an owner opens **Settings → Signing keys → Rotate signing key** and confirms (a sign-in within the last 10 minutes is required).
 
-- Gate writes a `key.rotated` receipt **signed with the old key** that names the new key's id, so the chain itself records the handover.
+- Elan1 Govern writes a `key.rotated` receipt **signed with the old key** that names the new key's id, so the chain itself records the handover.
 - From then on everything is signed with the new key. The old key is retired, not deleted: older receipts still verify, and anything it signs after its retirement time is rejected.
 - Every receipt and checkpoint carries `kid`, the id (fingerprint) of the key that signed it. Rulebooks are re-signed with the new key.
-- Evidence bundles include `public_keys.json` (every key, by id) next to `public_key.pem` (the current key). `gate verify` picks the key for each receipt, and older bundles verify as before:
+- Evidence bundles include `public_keys.json` (every key, by id) next to `public_key.pem` (the current key). `govern verify` picks the key for each receipt, and older bundles verify as before:
 
 ```
 Chain intact: 58 receipts
@@ -206,7 +206,7 @@ The mock connectors are the default, so everything works with no accounts. To us
 
 **Gmail (Google OAuth)**
 1. In Google Cloud Console, create an OAuth client of type *Web application*.
-2. Add the redirect URI `http://localhost:4000/oauth/gmail/callback` (your Gate URL in production).
+2. Add the redirect URI `http://localhost:4000/oauth/gmail/callback` (your Elan1 Govern URL in production).
 3. Enable the Gmail API. The scopes requested are `gmail.readonly` and `gmail.compose` only.
 4. Put the client id and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then restart.
 5. Connectors → Gmail → **Connect a Google account**.
@@ -215,9 +215,9 @@ The mock connectors are the default, so everything works with no accounts. To us
 1. At https://api-console.zoho.in create a *Server-based application*.
 2. Redirect URI: `http://localhost:4000/oauth/zoho/callback`.
 3. Set `ZOHO_CLIENT_ID` and `ZOHO_CLIENT_SECRET` in `.env`. `ZOHO_ACCOUNTS_URL` and `ZOHO_API_URL` already point at `zoho.in`.
-4. Connectors → Zoho Books → **Connect Zoho Books**. Gate picks the first Books organisation on the account.
+4. Connectors → Zoho Books → **Connect Zoho Books**. Elan1 Govern picks the first Books organisation on the account.
 
-Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); the web app and the agent never see them. Set `CONNECTOR_MODE=live` to make new connectors default to real accounts.
+Tokens go straight to Elan1 Govern's callback and are stored encrypted (AES-256-GCM); the web app and the agent never see them. Set `CONNECTOR_MODE=live` to make new connectors default to real accounts.
 
 ---
 
@@ -226,31 +226,31 @@ Tokens go straight to Gate's callback and are stored encrypted (AES-256-GCM); th
 Owners can turn on OIDC single sign-on (Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak…) in **Settings → Single sign-on**:
 
 1. In your identity provider, create an OIDC web app with the redirect URL shown on that page (`<WEB_URL>/api/auth/sso/callback`) and the scopes `openid email profile`.
-2. Enter the issuer URL, client ID, client secret and your email domains. Gate checks the issuer before saving and stores the secret encrypted.
+2. Enter the issuer URL, client ID, client secret and your email domains. Elan1 Govern checks the issuer before saving and stores the secret encrypted.
 3. Prove you own each domain with the DNS TXT record shown (`gate-verify=…`), then press **Verify**.
 4. Optionally **require** single sign-on, which turns off password sign-in for those domains.
 
 People who sign in for the first time are added with the role you choose (never Owner). Sign-in uses the authorization code flow with PKCE, state and nonce.
 ## AI inventory and assessments
 
-Gate keeps a register of **every AI system your company uses**, not only the agents it guards, and structured assessments with a second-person sign-off.
+Elan1 Govern keeps a register of **every AI system your company uses**, not only the agents it guards, and structured assessments with a second-person sign-off.
 
-- **Inventory** (sidebar → Inventory): name, kind (agent, model, vendor tool, internal app), vendor, owner, business unit, stage (proposed → in review → approved → live → retired), risk tier, the kinds of data it touches, who it affects, whether it makes decisions, and the next review date (amber once overdue). Every Gate agent appears automatically, linked to its agent page. Owners and admins add, edit and retire systems; everyone else reads.
+- **Inventory** (sidebar → Inventory): name, kind (agent, model, vendor tool, internal app), vendor, owner, business unit, stage (proposed → in review → approved → live → retired), risk tier, the kinds of data it touches, who it affects, whether it makes decisions, and the next review date (amber once overdue). Every Elan1 Govern agent appears automatically, linked to its agent page. Owners and admins add, edit and retire systems; everyone else reads.
 - **Assessments** (sidebar → Assessments, or *Start assessment* on a system): three built-in templates, each marked *Draft — needs legal review*:
   - **AI risk triage**: nine quick questions that set a starting tier. Uses in hiring, credit, education, essential services, justice, biometrics or safety always come out high.
   - **AI impact assessment**: people affected, possible harms, severity, bias testing, oversight and remedies. Inspired by the topics of an EU AI Act Article 27 fundamental rights impact assessment; it does not on its own meet any legal requirement.
   - **Data protection check**: lawful basis and consent, notice, rights, minimisation, training use, retention, cross-border transfer, children's data and security. Inspired by DPIAs under India's DPDP Act and the GDPR; not legal advice.
 - **Scoring is deterministic**: each answer carries points, the total maps to low / medium / high by the template's thresholds, and some answers force a minimum tier. The page shows the score, the thresholds and every answer that added to it.
 - **Sign-off**: owners, admins and approvers draft and submit; owners and admins approve or request changes, **never their own submission** (enforced on the server). Approving sets the system's tier to the highest result among the latest approved assessment of each template, and schedules the next review: 6 months for high, 12 for medium, 24 for low.
-- **Receipts**: adding or changing a system, submitting, approving and requesting changes are signed receipts on the same chain as agent decisions (Activity → Setup changes). If Gate cannot write the receipt, the change is undone.
+- **Receipts**: adding or changing a system, submitting, approving and requesting changes are signed receipts on the same chain as agent decisions (Activity → Setup changes). If Elan1 Govern cannot write the receipt, the change is undone.
 
 The templates are code (`packages/core/src/assessments.ts`), versioned; each assessment stores the template key and version it was answered against.
 ## Govern any MCP server
 
-Gmail and Zoho Books are built in, but Gate can sit in front of **any MCP server** your agents already use: a CRM, a ticketing system, health records, cloud operations. The agent connects to Gate only; Gate holds the server's credentials and forwards a call only when your rules allow it.
+Gmail and Zoho Books are built in, but Elan1 Govern can sit in front of **any MCP server** your agents already use: a CRM, a ticketing system, health records, cloud operations. The agent connects to Elan1 Govern only; Elan1 Govern holds the server's credentials and forwards a call only when your rules allow it.
 
-1. **Connectors → Your MCP servers → Add an MCP server.** Give it a name (it becomes the tool prefix: `CRM` gives `crm.issue_refund`), its streamable HTTP URL, and optionally the `Authorization` header value it needs. Gate stores the header encrypted and never shows it again.
-2. **Gate lists the server's tools** (`tools/list`) and suggests risk tags from each tool's name: *refund, pay, charge, transfer* → moves money; *delete, remove* → deletes data; *send, email, post* → contacts people outside the company; *grant, role, permission* → changes access; *deploy, restart, scale* → changes production; *create, update, set* → changes records; *get, list, search, read* → reads data.
+1. **Connectors → Your MCP servers → Add an MCP server.** Give it a name (it becomes the tool prefix: `CRM` gives `crm.issue_refund`), its streamable HTTP URL, and optionally the `Authorization` header value it needs. Elan1 Govern stores the header encrypted and never shows it again.
+2. **Elan1 Govern lists the server's tools** (`tools/list`) and suggests risk tags from each tool's name: *refund, pay, charge, transfer* → moves money; *delete, remove* → deletes data; *send, email, post* → contacts people outside the company; *grant, role, permission* → changes access; *deploy, restart, scale* → changes production; *create, update, set* → changes records; *get, list, search, read* → reads data.
 3. **Check the tags and switch tools on.** New tools stay off until you do, and only switched-on tools are shown to agents. Press **Sync tools** when the server changes; your tags and choices are kept.
 4. **Write rules by tag**, so one rule covers every tool that does the same kind of thing, on every server:
 
@@ -273,14 +273,14 @@ rules:
     decide: refuse
 ```
 
-A rule can still name one tool (`tool: crm.issue_refund`). The rule builder offers the server's tools and a number condition for any number field in a tool's input schema. Everything else works as for the built-in tools: the strictest rule wins, quotas, approvals (Gate runs the call on the server once approved), and minimised receipts. A tool that is unknown, switched off or removed is refused.
+A rule can still name one tool (`tool: crm.issue_refund`). The rule builder offers the server's tools and a number condition for any number field in a tool's input schema. Everything else works as for the built-in tools: the strictest rule wins, quotas, approvals (Elan1 Govern runs the call on the server once approved), and minimised receipts. A tool that is unknown, switched off or removed is refused.
 
-Gate only connects to public addresses in production. Set `UPSTREAM_ALLOW_PRIVATE=true` to allow servers on your own network; it is on by default outside `APP_ENV=production`.
+Elan1 Govern only connects to public addresses in production. Set `UPSTREAM_ALLOW_PRIVATE=true` to allow servers on your own network; it is on by default outside `APP_ENV=production`.
 ## Frameworks and industry packs
 
-Gate is not only for accounts payable. The demo is one example; the same rules, approvals and receipts work for any agent.
+Elan1 Govern is not only for accounts payable. The demo is one example; the same rules, approvals and receipts work for any agent.
 
-**Framework library.** Ten frameworks, each with its official link and a list of requirements at the level of an article, section, function or pillar: EU AI Act, NIST AI RMF 1.0, ISO/IEC 42001:2023, India's DPDP Act 2023, RBI FREE-AI (August 2025 report), GDPR, HIPAA Privacy and Security Rules, SOC 2 (2017 Trust Services Criteria), Colorado AI Act (SB 24-205) and NYC Local Law 144. Thirteen controls (things Gate actually does, each backed by a kind of receipt) map to those requirements.
+**Framework library.** Ten frameworks, each with its official link and a list of requirements at the level of an article, section, function or pillar: EU AI Act, NIST AI RMF 1.0, ISO/IEC 42001:2023, India's DPDP Act 2023, RBI FREE-AI (August 2025 report), GDPR, HIPAA Privacy and Security Rules, SOC 2 (2017 Trust Services Criteria), Colorado AI Act (SB 24-205) and NYC Local Law 144. Thirteen controls (things Elan1 Govern actually does, each backed by a kind of receipt) map to those requirements.
 
 **Compliance** (in the sidebar) shows the frameworks you have turned on, with coverage: the share of requirements that have at least one control with live evidence on your chain. Open one to see each requirement, the controls behind it, their evidence counts, and the gaps, called out as "No control covers this yet". **Download framework report** gets a PDF built by the gate service from the same numbers (like the auditor pack, and logged as an evidence export). The compliance map on the Evidence page and in the auditor pack show only the frameworks you have turned on.
 
@@ -314,7 +314,7 @@ packages/core       Rule engine, receipt chain, crypto, bundle verifier (pure, n
 packages/db         Prisma schema, tenant-scoped client (forOrg), serialized chain writer
 packages/connectors Gmail, Zoho Books (zoho.in) and mock connectors
 packages/sdk        gate.check() / gate.record() / gate.waitForApproval() / verifyWebhook()
-packages/cli        gate verify | sign | keygen
+packages/cli        govern verify | sign | keygen
 e2e                 Playwright end-to-end and security tests
 ```
 
@@ -326,7 +326,7 @@ e2e                 Playwright end-to-end and security tests
 | `pnpm lint` · `pnpm typecheck` | ESLint, strict TypeScript |
 | `pnpm security` | `pnpm audit`, semgrep, gitleaks |
 | `pnpm security:zap` | OWASP ZAP baseline against the running stack |
-| `pnpm gate verify <zip>` | Check an evidence bundle or auditor pack offline |
-| `pnpm gate keygen` · `pnpm gate sign <yaml> --key k.pem` | Make keys and sign rulebooks offline |
+| `pnpm govern verify <zip>` | Check an evidence bundle or auditor pack offline |
+| `pnpm govern keygen` · `pnpm govern sign <yaml> --key k.pem` | Make keys and sign rulebooks offline |
 
 Read next: [SECURITY.md](SECURITY.md) (threat model and scanner results), [DECISIONS.md](DECISIONS.md) (choices made where the brief was open), [PLAN.md](PLAN.md).

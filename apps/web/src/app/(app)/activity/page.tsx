@@ -18,7 +18,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   const [items, agents] = await Promise.all([activity(ctx.org.id, filter), forOrg(ctx.org.id).agent.findMany({ select: { slug: true, name: true }, orderBy: { name: "asc" } })]);
   return (
     <>
-      <PageHeader title="Activity" description="Every decision Gate made, newest first. Each one is a signed receipt linked to the one before it." />
+      <PageHeader title="Activity" description="Every decision Elan1 Govern made, newest first. Each one is a signed receipt linked to the one before it." />
       <ActivityView
         items={items}
         filter={filter}

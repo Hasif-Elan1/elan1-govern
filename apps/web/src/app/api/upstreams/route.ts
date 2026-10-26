@@ -10,8 +10,8 @@ const Body = z
   })
   .strict();
 
-/** Add an MCP server. The auth header goes straight to Gate, which stores it encrypted; it is never shown again. */
+/** Add an MCP server. The auth header goes straight to Elan1 Govern, which stores it encrypted; it is never shown again. */
 export const POST = route({ auth: "org", permission: "connectors:manage", body: Body }, async ({ body, ctx }) => {
   const { authHeader, ...rest } = body;
-  return gateOk("POST", `/internal/orgs/${ctx.org.id}/upstreams`, { ...rest, ...(authHeader ? { authHeader } : {}), actor: ctx.user.email }, "Gate could not add the server.");
+  return gateOk("POST", `/internal/orgs/${ctx.org.id}/upstreams`, { ...rest, ...(authHeader ? { authHeader } : {}), actor: ctx.user.email }, "Elan1 Govern could not add the server.");
 });

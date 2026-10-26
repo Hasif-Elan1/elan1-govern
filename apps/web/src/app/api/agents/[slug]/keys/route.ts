@@ -11,6 +11,6 @@ export const POST = route({ auth: "org", permission: "agents:manage", body: Body
   if (!agent) throw new HttpError(404, "No such agent.");
   if (body.revokeKeyId && !(await forOrg(ctx.org.id).apiKey.findFirst({ where: { id: body.revokeKeyId, agentId: agent.id } }))) throw new HttpError(404, "No such key.");
   const r = await gate<{ apiKey?: string | null; error?: string }>("POST", `/internal/orgs/${ctx.org.id}/agents/${agent.id}/keys`, { actor: ctx.user.email, ...(body.revokeKeyId ? { revokeKeyId: body.revokeKeyId } : {}) });
-  if (r.status !== 200) throw new HttpError(502, r.data.error ?? "Gate could not change the keys.");
+  if (r.status !== 200) throw new HttpError(502, r.data.error ?? "Elan1 Govern could not change the keys.");
   return { apiKey: r.data.apiKey ?? null };
 });

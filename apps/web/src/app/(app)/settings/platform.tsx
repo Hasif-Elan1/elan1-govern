@@ -47,7 +47,7 @@ export function WebhookForm() {
           }
         }}
       >
-        <Field label="Endpoint URL" htmlFor="wh-url" hint="Gate sends a signed POST with a JSON body. Use https in production." error={error}>
+        <Field label="Endpoint URL" htmlFor="wh-url" hint="Elan1 Govern sends a signed POST with a JSON body. Use https in production." error={error}>
           <Input id="wh-url" name="url" type="url" required maxLength={2000} placeholder="https://siem.example.com/gate" />
         </Field>
         <fieldset className="grid gap-2">
@@ -75,7 +75,7 @@ export function WebhookForm() {
       </form>
       {secret ? (
         <div className="max-w-xl">
-          <p className="mb-1.5 text-[13px] text-ink-2">This is the signing secret. Copy it now: Gate will not show it again. Use it to check the gate-signature header on each request.</p>
+          <p className="mb-1.5 text-[13px] text-ink-2">This is the signing secret. Copy it now: Elan1 Govern will not show it again. Use it to check the gate-signature header on each request.</p>
           <Secret value={secret} label="Copy secret" />
         </div>
       ) : null}
@@ -106,7 +106,7 @@ export function WebhookRow({ hook }: { hook: WebhookView }) {
     try {
       const r = await api<{ outcome?: string }>(`/api/webhooks/${hook.id}/test`);
       if (r.outcome === "delivered") toast.ok("Test event delivered.");
-      else toast.error("The test event did not get through. Gate will retry it; see the latest delivery below.");
+      else toast.error("The test event did not get through. Elan1 Govern will retry it; see the latest delivery below.");
       router.refresh();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not send the test event.");
@@ -163,7 +163,7 @@ export function WebhookRow({ hook }: { hook: WebhookView }) {
         <p className="mt-3 text-[13px] text-ink-3">No deliveries yet. Send a test event to check the endpoint.</p>
       )}
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent title="Delete this endpoint?" description={`Gate stops sending events to ${shown} at once, and its delivery history is removed. A receipt records the change.`}>
+        <DialogContent title="Delete this endpoint?" description={`Elan1 Govern stops sending events to ${shown} at once, and its delivery history is removed. A receipt records the change.`}>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirm(false)}>Cancel</Button>
             <Button variant="danger" disabled={!!busy} onClick={remove}>
@@ -210,7 +210,7 @@ export function RotateKey({ current, totpEnabled }: { current: string; totpEnabl
           title="Rotate the signing key?"
           description={
             <>
-              Gate makes a new key and signs everything with it from now on. The current key, <code className="font-mono">{current}</code>, is retired but kept, so older receipts and evidence still check out. The handover is itself
+              Elan1 Govern makes a new key and signs everything with it from now on. The current key, <code className="font-mono">{current}</code>, is retired but kept, so older receipts and evidence still check out. The handover is itself
               written to a receipt signed by the old key.
             </>
           }
@@ -227,7 +227,7 @@ export function RotateKey({ current, totpEnabled }: { current: string; totpEnabl
       <ReauthDialog
         open={reauth}
         needTotp={totpEnabled}
-        description="Rotating the signing key changes how evidence is checked, so Gate asks for your password if you signed in more than 10 minutes ago."
+        description="Rotating the signing key changes how evidence is checked, so Elan1 Govern asks for your password if you signed in more than 10 minutes ago."
         onCancel={() => setReauth(false)}
         onDone={() => {
           setReauth(false);

@@ -45,18 +45,18 @@ function Flow({ active, hideSteps, industry, regions, next }: { active: number; 
       {active === 0 ? (
         <>
           <h1 className="text-2xl font-semibold">What's your company called?</h1>
-          <p className="mt-1.5 mb-7 text-ink-2">Gate creates a signing key for it. Every receipt your agents produce is signed with this key.</p>
+          <p className="mt-1.5 mb-7 text-ink-2">Elan1 Govern creates a signing key for it. Every receipt your agents produce is signed with this key.</p>
           <OrgForm />
         </>
       ) : active === 1 ? (
         <>
           <h1 className="text-2xl font-semibold">What will your agents work on?</h1>
-          <p className="mt-1.5 mb-7 text-ink-2">Gate turns on the frameworks that usually apply, and new agents start from rules that suit the work. You can change all of it later.</p>
+          <p className="mt-1.5 mb-7 text-ink-2">Elan1 Govern turns on the frameworks that usually apply, and new agents start from rules that suit the work. You can change all of it later.</p>
           <IndustryForm industry={industry ?? null} regions={regions ?? []} next={next ?? "/onboarding?step=demo"} />
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-semibold">See Gate stop an agent</h1>
+          <h1 className="text-2xl font-semibold">See Elan1 Govern stop an agent</h1>
           <p className="mt-1.5 text-ink-2">The demo agent pays vendor invoices using a pretend Gmail inbox and Zoho Books. In about ten seconds it will:</p>
           <ul className="mt-4 mb-4 grid gap-2 text-[15px]">
             <li className="flex gap-3"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-ok" />read three invoice emails, and pay ₹18,000 on its own</li>

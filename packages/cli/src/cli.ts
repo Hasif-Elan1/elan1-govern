@@ -11,12 +11,12 @@ import {
   verifyRulebook,
 } from "@gate/core";
 
-const HELP = `gate — offline tools for Gate evidence and rulebooks
+const HELP = `govern — offline tools for Elan1 Govern evidence and rulebooks
 
-  gate verify <bundle.zip> [--key public.pem]   Check every receipt, link and signature
-  gate sign <rulebook.yaml> --key private.pem [--out file]
+  govern verify <bundle.zip> [--key public.pem]   Check every receipt, link and signature
+  govern sign <rulebook.yaml> --key private.pem [--out file]
                                                 Validate and sign a rulebook
-  gate keygen [--out-dir dir]                   Create an Ed25519 key pair
+  govern keygen [--out-dir dir]                   Create an Ed25519 key pair
 
 No account or network needed.`;
 
@@ -34,7 +34,7 @@ export async function main(argv: string[], out: Out = console.log, err: Out = co
   if (cmd === "verify") {
     const file = positional[0];
     if (!file || !existsSync(file)) {
-      err("Usage: gate verify <bundle.zip> [--key public.pem]");
+      err("Usage: govern verify <bundle.zip> [--key public.pem]");
       return 2;
     }
     const keyFile = flag(rest, "--key");
@@ -57,7 +57,7 @@ export async function main(argv: string[], out: Out = console.log, err: Out = co
     const file = positional[0];
     const keyFile = flag(rest, "--key");
     if (!file || !keyFile) {
-      err("Usage: gate sign <rulebook.yaml> --key private.pem [--out file]");
+      err("Usage: govern sign <rulebook.yaml> --key private.pem [--out file]");
       return 2;
     }
     const parsed = parseRulebookYaml(readFileSync(file, "utf8"));

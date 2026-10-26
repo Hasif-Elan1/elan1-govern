@@ -3,8 +3,8 @@
  *
  * Each framework lists requirements at the level of an article, section, clause, function
  * or pillar: the place a reviewer would look. Summaries are one plain line written by the
- * Gate team from the official text. They are starting points, not legal advice, and not a
- * claim that using Gate satisfies any law or standard.
+ * Elan1 Govern team from the official text. They are starting points, not legal advice, and not a
+ * claim that using Elan1 Govern satisfies any law or standard.
  */
 
 export const LEGAL_REVIEW_NOTE = "Draft — needs legal review";

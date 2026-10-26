@@ -70,7 +70,7 @@ export const POST = route({ auth: "org", permission: "agents:manage", body: Body
     yaml: rulebookToYaml(rb.rulebook),
     actor: ctx.user.email,
   });
-  if (r.status !== 200) throw new HttpError(r.status === 409 ? 409 : 502, r.data.error ?? "Gate could not create the agent.");
+  if (r.status !== 200) throw new HttpError(r.status === 409 ? 409 : 502, r.data.error ?? "Elan1 Govern could not create the agent.");
   // The new agent joins the AI inventory straight away (the inventory page also catches up on load).
   await syncAgentSystems(ctx.org.id);
   return { slug, tier, apiKey: r.data.apiKey, rulebook: r.data.rulebook };

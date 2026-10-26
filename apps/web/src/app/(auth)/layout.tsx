@@ -1,7 +1,7 @@
 import { Wordmark } from "@/components/logo";
 import { Stamp } from "@/components/ui/status";
 
-/** A sample receipt: the thing Gate produces, shown beside sign-in on wide screens. */
+/** A sample receipt: the thing Elan1 Govern produces, shown beside sign-in on wide screens. */
 function SampleReceipt() {
   return (
     <div className="w-full max-w-[360px]">
@@ -44,7 +44,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto flex w-full max-w-[400px] flex-1 flex-col justify-center py-10">{children}</main>
         <p className="mx-auto max-w-[400px] text-center text-[13px] text-ink-3 lg:hidden">Every action your agents take is checked, and every decision is signed.</p>
       </div>
-      <aside className="hidden items-center justify-center border-l border-line bg-sunken px-12 lg:flex" aria-label="What Gate records">
+      <aside className="hidden items-center justify-center border-l border-line bg-sunken px-12 lg:flex" aria-label="What Elan1 Govern records">
         <SampleReceipt />
       </aside>
     </div>

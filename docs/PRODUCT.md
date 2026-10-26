@@ -1,4 +1,4 @@
-# Gate: product overview
+# Elan1 Govern: product overview
 
 ## The problem
 
@@ -9,22 +9,22 @@ Companies are giving AI agents real permissions: sending email, paying invoices,
 
 Regulation is making both mandatory. The EU AI Act requires record-keeping and human oversight for high-risk systems. India's DPDP Act and the RBI's FREE-AI framework push regulated entities toward accountable AI. US state laws such as Colorado's AI Act add impact assessments.
 
-## What Gate does
+## What Elan1 Govern does
 
 **One rulebook both blocks actions and produces the compliance proof.**
 
 | | |
 |---|---|
-| **Guard** | Agents call their tools through Gate (MCP or a small SDK). Before anything runs, Gate checks a signed rulebook and answers *allow*, *ask a person* or *refuse*. Anything not allowed is refused, and if Gate fails it refuses. |
+| **Guard** | Agents call their tools through Elan1 Govern (MCP or a small SDK). Before anything runs, Elan1 Govern checks a signed rulebook and answers *allow*, *ask a person* or *refuse*. Anything not allowed is refused, and if Elan1 Govern fails it refuses. |
 | **Approvals** | High-impact actions wait for a named person, by email or on a phone, with the evidence they need (the invoice, the vendor, the amount). |
-| **Proof** | Every decision becomes a signed, hash-chained receipt. Auditors verify an exported bundle offline with one command, with no account and no trust in Gate. |
+| **Proof** | Every decision becomes a signed, hash-chained receipt. Auditors verify an exported bundle offline with one command, with no account and no trust in Elan1 Govern. |
 | **Governance** | A registry of AI systems and owners, risk and impact assessments with sign-off, and a framework library (EU AI Act, NIST AI RMF, ISO/IEC 42001, DPDP, RBI FREE-AI, GDPR, HIPAA, SOC 2, Colorado AI Act, NYC LL 144) whose evidence is counted from real receipts. |
 
-Rules work by **risk tag** as well as by tool: "anything that moves money over ₹50,000 needs finance", "never delete", "at most 50 external emails an hour". So one rulebook governs tools Gate has never seen, from any MCP server, in any industry.
+Rules work by **risk tag** as well as by tool: "anything that moves money over ₹50,000 needs finance", "never delete", "at most 50 external emails an hour". So one rulebook governs tools Elan1 Govern has never seen, from any MCP server, in any industry.
 
 ## Why it is different
 
-- **Enforcement and evidence in one place.** Governance platforms such as Credo AI focus on the program side: registries, assessments, policy packs and reports. Agent security tools focus on blocking. Gate does both from the same rulebook, so the evidence is a by-product of control rather than a separate reporting exercise.
+- **Enforcement and evidence in one place.** Governance platforms such as Credo AI focus on the program side: registries, assessments, policy packs and reports. Agent security tools focus on blocking. Elan1 Govern does both from the same rulebook, so the evidence is a by-product of control rather than a separate reporting exercise.
 - **Proof anyone can check.** Receipts are signed and chained; the verifier is open and offline. That is a stronger claim than "our logs say so".
 - **Works with any agent.** MCP-native, plus a REST/SDK path. No model or framework lock-in, and an upstream MCP proxy so existing tools can be governed in minutes.
 - **Self-serve.** Sign up, add an agent, copy an address and a key. The demo agent shows allow, ask and refuse in under two minutes.
@@ -32,7 +32,7 @@ Rules work by **risk tag** as well as by tool: "anything that moves money over �
 
 ## Who it is for
 
-| Industry | Example agent | What Gate enforces |
+| Industry | Example agent | What Elan1 Govern enforces |
 |---|---|---|
 | Finance and accounting | Accounts payable: invoices to bills to payments | Payments over a threshold need finance; bank-detail changes are refused; daily limits |
 | Customer support | Refunds and account changes | Refunds over a limit need a lead; deletions refused; external messages rate-limited |
@@ -60,8 +60,8 @@ Buyers: the owner of the AI program (CTO, head of AI, COO), with compliance, fin
 | Cloud KMS and HSM key providers | Customer-managed keys |
 | Shared rate limiting and a multi-region deployment guide | Scale and availability |
 | More first-party connectors (Slack, Salesforce, Jira, Tally, Razorpay) | Faster time to value in key industries |
-| Policy-as-code in CI (`gate sign` in pull requests) | Rulebooks reviewed like code |
-| SOC 2 Type I for Gate itself | Procurement |
+| Policy-as-code in CI (`govern sign` in pull requests) | Rulebooks reviewed like code |
+| SOC 2 Type I for Elan1 Govern itself | Procurement |
 
 ## Honest status
 

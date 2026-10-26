@@ -1,4 +1,4 @@
-// pnpm dev: Gate on :4000 and the web app on :3000, with prefixed logs.
+// pnpm dev: Elan1 Govern on :4000 and the web app on :3000, with prefixed logs.
 import { spawn } from "node:child_process";
 import { ensureServices, loadEnv, root } from "./lib.mjs";
 
@@ -29,7 +29,7 @@ const procs = [
   return p;
 });
 
-console.log(`\n  Web   ${env.WEB_URL || "http://localhost:3000"}\n  Gate  ${env.GATE_PUBLIC_URL || "http://localhost:4000"}/mcp\n  Mail  http://localhost:8025\n`);
+console.log(`\n  Web   ${env.WEB_URL || "http://localhost:3000"}\n  Elan1 Govern  ${env.GATE_PUBLIC_URL || "http://localhost:4000"}/mcp\n  Mail  http://localhost:8025\n`);
 
 let stopping = false;
 function shutdown(code = 0) {

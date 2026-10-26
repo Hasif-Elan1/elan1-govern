@@ -9,7 +9,7 @@ export const PATCH = route({ auth: "org", permission: "inventory:manage", body: 
   const db = forOrg(ctx.org.id);
   const before = await db.aiSystem.findFirst({ where: { id: params.id } });
   if (!before) throw new HttpError(404, "No such AI system.");
-  if (before.agentId && body.kind && body.kind !== "agent") throw new HttpError(400, "This system is a Gate agent, so its kind stays Agent.");
+  if (before.agentId && body.kind && body.kind !== "agent") throw new HttpError(400, "This system is an Elan1 Govern agent, so its kind stays Agent.");
   const changed = (Object.keys(body) as (keyof typeof body)[]).filter((k) => JSON.stringify(body[k]) !== JSON.stringify(before[k]));
   if (!changed.length) return { ok: true, changed };
   const previous = Object.fromEntries(changed.map((k) => [k, before[k]]));

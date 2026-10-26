@@ -18,7 +18,7 @@ export default async function SsoSettings() {
       <PageHeader
         back={{ href: "/settings", label: "Settings" }}
         title="Single sign-on"
-        description="Let people sign in with your company's identity provider, such as Okta, Microsoft Entra ID or Google Workspace. Gate uses OpenID Connect."
+        description="Let people sign in with your company's identity provider, such as Okta, Microsoft Entra ID or Google Workspace. Elan1 Govern uses OpenID Connect."
       />
       {!manage ? (
         <Card className="p-5 text-sm text-ink-2">{conn?.enabled ? `Single sign-on is on for ${conn.verifiedDomains.join(", ") || "no verified domains yet"}.` : "Single sign-on is off."} Only owners can change it.</Card>

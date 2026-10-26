@@ -67,7 +67,7 @@ const totpAad = "totp";
 
 export function newTotp(email: string) {
   const secret = new OTPAuth.Secret({ size: 20 });
-  const t = new OTPAuth.TOTP({ issuer: "Gate", label: email, secret, algorithm: "SHA1", digits: 6, period: 30 });
+  const t = new OTPAuth.TOTP({ issuer: "Elan1 Govern", label: email, secret, algorithm: "SHA1", digits: 6, period: 30 });
   return { uri: t.toString(), secretEnc: encrypt(env().WEB_ENC_KEY, secret.base32, totpAad) };
 }
 

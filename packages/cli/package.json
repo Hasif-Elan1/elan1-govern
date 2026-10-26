@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "gate": "./bin/gate.mjs" },
+  "bin": { "govern": "./bin/gate.mjs", "gate": "./bin/gate.mjs" },
   "scripts": { "typecheck": "tsc --noEmit" },
   "dependencies": { "@gate/core": "workspace:*", "tsx": "4.23.15" }
 }

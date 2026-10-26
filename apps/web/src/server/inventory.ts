@@ -48,7 +48,7 @@ export const SystemFields = z
 export type SystemInput = z.infer<typeof SystemFields>;
 
 /**
- * Every Gate agent appears in the inventory. Adds a system for each agent that has none;
+ * Every Elan1 Govern agent appears in the inventory. Adds a system for each agent that has none;
  * idempotent and safe to run on every page load (a unique index on orgId + agentId
  * stops duplicates when two loads race).
  */
@@ -99,7 +99,7 @@ export async function applyApprovedTier(orgId: string, systemId: string, now = n
 type Details = Record<string, string | number | boolean | null>;
 
 /**
- * Makes a change, then has Gate write its signed receipt. If the receipt cannot be written,
+ * Makes a change, then has Elan1 Govern write its signed receipt. If the receipt cannot be written,
  * the change is undone and the request fails, so nothing changes without a record.
  */
 export async function withReceipt<T>(

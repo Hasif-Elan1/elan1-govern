@@ -17,7 +17,7 @@ const error = (description: string) => ({ description, content: json("Error") })
 const ERRORS = {
   "401": error("Missing or invalid agent API key."),
   "429": error("Too many requests for this key (300 a minute)."),
-  "500": error("Gate failed. Nothing ran, and the action counts as refused."),
+  "500": error("Elan1 Govern failed. Nothing ran, and the action counts as refused."),
 };
 
 /**
@@ -28,20 +28,20 @@ export function openApiSpec(serverUrl: string = DEFAULT_SERVER) {
   return {
     openapi: "3.1.0",
     info: {
-      title: "Gate agent API",
+      title: "Elan1 Govern agent API",
       version: API_VERSION,
       summary: "Check every action against a signed rulebook before it runs, and record what happened.",
       description:
         "Agents that run their own tools call `POST /v1/check` before acting and `POST /v1/record` after. " +
         "Actions that need a person return `decision: ask`; poll `GET /v1/approvals/{id}?wait=30` for the decision. " +
-        "MCP clients use `POST /mcp` instead, where Gate runs the tools itself. Every decision is written to a signed, hash-chained receipt.",
+        "MCP clients use `POST /mcp` instead, where Elan1 Govern runs the tools itself. Every decision is written to a signed, hash-chained receipt.",
       contact: { email: "hello@elan1.ai" },
     },
     servers: [{ url: serverUrl }],
     security: [{ agentKey: [] }],
     tags: [
       { name: "Event API", description: "For agents that run their own tools (the SDK)." },
-      { name: "MCP", description: "Model Context Protocol over streamable HTTP. Gate runs the tools." },
+      { name: "MCP", description: "Model Context Protocol over streamable HTTP. Elan1 Govern runs the tools." },
       { name: "Meta", description: "This description." },
     ],
     paths: {
@@ -53,7 +53,7 @@ export function openApiSpec(serverUrl: string = DEFAULT_SERVER) {
           description: "Nothing is run. Writes a decision receipt. An `allow` returns a `check_id` to pass to `/v1/record`.",
           requestBody: { required: true, content: json("CheckRequest") },
           responses: {
-            "200": { description: "Gate's decision.", content: json("CheckResponse") },
+            "200": { description: "Elan1 Govern's decision.", content: json("CheckResponse") },
             "400": error("The body is not valid."),
             ...ERRORS,
           },
@@ -99,7 +99,7 @@ export function openApiSpec(serverUrl: string = DEFAULT_SERVER) {
           summary: "MCP endpoint (JSON-RPC 2.0, stateless streamable HTTP)",
           description:
             "Send MCP requests such as `initialize`, `tools/list` and `tools/call` with `accept: application/json, text/event-stream`. " +
-            "Each tool call is checked by Gate: it runs, waits for a person, or is refused. A refusal is a tool result with `isError: true` and " +
+            "Each tool call is checked by Elan1 Govern: it runs, waits for a person, or is refused. A refusal is a tool result with `isError: true` and " +
             "`structuredContent.gate = { decision, rule_id, reason }`. An action that waits returns an `approval_id`; call `" +
             STATUS_TOOL +
             "` to wait for it. The tools and their input schemas are listed in `x-mcp-tools`.",

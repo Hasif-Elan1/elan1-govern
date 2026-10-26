@@ -14,6 +14,6 @@ const Body = z
 export const POST = route({ auth: "org", permission: "webhooks:manage", body: Body }, async ({ body, ctx }) => {
   const r = await gate<{ id?: string; secret?: string; error?: string }>("POST", `/internal/orgs/${ctx.org.id}/webhooks`, { ...body, actor: ctx.user.email });
   if (r.status === 400) throw new HttpError(400, r.data.error ?? "That endpoint could not be added.");
-  if (r.status !== 200 || !r.data.secret) throw new HttpError(502, "Gate could not add the endpoint.");
+  if (r.status !== 200 || !r.data.secret) throw new HttpError(502, "Elan1 Govern could not add the endpoint.");
   return { id: r.data.id, secret: r.data.secret };
 });

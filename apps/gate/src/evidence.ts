@@ -57,7 +57,7 @@ export async function exportPack(deps: Deps, orgId: string, r: Range, actor: str
   const key = await orgKey(deps, orgId);
   const data = await rangeData(deps, orgId, r);
   const pdf = await summaryPdf(deps, orgId, key.name, key.publicKeyPem, r, data);
-  const readme = `Gate auditor pack for ${key.name}, ${r.from} to ${r.to}\n\nsummary.pdf          a readable summary\n${PACK_BUNDLE_NAME}  the signed receipts\n\nVerify offline:  gate verify <this-file>.zip\nKey fingerprint: ${keyFingerprint(key.publicKeyPem)}\n`;
+  const readme = `Elan1 Govern auditor pack for ${key.name}, ${r.from} to ${r.to}\n\nsummary.pdf          a readable summary\n${PACK_BUNDLE_NAME}  the signed receipts\n\nVerify offline:  govern verify <this-file>.zip\nKey fingerprint: ${keyFingerprint(key.publicKeyPem)}\n`;
   return zipSync({ "summary.pdf": pdf, [PACK_BUNDLE_NAME]: bundle, "README.txt": strToU8(readme) }, { level: 6 });
 }
 
@@ -131,14 +131,14 @@ class Writer {
 
 async function summaryPdf(deps: Deps, orgId: string, orgName: string, publicKeyPem: string, r: Range, data: Awaited<ReturnType<typeof rangeData>>) {
   const doc = await PDFDocument.create();
-  doc.setTitle(`Gate auditor pack — ${orgName} — ${r.from} to ${r.to}`);
-  doc.setProducer("Gate");
+  doc.setTitle(`Elan1 Govern auditor pack — ${orgName} — ${r.from} to ${r.to}`);
+  doc.setProducer("Elan1 Govern");
   const w = new Writer(doc, await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold));
   const { receipts } = data;
   const chain = verifyChain(receipts, data.keys, { anchor: data.anchor, checkpoints: data.checkpoints });
   const ist = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
-  w.text("Gate · Auditor pack", { size: 10, color: [0.42, 0.42, 0.4] });
+  w.text("Elan1 Govern · Auditor pack", { size: 10, color: [0.42, 0.42, 0.4] });
   w.text(orgName, { size: 22, bold: true, gap: 10 });
   w.text(`Period: ${r.from} to ${r.to} (India time)   ·   Generated ${ist} IST`, { color: [0.3, 0.3, 0.28] });
   const retired = data.keys.filter((k) => k.retiredAt);
@@ -151,7 +151,7 @@ async function summaryPdf(deps: Deps, orgId: string, orgName: string, publicKeyP
   } else {
     w.text(`Chain broken at seq ${chain.seq}: ${chain.reason}`, { color: [0.7, 0.1, 0.1] });
   }
-  w.text("Re-check it yourself, offline: gate verify <auditor-pack>.zip", { color: [0.3, 0.3, 0.28], gap: 14 });
+  w.text("Re-check it yourself, offline: govern verify <auditor-pack>.zip", { color: [0.3, 0.3, 0.28], gap: 14 });
 
   const decisions = receipts.filter((x) => x.kind === "decision");
   const resolutions = receipts.filter((x) => x.kind === "approval");
@@ -199,7 +199,7 @@ async function summaryPdf(deps: Deps, orgId: string, orgName: string, publicKeyP
   w.text("Compliance map", { size: 13, bold: true });
   w.text(`${LEGAL_REVIEW_NOTE.toUpperCase()}. References show where a reviewer might look; they are not a claim of compliance.`, { size: 9, color: [0.6, 0.35, 0.05], gap: 10 });
   if (!enabled.length) {
-    w.text("No frameworks are switched on for this organisation. Turn them on under Compliance in Gate.");
+    w.text("No frameworks are switched on for this organisation. Turn them on under Compliance in Elan1 Govern.");
     return doc.save();
   }
   w.row(["Control", "Framework references", "Evidence"], [190, 233, 60], true);
@@ -231,18 +231,18 @@ export async function exportFrameworkReport(deps: Deps, orgId: string, framework
   const enabled = (await enabledFrameworks(orgId, deps.db)).some((f) => f.frameworkId === framework.id);
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`Gate framework report — ${framework.shortName} — ${key.name}`);
-  doc.setProducer("Gate");
+  doc.setTitle(`Elan1 Govern framework report — ${framework.shortName} — ${key.name}`);
+  doc.setProducer("Elan1 Govern");
   const w = new Writer(doc, await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold));
   const grey: [number, number, number] = [0.3, 0.3, 0.28];
   const when = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
-  w.text("Gate · Framework report", { size: 10, color: [0.42, 0.42, 0.4], gap: 10 });
+  w.text("Elan1 Govern · Framework report", { size: 10, color: [0.42, 0.42, 0.4], gap: 10 });
   w.para(framework.name, { size: 18, bold: true, gap: 8 });
   w.text(`${key.name}   ·   Generated ${when} IST   ·   Key ${keyFingerprint(key.publicKeyPem)}`, { color: grey });
   w.text(`Jurisdiction: ${framework.jurisdiction}`, { color: grey });
   w.text(`Official text: ${framework.url}`, { color: grey, gap: 10 });
-  w.para(`${LEGAL_REVIEW_NOTE.toUpperCase()}. The references and summaries were written by the Gate team as starting points. They are not legal advice and not a claim that using Gate meets this framework. Have your counsel review them.`, { size: 9, color: [0.6, 0.35, 0.05], gap: 12 });
+  w.para(`${LEGAL_REVIEW_NOTE.toUpperCase()}. The references and summaries were written by the Elan1 Govern team as starting points. They are not legal advice and not a claim that using Elan1 Govern meets this framework. Have your counsel review them.`, { size: 9, color: [0.6, 0.35, 0.05], gap: 12 });
   if (!enabled) w.text("This framework is not switched on for the organisation.", { color: grey, gap: 10 });
 
   w.text("Summary", { size: 13, bold: true });

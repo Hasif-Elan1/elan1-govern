@@ -11,6 +11,6 @@ export const PATCH = route({ auth: "org", permission: "connectors:manage", body:
     "POST",
     `/internal/orgs/${ctx.org.id}/upstreams/${encodeURIComponent(params.id ?? "")}/tools/${encodeURIComponent(params.toolId ?? "")}`,
     { ...body, actor: ctx.user.email },
-    "Gate could not change the tool.",
+    "Elan1 Govern could not change the tool.",
   ),
 );

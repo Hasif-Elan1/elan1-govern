@@ -68,7 +68,7 @@ export async function rotateKey(deps: Deps, orgId: string, agentId: string, acto
     return { apiKey: null };
   }
   const k = newApiKey();
-  await db.apiKey.create({ data: { orgId, agentId, prefix: k.prefix, keyHash: k.keyHash, label: "Created in Gate" } });
+  await db.apiKey.create({ data: { orgId, agentId, prefix: k.prefix, keyHash: k.keyHash, label: "Created in Elan1 Govern" } });
   await adminEvent(deps, orgId, actor, "key.created", { prefix: k.prefix }, { agent: agent.slug });
   return { apiKey: k.key };
 }

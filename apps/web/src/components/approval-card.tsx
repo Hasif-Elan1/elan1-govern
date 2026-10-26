@@ -58,7 +58,7 @@ export function ReauthDialog({
   onDone,
   onCancel,
   needTotp: initialTotp,
-  description = "Approving moves money, so Gate asks for your password if you signed in more than 10 minutes ago.",
+  description = "Approving moves money, so Elan1 Govern asks for your password if you signed in more than 10 minutes ago.",
 }: {
   open: boolean;
   onDone: () => void;
@@ -129,7 +129,7 @@ function Decide({ a, token, totpEnabled }: { a: ApprovalView; token?: string; to
       router.refresh();
     } catch (e) {
       if (e instanceof ApiError && e.data.reauth) setReauth(result);
-      else toast.error(e instanceof ApiError ? e.message : "Could not reach Gate.");
+      else toast.error(e instanceof ApiError ? e.message : "Could not reach Elan1 Govern.");
     } finally {
       setBusy(null);
     }

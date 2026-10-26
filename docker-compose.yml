@@ -1,4 +1,4 @@
-# docker compose up   → Postgres, Mailpit, Gate (4000) and the web app (3000).
+# docker compose up   → Postgres, Mailpit, Elan1 Govern (4000) and the web app (3000).
 # Uses .env (copy it from .env.example). Hostnames below override the localhost defaults.
 x-env: &env
   env_file: .env

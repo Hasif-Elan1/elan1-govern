@@ -14,7 +14,7 @@ const Schema = z.object({
   GATE_INTERNAL_URL: z.string().url().default("http://localhost:4000"),
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().int().default(1025),
-  MAIL_FROM: z.string().default("Gate <gate@localhost>"),
+  MAIL_FROM: z.string().default("Elan1 Govern <gate@localhost>"),
   CONNECTOR_MODE: z.enum(["mock", "live"]).default("mock"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   ZOHO_CLIENT_ID: z.string().optional(),

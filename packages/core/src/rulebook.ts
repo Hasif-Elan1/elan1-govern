@@ -5,7 +5,7 @@ import { builtinRegistry, HIGH_IMPACT_TAGS, RISK_TAGS, RISK_TAG_LABELS, VENDOR_F
 export const DECISIONS = ["allow", "ask", "refuse"] as const;
 export type Decision = (typeof DECISIONS)[number];
 
-/** Lists Gate fills in at decision time, so a rulebook can say `to_domain_in: vendor_domains`. */
+/** Lists Elan1 Govern fills in at decision time, so a rulebook can say `to_domain_in: vendor_domains`. */
 export const CONTEXT_LISTS = ["vendor_domains"] as const;
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "use lowercase letters, numbers and dashes");

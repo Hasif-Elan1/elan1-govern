@@ -29,7 +29,7 @@ const email = z.string().email().max(320).transform((e) => e.toLowerCase());
 const actor = email;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** Admin actions the web app may log on its own (it writes the row; Gate writes the receipt). */
+/** Admin actions the web app may log on its own (it writes the row; Elan1 Govern writes the receipt). */
 export const WEB_EVENTS = [
   "settings.updated",
   "member.invited",
@@ -222,7 +222,7 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       return r.ok ? r : reply.code(400).send(r);
     });
 
-    // Upstream MCP servers. Gate keeps the auth header; it never comes back out.
+    // Upstream MCP servers. Elan1 Govern keeps the auth header; it never comes back out.
     internal.post<P>("/internal/orgs/:org/upstreams", async (req, reply) => {
       const orgId = await org(req.params.org);
       const { actor: a, ...b } = parse(schemas.upstream, req.body);

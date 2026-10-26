@@ -33,7 +33,7 @@ export default async function Agents() {
         }
       />
       {agents.length === 0 ? (
-        <EmptyState icon={<Bot />} title="No agents yet" body="Add an agent to get an MCP address and a key. Gate checks each of its actions against your rules." action={manage ? { href: "/agents/new", label: "Add your first agent" } : undefined} />
+        <EmptyState icon={<Bot />} title="No agents yet" body="Add an agent to get an MCP address and a key. Elan1 Govern checks each of its actions against your rules." action={manage ? { href: "/agents/new", label: "Add your first agent" } : undefined} />
       ) : (
         <div className="overflow-hidden rounded-lg border border-line bg-surface">
           <table className="w-full text-sm">

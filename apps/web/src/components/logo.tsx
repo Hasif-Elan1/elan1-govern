@@ -1,4 +1,4 @@
-/** The Gate mark: two posts and a lintel, the lintel drawn as a closed bar. */
+/** The Elan1 Govern mark: two posts and a lintel, the lintel drawn as a closed bar. */
 export function Logo({ className = "size-6" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -14,7 +14,7 @@ export function Wordmark() {
   return (
     <span className="inline-flex items-center gap-2 text-[17px] font-semibold tracking-tight">
       <Logo />
-      Gate
+      Elan1 Govern
     </span>
   );
 }

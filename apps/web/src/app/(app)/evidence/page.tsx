@@ -61,7 +61,7 @@ export default async function Evidence() {
         <Card className="p-5">
           <h2 className="text-[17px] font-semibold">Download for your auditor</h2>
           <p className="mt-1 mb-4 text-sm text-ink-2">
-            The auditor pack is a PDF summary and the signed receipts for the dates you pick. Anyone can check it with <code className="font-mono text-[13px]">gate verify</code>.
+            The auditor pack is a PDF summary and the signed receipts for the dates you pick. Anyone can check it with <code className="font-mono text-[13px]">govern verify</code>.
           </p>
           {can(ctx.role, "evidence:export") ? <ExportForm from={monthStart} to={today} /> : <p className="text-sm text-ink-3">Owners, admins and auditors can download evidence.</p>}
         </Card>
@@ -70,11 +70,11 @@ export default async function Evidence() {
       <Section
         title="Compliance map"
         className="mt-12"
-        description="Each control Gate enforces, where a reviewer might look in each framework you have turned on, and how many real receipts back it."
+        description="Each control Elan1 Govern enforces, where a reviewer might look in each framework you have turned on, and how many real receipts back it."
         actions={<Pill tone="wait">{LEGAL_REVIEW_NOTE}</Pill>}
       >
         {frameworks.length === 0 ? (
-          <EmptyState icon={<Scale />} title="No frameworks turned on" body="Pick the laws and standards that apply to you, and the map shows which of Gate's controls they touch." action={{ href: "/compliance", label: "Choose frameworks" }} />
+          <EmptyState icon={<Scale />} title="No frameworks turned on" body="Pick the laws and standards that apply to you, and the map shows which of Elan1 Govern's controls they touch." action={{ href: "/compliance", label: "Choose frameworks" }} />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-line bg-surface">
             <table className="w-full text-sm" style={{ minWidth: `${300 + frameworks.length * 150}px` }}>
@@ -121,7 +121,7 @@ export default async function Evidence() {
           </div>
         )}
         <p className="mt-3 max-w-[72ch] text-[13px] text-ink-3">
-          These references are starting points written by the Gate team, not legal advice and not a claim of compliance. Have your counsel review them. Turn frameworks on or off, and see the gaps, under{" "}
+          These references are starting points written by the Elan1 Govern team, not legal advice and not a claim of compliance. Have your counsel review them. Turn frameworks on or off, and see the gaps, under{" "}
           <Link href="/compliance" className="font-medium text-accent hover:underline">
             Compliance
           </Link>
@@ -129,7 +129,7 @@ export default async function Evidence() {
         </p>
       </Section>
 
-      <Section title="Checkpoints" className="mt-12" description="Every hour Gate signs the latest receipt number and hash, so a removed receipt is noticed even at the end of the chain.">
+      <Section title="Checkpoints" className="mt-12" description="Every hour Elan1 Govern signs the latest receipt number and hash, so a removed receipt is noticed even at the end of the chain.">
         {checkpoints.length ? (
           <ul className="divide-y divide-line rounded-lg border border-line bg-surface text-sm">
             {checkpoints.map((c) => (

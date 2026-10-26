@@ -19,6 +19,7 @@
     "test:e2e": "playwright test",
     "db:migrate": "pnpm --filter @gate/db migrate",
     "db:seed": "pnpm --filter @gate/gate seed",
+    "govern": "node packages/cli/bin/gate.mjs",
     "gate": "node packages/cli/bin/gate.mjs",
     "security:audit": "pnpm audit --audit-level high",
     "security:semgrep": "semgrep scan --config auto --error --metrics=on --quiet",

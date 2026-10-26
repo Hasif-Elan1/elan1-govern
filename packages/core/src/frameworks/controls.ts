@@ -3,7 +3,7 @@ import { frameworkById, FRAMEWORKS, type Framework, type Requirement } from "./f
 /**
  * The controls catalogue. DRAFT — NEEDS LEGAL REVIEW.
  *
- * Each control is something Gate actually does, backed by receipts on the signed chain
+ * Each control is something Elan1 Govern actually does, backed by receipts on the signed chain
  * (the evidence key says which). Mappings point to requirements in the framework library
  * where a reviewer might look; they are not claims of compliance.
  */
@@ -173,7 +173,7 @@ export const CONTROLS: Control[] = [
   {
     id: "GATE-09",
     title: "Agents never hold credentials",
-    description: "OAuth tokens stay encrypted inside Gate. The agent only gets an API key it can lose without exposing the systems behind it.",
+    description: "OAuth tokens stay encrypted inside Elan1 Govern. The agent only gets an API key it can lose without exposing the systems behind it.",
     evidence: "connectors",
     mappings: [m("dpdp", "sec-8-5"), m("eu-ai-act", "art-15"), m("nist-ai-rmf", "measure-2-7"), m("gdpr", "art-32"), m("hipaa", "164-312-a"), m("soc2", "cc6")],
   },
@@ -186,7 +186,7 @@ export const CONTROLS: Control[] = [
   },
   {
     id: "GATE-11",
-    title: "Access to Gate is role-based and changes are recorded",
+    title: "Access to Elan1 Govern is role-based and changes are recorded",
     description: "Owners, admins, approvers, viewers and auditors have fixed permissions. Every invite, role change and removal is a receipt.",
     evidence: "member_changes",
     mappings: [m("iso-42001", "a-3"), m("soc2", "cc6"), m("hipaa", "164-312-a"), m("gdpr", "art-32")],
@@ -194,7 +194,7 @@ export const CONTROLS: Control[] = [
   {
     id: "GATE-12",
     title: "AI systems are inventoried",
-    description: "Every AI system the organisation uses, including ones that do not act through Gate, is listed with an owner and a purpose.",
+    description: "Every AI system the organisation uses, including ones that do not act through Elan1 Govern, is listed with an owner and a purpose.",
     evidence: "systems",
     mappings: [
       m("nist-ai-rmf", "govern-1-6"),

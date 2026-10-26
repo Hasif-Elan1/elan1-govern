@@ -62,7 +62,7 @@ export default async function Today() {
       {agents === 0 ? (
         <EmptyState
           title="No agents yet"
-          body="Gate sits between an AI agent and your tools. Start with the demo agent: it pays invoices from a pretend inbox, so you can see what Gate allows, holds and stops."
+          body="Elan1 Govern sits between an AI agent and your tools. Start with the demo agent: it pays invoices from a pretend inbox, so you can see what Elan1 Govern allows, holds and stops."
           action={can(ctx.role, "demo:run") ? <DemoButton /> : { href: "/agents", label: "See agents" }}
         />
       ) : (

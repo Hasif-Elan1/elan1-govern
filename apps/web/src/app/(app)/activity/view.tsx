@@ -76,7 +76,7 @@ export function ActivityView({ items, filter, agents, tools, openSeq }: { items:
       ) : active ? (
         <EmptyState title="Nothing matches" body="Try a wider date range or fewer filters." action={<button type="button" onClick={() => (setQ(""), router.replace(path))} className="cursor-pointer text-sm font-medium text-accent hover:underline">Clear filters</button>} />
       ) : (
-        <EmptyState title="No activity yet" body="When an agent calls a tool through Gate, each decision appears here as a signed receipt." action={{ href: "/agents", label: "Connect an agent" }} />
+        <EmptyState title="No activity yet" body="When an agent calls a tool through Elan1 Govern, each decision appears here as a signed receipt." action={{ href: "/agents", label: "Connect an agent" }} />
       )}
       <ReceiptDialog seq={open} onClose={() => setOpen(null)} />
     </>

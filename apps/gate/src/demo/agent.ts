@@ -23,7 +23,7 @@ interface GateMeta {
 type CallResult = { isError?: boolean; content?: unknown; structuredContent?: { gate?: GateMeta } };
 
 /**
- * A scripted accounts-payable agent. It talks to Gate over MCP exactly like a real
+ * A scripted accounts-payable agent. It talks to Elan1 Govern over MCP exactly like a real
  * agent would, and only knows its API key: never a Gmail or Zoho Books token.
  */
 export async function runDemoAgent(opts: {
@@ -102,9 +102,9 @@ export async function runDemoAgent(opts: {
     const bank = await call("zoho.update_vendor", { vendor_id: "v_sharma", fields: { bank_account: "009988776655", ifsc: "SBIN0001234" } });
     record({ step: 4, label: "Change Sharma Traders' bank account and IFSC", decision: decisionOf(bank), rule: meta(bank).rule_id ?? "?" });
 
-    // 5. A tool Gate does not know: refused by default.
+    // 5. A tool Elan1 Govern does not know: refused by default.
     const unknown = await call("gmail.delete_message", { message_id: "m_104" });
-    record({ step: 5, label: "Delete an email (a tool Gate does not offer)", decision: decisionOf(unknown), rule: meta(unknown).rule_id ?? "?" });
+    record({ step: 5, label: "Delete an email (a tool Elan1 Govern does not offer)", decision: decisionOf(unknown), rule: meta(unknown).rule_id ?? "?" });
   } finally {
     await client.close();
   }

@@ -7,7 +7,7 @@ import { DELIVER_QUEUE, deliverWebhook } from "./webhooks";
 
 /**
  * Durable background jobs on pg-boss (tables in their own Postgres schema, JOBS_SCHEMA).
- * Cron schedules live in the database and pg-boss sends one job per tick however many Gate
+ * Cron schedules live in the database and pg-boss sends one job per tick however many Elan1 Govern
  * instances run; the "stately" policy keeps at most one queued and one running job per cron
  * queue, so a slow run is never doubled up.
  */

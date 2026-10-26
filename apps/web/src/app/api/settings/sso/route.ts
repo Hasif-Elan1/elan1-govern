@@ -56,7 +56,7 @@ export const POST = route({ auth: "org", permission: "sso:manage", body: Verify 
   if (!conn || !conn.domains.includes(body.domain)) throw new HttpError(404, "Add the domain to single sign-on first.");
   if (await domainClaimedElsewhere(body.domain, ctx.org.id)) throw new HttpError(409, `${body.domain} is already verified by another organisation.`);
   if (!(await domainVerified(body.domain, conn.verifyToken))) {
-    throw new HttpError(400, `Gate could not find the TXT record "gate-verify=${conn.verifyToken}" on ${body.domain}. DNS changes can take a few minutes.`);
+    throw new HttpError(400, `Elan1 Govern could not find the TXT record "gate-verify=${conn.verifyToken}" on ${body.domain}. DNS changes can take a few minutes.`);
   }
   await db.ssoConnection.update({ where: { id: conn.id }, data: { verifiedDomains: [...new Set([...conn.verifiedDomains, body.domain])] } });
   return { verified: true };

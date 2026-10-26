@@ -42,7 +42,7 @@ import { cn, fmtDate, shortHash } from "@/lib/utils";
 
 type Version = { version: number; yaml: string; hash: string; signedBy: string; createdAt: string };
 type Draft = Omit<Rulebook, "signature">;
-/** A tool from one of the org's MCP servers, as stored by Gate. */
+/** A tool from one of the org's MCP servers, as stored by Elan1 Govern. */
 export type ExtraTool = { name: string; connector: string; description: string; inputSchema: Record<string, unknown>; tags: RiskTag[] };
 
 const FIELD_LABEL: Record<string, string> = { name: "name", email: "email", phone: "phone", address: "address", gstin: "GSTIN", bank_account: "bank account", ifsc: "IFSC" };
@@ -345,7 +345,7 @@ function TestPanel({ draft, vendorDomains, registry }: { draft: Draft; vendorDom
               {t.label} ({t.connector})
             </option>
           ))}
-          <option value="__unknown">A tool Gate doesn't know</option>
+          <option value="__unknown">A tool Elan1 Govern doesn't know</option>
         </Select>
       </Field>
       {tool === "__unknown" ? (
@@ -497,7 +497,7 @@ export function Builder({
   versions: Version[];
   extraTools: ExtraTool[];
 }) {
-  // The built-in tools plus the org's enabled MCP server tools, the same set Gate checks against.
+  // The built-in tools plus the org's enabled MCP server tools, the same set Elan1 Govern checks against.
   const [registry] = useState<ToolRegistry>(() => (extraTools.length ? mergeRegistries(builtinRegistry, createRegistry(extraTools.map(specFromJsonSchema))) : builtinRegistry));
   const router = useRouter();
   const toast = useToast();
@@ -657,7 +657,7 @@ export function Builder({
               onChange={(e) => onYaml(e.target.value)}
               className={cn("min-h-[520px] font-mono text-[12.5px] leading-relaxed", yamlErrors.length && "border-no")}
             />
-            <p className="mt-2 text-[13px] text-ink-3">Edits here and in the rules on the left stay in sync. Gate adds the version and signature when you publish.</p>
+            <p className="mt-2 text-[13px] text-ink-3">Edits here and in the rules on the left stay in sync. Elan1 Govern adds the version and signature when you publish.</p>
           </TabsContent>
           <TabsContent value="try">
             <TestPanel draft={draft} vendorDomains={vendorDomains} registry={registry} />
@@ -669,7 +669,7 @@ export function Builder({
       </aside>
 
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent title={`Sign and publish version ${(latest?.version ?? 0) + 1}?`} description="Gate signs the rulebook with your organisation's key and uses it for the agent's next call. The old version stays in the history.">
+        <DialogContent title={`Sign and publish version ${(latest?.version ?? 0) + 1}?`} description="Elan1 Govern signs the rulebook with your organisation's key and uses it for the agent's next call. The old version stays in the history.">
           <ul className="mb-5 grid gap-1.5 text-sm">
             <li className="flex gap-2"><Pill tone="ok">{draft.rules.filter((r) => r.decide === "allow").length}</Pill> rules allow</li>
             <li className="flex gap-2"><Pill tone="wait">{draft.rules.filter((r) => r.decide === "ask").length}</Pill> rules ask a person</li>

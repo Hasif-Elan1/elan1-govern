@@ -1,10 +1,10 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Gate agent API",
+    "title": "Elan1 Govern agent API",
     "version": "1.0.0",
     "summary": "Check every action against a signed rulebook before it runs, and record what happened.",
-    "description": "Agents that run their own tools call `POST /v1/check` before acting and `POST /v1/record` after. Actions that need a person return `decision: ask`; poll `GET /v1/approvals/{id}?wait=30` for the decision. MCP clients use `POST /mcp` instead, where Gate runs the tools itself. Every decision is written to a signed, hash-chained receipt.",
+    "description": "Agents that run their own tools call `POST /v1/check` before acting and `POST /v1/record` after. Actions that need a person return `decision: ask`; poll `GET /v1/approvals/{id}?wait=30` for the decision. MCP clients use `POST /mcp` instead, where Elan1 Govern runs the tools itself. Every decision is written to a signed, hash-chained receipt.",
     "contact": {
       "email": "hello@elan1.ai"
     }
@@ -26,7 +26,7 @@
     },
     {
       "name": "MCP",
-      "description": "Model Context Protocol over streamable HTTP. Gate runs the tools."
+      "description": "Model Context Protocol over streamable HTTP. Elan1 Govern runs the tools."
     },
     {
       "name": "Meta",
@@ -54,7 +54,7 @@
         },
         "responses": {
           "200": {
-            "description": "Gate's decision.",
+            "description": "Elan1 Govern's decision.",
             "content": {
               "application/json": {
                 "schema": {
@@ -94,7 +94,7 @@
             }
           },
           "500": {
-            "description": "Gate failed. Nothing ran, and the action counts as refused.",
+            "description": "Elan1 Govern failed. Nothing ran, and the action counts as refused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -186,7 +186,7 @@
             }
           },
           "500": {
-            "description": "Gate failed. Nothing ran, and the action counts as refused.",
+            "description": "Elan1 Govern failed. Nothing ran, and the action counts as refused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -281,7 +281,7 @@
             }
           },
           "500": {
-            "description": "Gate failed. Nothing ran, and the action counts as refused.",
+            "description": "Elan1 Govern failed. Nothing ran, and the action counts as refused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -300,7 +300,7 @@
           "MCP"
         ],
         "summary": "MCP endpoint (JSON-RPC 2.0, stateless streamable HTTP)",
-        "description": "Send MCP requests such as `initialize`, `tools/list` and `tools/call` with `accept: application/json, text/event-stream`. Each tool call is checked by Gate: it runs, waits for a person, or is refused. A refusal is a tool result with `isError: true` and `structuredContent.gate = { decision, rule_id, reason }`. An action that waits returns an `approval_id`; call `gate.approval_status` to wait for it. The tools and their input schemas are listed in `x-mcp-tools`.",
+        "description": "Send MCP requests such as `initialize`, `tools/list` and `tools/call` with `accept: application/json, text/event-stream`. Each tool call is checked by Elan1 Govern: it runs, waits for a person, or is refused. A refusal is a tool result with `isError: true` and `structuredContent.gate = { decision, rule_id, reason }`. An action that waits returns an `approval_id`; call `gate.approval_status` to wait for it. The tools and their input schemas are listed in `x-mcp-tools`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -349,7 +349,7 @@
         "x-mcp-tools": [
           {
             "name": "gmail.search",
-            "description": "Search the mailbox for messages. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Search the mailbox for messages. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -371,7 +371,7 @@
           },
           {
             "name": "gmail.read_message",
-            "description": "Read one message (sender, subject, body, attachment list). Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Read one message (sender, subject, body, attachment list). Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -389,7 +389,7 @@
           },
           {
             "name": "gmail.get_attachment",
-            "description": "Download one attachment from a message. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Download one attachment from a message. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -413,7 +413,7 @@
           },
           {
             "name": "gmail.draft_reply",
-            "description": "Save a reply as a draft. Nothing is sent. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Save a reply as a draft. Nothing is sent. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -436,7 +436,7 @@
           },
           {
             "name": "gmail.send_reply",
-            "description": "Send a reply on an existing thread. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Send a reply on an existing thread. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -466,7 +466,7 @@
           },
           {
             "name": "zoho.list_bills",
-            "description": "List bills in Zoho Books. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "List bills in Zoho Books. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -489,7 +489,7 @@
           },
           {
             "name": "zoho.get_vendor",
-            "description": "Read a vendor's details. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Read a vendor's details. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -507,7 +507,7 @@
           },
           {
             "name": "zoho.create_bill",
-            "description": "Create a bill for a vendor invoice. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Create a bill for a vendor invoice. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -550,7 +550,7 @@
           },
           {
             "name": "zoho.record_bill_payment",
-            "description": "Record a payment against a bill. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Record a payment against a bill. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -582,7 +582,7 @@
           },
           {
             "name": "zoho.update_vendor",
-            "description": "Change a vendor's details. Every call is checked by Gate: it may run, wait for a person, or be refused.",
+            "description": "Change a vendor's details. Every call is checked by Elan1 Govern: it may run, wait for a person, or be refused.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -924,7 +924,7 @@
             "description": "What to do next, in plain words."
           },
           "outcome": {
-            "description": "For actions Gate ran: how it went.",
+            "description": "For actions Elan1 Govern ran: how it went.",
             "type": "object",
             "properties": {
               "status": {
@@ -943,7 +943,7 @@
             "additionalProperties": false
           },
           "result": {
-            "description": "For actions Gate ran: the tool's result."
+            "description": "For actions Elan1 Govern ran: the tool's result."
           }
         },
         "required": [

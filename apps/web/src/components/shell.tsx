@@ -178,7 +178,7 @@ function Sidebar(props: Props & { onNavigate?: () => void }) {
     <div className="flex h-full flex-col gap-4 p-3">
       <Link href="/" className="flex items-center gap-2 px-2.5 pt-1.5 pb-1 text-[17px] font-semibold tracking-tight" onClick={props.onNavigate}>
         <Logo />
-        Gate
+        Elan1 Govern
       </Link>
       <OrgSwitcher org={props.org} role={props.role} memberships={props.memberships} />
       <NavList waiting={props.waiting} onNavigate={props.onNavigate} />
@@ -213,7 +213,7 @@ export function Shell(props: Props) {
         </D.Root>
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <Logo className="size-5" />
-          Gate
+          Elan1 Govern
         </Link>
         {props.waiting > 0 ? (
           <Link href="/approvals" className="ml-auto rounded-full bg-wait-soft px-2.5 py-0.5 text-[13px] font-semibold text-wait">

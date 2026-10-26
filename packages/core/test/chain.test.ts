@@ -173,7 +173,7 @@ describe("evidence bundles", () => {
     const anchor = { seq: all[2]!.seq, hash: all[2]!.hash };
     expect(verifyBundle(make(all.slice(3), anchor))).toMatchObject({ ok: true, count: 3, firstSeq: 4, lastSeq: 6 });
     expect(verifyBundle(make([]))).toMatchObject({ ok: true, count: 0 });
-    expect(readBundleFiles(make(all))["README.txt"]).toMatch(/gate verify/);
+    expect(readBundleFiles(make(all))["README.txt"]).toMatch(/govern verify/);
   });
   it("names the edited row", () => {
     const zip = tamper(make(makeChain(5)), (f) => {

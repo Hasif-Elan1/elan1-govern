@@ -13,7 +13,7 @@ const TIMEOUT_MS = 15_000;
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_TOOLS = 500;
 const MAX_SCHEMA_BYTES = 100_000;
-/** Connector names Gate already uses. */
+/** Connector names Elan1 Govern already uses. */
 const RESERVED = new Set(["gate", "gmail", "zoho"]);
 
 export const authAad = (orgId: string, serverId: string) => `upstream-auth:${orgId}:${serverId}`;
@@ -33,10 +33,10 @@ function safeError(e: unknown): ConnectorError {
   const name = (e as Error)?.name;
   if (name === "TimeoutError" || name === "AbortError") return new ConnectorError("the MCP server did not answer in time");
   if (e instanceof StreamableHTTPError && e.code) {
-    return new ConnectorError(e.code === 401 || e.code === 403 ? `the MCP server refused Gate's credentials (HTTP ${e.code})` : `the MCP server answered with HTTP ${e.code}`, e.code === 401 || e.code === 403 ? "auth" : "upstream");
+    return new ConnectorError(e.code === 401 || e.code === 403 ? `the MCP server refused Elan1 Govern's credentials (HTTP ${e.code})` : `the MCP server answered with HTTP ${e.code}`, e.code === 401 || e.code === 403 ? "auth" : "upstream");
   }
   const code = (e as { code?: unknown; cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
-  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ECONNRESET" || code === "EHOSTUNREACH") return new ConnectorError("Gate could not reach the MCP server");
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ECONNRESET" || code === "EHOSTUNREACH") return new ConnectorError("Elan1 Govern could not reach the MCP server");
   return new ConnectorError("the MCP server did not respond as expected");
 }
 

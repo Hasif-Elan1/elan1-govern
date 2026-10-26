@@ -23,7 +23,7 @@ export interface AgentIdentity {
   agentId: string;
 }
 
-/** execute: Gate runs the tool (MCP). check: Gate only decides; the agent runs it (SDK). */
+/** execute: Elan1 Govern runs the tool (MCP). check: Elan1 Govern only decides; the agent runs it (SDK). */
 export type GuardMode = "execute" | "check";
 
 export type GuardResult =
@@ -32,7 +32,7 @@ export type GuardResult =
   | { status: "refused"; ruleId: string; reason: string; seq?: number }
   | { status: "failed"; ruleId: string; reason: string; seq: number };
 
-export const GATE_ERROR_REASON = "Gate could not check this action safely, so it was refused.";
+export const GATE_ERROR_REASON = "Elan1 Govern could not check this action safely, so it was refused.";
 
 function usesList(rb: Rulebook, tool: string, list: string) {
   return rb.rules.some((r) => (r.tool === tool || r.tag !== undefined) && r.when?.to_domain_in === list);
@@ -93,7 +93,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
 
     // Unknown, removed or disabled tools: refused, whatever a rule naming them says.
     const spec = registry.get(tool);
-    if (!spec) return refuse("default", `"${tool}" is not a tool Gate knows, so it is refused by default.`, { rulebook });
+    if (!spec) return refuse("default", `"${tool}" is not a tool Elan1 Govern knows, so it is refused by default.`, { rulebook });
     const v = validateArgs(spec, rawArgs ?? {});
     if (!v.ok) return refuse("invalid-arguments", `The arguments are not valid (${v.error}).`, { rulebook });
     const args = v.args;

@@ -128,6 +128,6 @@ export async function checkIssuer(issuer: string, clientId: string, clientSecret
     });
     return null;
   } catch (e) {
-    return `Gate could not read the identity provider's settings at ${issuer} (${(e as Error).message.slice(0, 120)}).`;
+    return `Elan1 Govern could not read the identity provider's settings at ${issuer} (${(e as Error).message.slice(0, 120)}).`;
   }
 }

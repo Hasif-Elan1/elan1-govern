@@ -19,7 +19,7 @@ function useSubmit() {
     try {
       return await fn();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not reach Gate. Check your connection.");
+      setError(e instanceof ApiError ? e.message : "Could not reach Elan1 Govern. Check your connection.");
       return undefined;
     } finally {
       setBusy(false);
@@ -110,7 +110,7 @@ export function LoginForm({ next, ssoError }: { next?: string; ssoError?: string
         Use single sign-on
       </button>
       <p className="text-sm text-ink-2">
-        New to Gate?{" "}
+        New to Elan1 Govern?{" "}
         <Link href="/signup" className="font-medium text-accent hover:underline">
           Create an account
         </Link>
@@ -249,7 +249,7 @@ export function IndustryForm({ industry, regions: initialRegions, next }: { indu
       </fieldset>
       {frameworks.length ? (
         <p className="text-sm text-ink-2">
-          Gate will turn on: <span className="font-medium text-ink">{frameworks.join(", ")}</span>.
+          Elan1 Govern will turn on: <span className="font-medium text-ink">{frameworks.join(", ")}</span>.
         </p>
       ) : null}
       {error ? (

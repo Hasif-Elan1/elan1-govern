@@ -8,7 +8,7 @@ const sans = IBM_Plex_Sans({ subsets: ["latin", "latin-ext"], weight: ["400", "5
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "Gate", template: "%s · Gate" },
+  title: { default: "Elan1 Govern", template: "%s · Elan1 Govern" },
   description: "Rules, approvals and proof for AI agents that do real work.",
   robots: { index: false, follow: false },
 };

@@ -11,7 +11,7 @@ import type { Deps } from "./deps";
  * plugs in here: `wrap` calls the KMS Encrypt API (or GenerateDataKey for envelope encryption)
  * with `{ orgId, kid }` as the encryption context, `unwrap` calls Decrypt, and `name` ("aws-kms",
  * "gcp-kms", ...) is stored on each OrgKey row so keys wrapped by different providers can coexist
- * during a migration. Nothing else in Gate changes: signing still happens in this process.
+ * during a migration. Nothing else in Elan1 Govern changes: signing still happens in this process.
  */
 export interface KeyProvider {
   readonly name: string;
