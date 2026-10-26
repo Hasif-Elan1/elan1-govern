@@ -153,7 +153,7 @@ export async function activity(orgId: string, f: ActivityFilter = {}): Promise<R
   let views = rows.map((r) => toView(r.body as unknown as Receipt));
   if (f.q) {
     const q = f.q.toLowerCase();
-    views = views.filter((v) => [v.title, v.ruleId, v.agent, v.tool, v.reason, v.by, v.actor, v.outcome?.ref, String(v.seq)].some((s) => s?.toLowerCase().includes(q))).slice(0, f.limit ?? 200);
+    views = views.filter((v) => [v.title, v.ruleId, v.agent, v.tool, v.reason, v.by, v.actor, v.outcome?.ref, v.approvalId, String(v.seq)].some((s) => s?.toLowerCase().includes(q))).slice(0, f.limit ?? 200);
   }
   return views;
 }

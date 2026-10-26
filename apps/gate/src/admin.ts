@@ -149,7 +149,7 @@ default: refuse
 approvers:
   finance: [${list}]
 limits:
-  daily_payments_inr: 500000
+  daily_payments_inr: 2000000
 rules:
   - id: read-mail
     tool: gmail.read_message
