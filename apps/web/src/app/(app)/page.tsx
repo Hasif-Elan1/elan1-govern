@@ -1,12 +1,14 @@
 import { describeAction } from "@gate/core";
 import { forOrg } from "@gate/db";
-import { Inbox, ShieldCheck, ShieldX } from "lucide-react";
+import { BellRing, Inbox, ShieldCheck, ShieldX } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, EmptyState, Section } from "@/components/ui/layout";
 import { cn, timeLeft } from "@/lib/utils";
 import { can } from "@/server/policy";
+import { SeverityPill } from "@/components/alert-bits";
+import { alertList } from "@/server/alerts";
 import { activity, chainStatus, todayStats } from "@/server/queries";
 import { requireCtx } from "@/server/session";
 import { DemoButton, LiveFeed } from "./today-client";
@@ -38,13 +40,14 @@ export default async function Today() {
   const ctx = await requireCtx();
   const db = forOrg(ctx.org.id);
   const mineWhere = { status: "pending" as const, expiresAt: { gt: new Date() }, approvers: { has: ctx.user.email } };
-  const [stats, chain, feed, agents, mine, mineCount] = await Promise.all([
+  const [stats, chain, feed, agents, mine, mineCount, alerts] = await Promise.all([
     todayStats(ctx.org.id),
     chainStatus(ctx.org.id),
     activity(ctx.org.id, { limit: 25 }),
     db.agent.count(),
     db.approval.findMany({ where: mineWhere, orderBy: { createdAt: "asc" }, take: 3 }),
     db.approval.count({ where: mineWhere }),
+    alertList(ctx.org.id, { show: "open" }, 50),
   ]);
   const first = ctx.user.name.split(" ")[0];
   const canDecide = can(ctx.role, "approvals:decide");
@@ -99,6 +102,41 @@ export default async function Today() {
               </ul>
             ) : null}
           </Card>
+
+          {alerts.length ? (
+            <Card className="mt-5 overflow-hidden">
+              <div className="flex flex-wrap items-center gap-4 px-5 py-4 sm:px-6">
+                <div className="flex size-11 items-center justify-center rounded-full bg-sunken text-ink-2">
+                  <BellRing className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-lg font-semibold">{alerts.length === 1 ? "1 open alert" : `${alerts.length} open alerts`}</p>
+                  <p className="mt-0.5 text-sm text-ink-2">
+                    {[["high", "high"], ["medium", "medium"], ["low", "low"]]
+                      .map(([s, label]) => [alerts.filter((a) => a.severity === s).length, label] as const)
+                      .filter(([n]) => n > 0)
+                      .map(([n, label]) => `${n} ${label}`)
+                      .join(", ")}
+                    . Agents did something unusual for them.
+                  </p>
+                </div>
+                <Link href="/alerts" className={buttonVariants({ variant: "secondary" })}>
+                  See alerts
+                </Link>
+              </div>
+              <ul className="divide-y divide-line border-t border-line">
+                {alerts.slice(0, 3).map((a) => (
+                  <li key={a.id}>
+                    <Link href={`/alerts/${a.id}`} className="flex flex-wrap items-center gap-3 px-5 py-3 text-[14.5px] hover:bg-sunken sm:px-6">
+                      <SeverityPill severity={a.severity} />
+                      <span className="min-w-0 flex-1 font-medium">{a.title}</span>
+                      <span className="text-[13px] text-ink-3">{a.agentSlug}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Stat label="Actions today" value={stats.total} href="/activity" />

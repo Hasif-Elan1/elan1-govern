@@ -8,7 +8,7 @@ import { forOrg } from "@gate/db";
 import { adminEvent } from "./admin";
 import type { Deps } from "./deps";
 
-export const WEBHOOK_EVENTS = ["receipt.created", "approval.pending", "approval.resolved"] as const;
+export const WEBHOOK_EVENTS = ["receipt.created", "approval.pending", "approval.resolved", "alert.created"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 export const TEST_EVENT = "webhook.test";
 export const DELIVER_QUEUE = "webhook-deliver";
@@ -191,6 +191,10 @@ export function eventsFor(r: Receipt): { event: WebhookEvent; payload: object }[
   const out: { event: WebhookEvent; payload: object }[] = [{ event: "receipt.created", payload: r }];
   if (r.kind === "decision" && r.decision === "ask" && r.approval?.result === "pending") out.push({ event: "approval.pending", payload: approvalPayload(r) });
   if (r.kind === "approval" && r.approval) out.push({ event: "approval.resolved", payload: approvalPayload(r) });
+  if (r.kind === "admin" && r.action === "alert.created") {
+    const d = (r.details ?? {}) as Record<string, unknown>;
+    out.push({ event: "alert.created", payload: { alert_id: d.alert_id, agent: r.agent, detector: d.detector, severity: d.severity, title: d.title, explanation: d.explanation, receipts: d.receipts, receipt_seq: r.seq } });
+  }
   return out;
 }
 

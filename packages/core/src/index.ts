@@ -12,3 +12,4 @@ export * from "./risk";
 export * from "./diff";
 export * from "./inventory";
 export * from "./assessments";
+export * from "./behaviour";

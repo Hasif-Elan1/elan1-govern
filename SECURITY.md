@@ -130,6 +130,18 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **D** | A slow or dead endpoint slows agents down | Events are enqueued after the receipt commits and delivered by background jobs; the guard never waits. At most 20 endpoints per org; 8 attempts, then the delivery is marked failed | `gate/webhooks.test.ts` "retries with backoff…" |
 | **E** | A viewer adds an endpoint to exfiltrate events | `webhooks:manage` is owner/admin only; writes go through the signed internal API and leave `webhook.created` / `webhook.deleted` receipts | `web/policy.test.ts`; `e2e/security.spec.ts` authz matrix; `e2e/platform.spec.ts` |
 
+### Behaviour alerts and the emergency stop
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **D** | An attacker (or a careless insider) triggers the emergency stop to halt every agent: a denial of service | `emergency:stop` is owner/admin only, needs a sign-in within 10 minutes and the word `STOP` typed; the stop is one `emergency.stop` receipt naming who did it, every owner and admin is emailed at once, and resume restores exactly the agents it paused | `web/policy.test.ts`; `e2e/security.spec.ts` authz matrix; `e2e/alerts.spec.ts`; `gate/behaviour.test.ts` "emergency stop" |
+| **D** | Behaviour checks slow the guard down or make calls fail | Checks run after the receipt commits, in the background; a slow or throwing check never delays or fails the call and becomes a health alert. Alerting fails open; the decision path stays fail-closed | `gate/behaviour.test.ts` "stays fast and fail-closed" |
+| **D** | An agent floods alerts (or emails) | One open alert per agent, detector and key (a unique index); repeats update it; low alerts send no email | `gate/behaviour.test.ts` "does not raise it twice", "stored once" |
+| **E** | A viewer silences alerts, or turns auto-pause off | Acknowledge/resolve need `alerts:acknowledge` (owner, admin, approver); thresholds `alerts:configure` and auto-pause `agents:manage` (owner, admin); each change is a receipt | `web/policy.test.ts`; `e2e/security.spec.ts` |
+| **R** | An alert or automatic pause leaves no trace | `alert.created`, `alert.acknowledged`, `alert.resolved`, `agent.paused` (naming the alert), `emergency.stop` and `emergency.resumed` are signed receipts written in the same transaction as the change | `gate/behaviour.test.ts` |
+| **I** | Alerts leak personal data | Detectors read only the minimised receipts (display identifiers such as a vendor name or a domain); nothing new is stored in receipts | `core/behaviour.test.ts` "summaries" |
+| **I** | One tenant sees another's alerts or incidents | `BehaviourAlert` and `Incident` are tenant models behind `forOrg` | `db/isolation.test.ts`; `gate/behaviour.test.ts` "alerts stay inside their organisation"; `web/alerts.test.ts` |
+
 ### Signing keys and rotation
 
 | | Threat | Mitigation | Tested in |

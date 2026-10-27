@@ -85,12 +85,13 @@ Rules can target a tool (`tool: zoho.record_bill_payment`) or every tool with a 
 | A third-party tool with no code | Point Elan1 Govern at its MCP server (upstream connector); tag its tools in the console. |
 | A rule condition | Add it to `ConditionSchema`/`checkWhen` in `rulebook.ts` and `ruleMatches` in `engine.ts`, with unit and property tests. |
 | A compliance framework | Add requirements and control mappings to the framework library (data); evidence counts come from receipts. |
+| A behaviour check | Add a detector to `packages/core/src/behaviour.ts` (pure, with unit and property tests), a threshold to `BehaviourSettingsSchema`, and a label to `DETECTOR_LABELS`. `apps/gate/src/behaviour.ts` stores findings as alerts. |
 | A permission | Add it to `apps/web/src/server/policy.ts`, use it in `route({ permission })`, and extend both authz matrix tests. |
 
 ## Operations
 
 - **Configuration:** environment only, validated at startup; missing or weak secrets stop the process. `APP_ENV=production` also refuses the development sample secrets.
-- **Scaling:** both services are stateless apart from the database. Background work (approval expiry, checkpoints, webhook delivery) runs on pg-boss in Postgres, so several Elan1 Govern instances are safe. Rate limits are per process today (planned: shared store).
+- **Scaling:** both services are stateless apart from the database. Background work (approval expiry, checkpoints, webhook delivery, behaviour scans) runs on pg-boss in Postgres, so several Elan1 Govern instances are safe. Rate limits are per process today (planned: shared store).
 - **Observability:** structured JSON logs with request ids and no personal data; `/healthz` reports the database and recent health alerts (for example a receipt that could not be written).
 
 See [SECURITY.md](../SECURITY.md) for the threat model and [DECISIONS.md](../DECISIONS.md) for the choices behind all this.

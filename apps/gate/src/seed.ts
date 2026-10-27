@@ -1,9 +1,11 @@
-import { hashToken } from "@gate/core";
+import { BEHAVIOUR_DEFAULTS, hashToken } from "@gate/core";
 import { packById, recommendedFrameworks, type Region } from "@gate/core/frameworks";
 import { addMembership, enableFrameworks, forOrg, membershipsForUser, prisma } from "@gate/db";
 import argon2 from "argon2";
 import pino from "pino";
 import { adminEvent, createOrg, setUpDemoAgent } from "./admin";
+import { updateBehaviourSettings } from "./behaviour";
+import { guard } from "./guard";
 import { makeDeps } from "./deps";
 import { readGateEnv } from "./env";
 
@@ -43,6 +45,25 @@ async function setIndustry(deps: ReturnType<typeof makeDeps>, orgId: string, act
   }
 }
 
+/**
+ * So the Alerts page has something real to show: the demo agent does a little ordinary work
+ * (reads invoices, pays Kaveri Logistics) while it is still learning, then the demo org turns
+ * its learning period off and the agent pays a vendor it has never paid before. That payment
+ * raises a genuine "New vendor" alert through the normal inline check. Runs once.
+ */
+async function demoBehaviour(deps: ReturnType<typeof makeDeps>, orgId: string, agentId: string, actor: string) {
+  const db = forOrg(orgId);
+  if (await db.receipt.count({ where: { agent: "ap-bot", kind: "decision" } })) return;
+  const who = { orgId, agentId };
+  await guard(deps, who, "gmail.search", { query: "invoice has:attachment" });
+  for (const id of ["m_101", "m_102", "m_103"]) await guard(deps, who, "gmail.read_message", { message_id: id });
+  await guard(deps, who, "zoho.list_bills", { status: "open" });
+  await guard(deps, who, "zoho.record_bill_payment", { bill_id: "bill_1187", amount_inr: 6000, reference: "NEFT part payment" });
+  await updateBehaviourSettings(deps, orgId, { ...BEHAVIOUR_DEFAULTS, learningDays: 0 }, actor);
+  await guard(deps, who, "zoho.record_bill_payment", { bill_id: "bill_554", amount_inr: 4200, reference: "NEFT demo" });
+  for (let i = 0; i < 5 && deps.background.size; i++) await Promise.all([...deps.background]);
+}
+
 export async function seed() {
   const env = readGateEnv();
   const password = process.env.DEMO_OWNER_PASSWORD;
@@ -66,6 +87,8 @@ export async function seed() {
   } else {
     await db.apiKey.updateMany({ where: { keyHash: hashToken(demoKey) }, data: { revokedAt: null } });
   }
+
+  await demoBehaviour(deps, orgId, demo.agentId, owner.email);
 
   // A second client org where the CA is an auditor, to show the client switcher.
   const clientOwner = await user(DEMO.clientOwner.email, DEMO.clientOwner.name, password);

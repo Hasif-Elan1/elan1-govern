@@ -38,7 +38,7 @@ export function adminTitle(r: Receipt): string {
     case "agent.created":
       return `Added the agent ${r.agent ?? ""}`;
     case "agent.paused":
-      return `Paused ${r.agent ?? "an agent"}`;
+      return d.reason === "auto-pause" ? `Paused ${r.agent ?? "an agent"} automatically after a high alert` : `Paused ${r.agent ?? "an agent"}`;
     case "agent.resumed":
       return `Resumed ${r.agent ?? "an agent"}`;
     case "rulebook.signed":
@@ -90,6 +90,22 @@ export function adminTitle(r: Receipt): string {
       return `Added a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
     case "webhook.deleted":
       return `Deleted a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
+    case "alert.created":
+      return `Raised a ${String(d.severity ?? "")} alert${agent}: ${String(d.title ?? "")}`.replace("a  alert", "an alert");
+    case "alert.acknowledged":
+      return `Acknowledged the alert${agent}: ${String(d.title ?? "")}`;
+    case "alert.resolved":
+      return `Resolved the alert${agent}: ${String(d.title ?? "")}`;
+    case "alerts.settings_updated":
+      return "Changed the alert settings";
+    case "agent.auto_pause_on":
+      return `Turned on automatic pause${agent}`;
+    case "agent.auto_pause_off":
+      return `Turned off automatic pause${agent}`;
+    case "emergency.stop":
+      return `Emergency stop: paused ${String(d.count ?? "every")} ${d.count === 1 ? "agent" : "agents"}`;
+    case "emergency.resumed":
+      return `Resumed ${String(d.count ?? "the")} ${d.count === 1 ? "agent" : "agents"} after the emergency stop`;
     default:
       return r.action ?? "Setup change";
   }

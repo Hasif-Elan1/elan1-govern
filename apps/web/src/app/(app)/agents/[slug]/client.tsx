@@ -52,6 +52,38 @@ export function KillSwitch({ slug, name, paused }: { slug: string; name: string;
   );
 }
 
+/** "Pause automatically on high-severity alerts". Off by default. */
+export function AutoPause({ slug, on, manage }: { slug: string; on: boolean; manage: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <label className="flex items-start gap-3 text-sm">
+      <Switch
+        checked={on}
+        disabled={!manage || busy}
+        aria-label="Pause automatically on high-severity alerts"
+        onCheckedChange={async (next) => {
+          setBusy(true);
+          try {
+            await api(`/api/agents/${slug}/behaviour`, { autoPauseOnHigh: next });
+            toast.ok(next ? "This agent will be paused on a high-severity alert." : "Automatic pause is off.");
+            router.refresh();
+          } catch (e) {
+            toast.error(e instanceof ApiError ? e.message : "Could not change the setting.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <span>
+        <span className="block font-medium">Pause automatically on high-severity alerts</span>
+        <span className="block text-[13px] text-ink-3">Elan1 Govern pauses the agent the moment a high alert is raised, and records it on a receipt. Someone has to resume it.</span>
+      </span>
+    </label>
+  );
+}
+
 type Key = { id: string; label: string; prefix: string; createdAt: string; lastUsedAt: string | null; revokedAt: string | null };
 
 function Keys({ slug, keys, manage, mcpUrl, gateUrl }: { slug: string; keys: Key[]; manage: boolean; mcpUrl: string; gateUrl: string }) {

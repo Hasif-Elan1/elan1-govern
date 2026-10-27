@@ -24,6 +24,11 @@ export const PERMISSIONS = {
   "assessments:approve": ["owner", "admin"],
   "webhooks:manage": ["owner", "admin"],
   "keys:rotate": ["owner"],
+  // Unusual-behaviour alerts: approvers can acknowledge and resolve them; viewers and auditors read.
+  "alerts:acknowledge": ["owner", "admin", "approver"],
+  "alerts:configure": ["owner", "admin"],
+  // Pausing every agent at once is a denial of service if misused: owners and admins, fresh sign-in.
+  "emergency:stop": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

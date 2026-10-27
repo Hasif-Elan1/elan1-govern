@@ -86,6 +86,7 @@ model Org {
   locale        String       @default("en-IN") // BCP 47, for number and date formatting
   industry      String? // industry pack id, e.g. "healthcare"; null = set up before packs (finance)
   regions       String[]     @default([]) // where the org operates: india | eu | us | uk | other
+  behaviourSettings Json? // unusual-behaviour thresholds, merged over the defaults in @gate/core (behaviour.ts)
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
@@ -121,6 +122,7 @@ model Agent {
   status           AgentStatus @default(active)
   activeRulebookId String?
   lastActionAt     DateTime?
+  autoPauseOnHigh  Boolean     @default(false) // pause automatically on a high-severity behaviour alert
   createdAt        DateTime    @default(now())
   apiKeys          ApiKey[]
   rulebooks        Rulebook[]
@@ -419,4 +421,56 @@ model WebhookDelivery {
 
   @@index([orgId, webhookId, createdAt])
   @@index([status, nextAttemptAt])
+}
+
+// ---- Unusual-behaviour alerts and emergency stops ----
+
+// One alert from a detector in @gate/core (behaviour.ts). While it is open or acknowledged,
+// dedupeKey = "<agentId>|<detector>|<key>" keeps it the only one; resolving clears it.
+model BehaviourAlert {
+  id             String    @id @default(cuid())
+  orgId          String
+  agentId        String
+  agentSlug      String
+  detector       String // volume_spike | off_hours | new_counterparty | new_tool | refusal_surge | amount_outlier
+  key            String
+  dedupeKey      String?
+  severity       String // low | medium | high
+  status         String    @default("open") // open | acknowledged | resolved
+  title          String
+  explanation    String
+  numbers        Json
+  seqs           Int[] // receipts the alert is about
+  receiptSeq     Int? // the alert.created receipt
+  occurrences    Int       @default(1)
+  autoPaused     Boolean   @default(false)
+  lastSeenAt     DateTime  @default(now())
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([orgId, dedupeKey])
+  @@index([orgId, status, createdAt])
+  @@index([orgId, agentId, createdAt])
+}
+
+// An emergency stop: every agent paused at once, until someone resumes them.
+model Incident {
+  id             String    @id @default(cuid())
+  orgId          String
+  kind           String    @default("emergency_stop")
+  status         String    @default("open") // open | closed
+  reason         String?
+  startedBy      String
+  startedAt      DateTime  @default(now())
+  startSeq       Int?
+  pausedAgentIds String[] // only these are resumed
+  endedBy        String?
+  endedAt        DateTime?
+  endSeq         Int?
+  resumedCount   Int?
+
+  @@index([orgId, status])
 }

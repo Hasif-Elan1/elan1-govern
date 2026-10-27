@@ -31,6 +31,7 @@ Everything below is working code with tests. Each item says where to find it in 
 | **Compliance** | Ten framework libraries; coverage from real evidence; gaps called out; framework report PDF; all marked "Draft — needs legal review" | Compliance |
 | **Industry packs** | Starter rules and frameworks for finance, healthcare, HR, support, sales, engineering, and general; chosen during sign-up | Sign-up, Add agent |
 | **Team and security** | Roles (Owner, Admin, Approver, Viewer, Auditor); auditors can switch between client companies; two-step sign-in; **single sign-on** (Okta, Microsoft, Google) | Settings |
+| **Alerts and emergency stop** | Learns what is normal for each agent and flags the unusual: bursts of calls, odd hours, new vendors or recipients, first use of a tool, many refusals, large amounts. Can pause an agent on a serious alert. One button (owners and admins, password and the word STOP) pauses every agent at once, with an incident report | Alerts, Agents |
 | **Platform** | Background jobs that survive restarts, webhooks, an API description (OpenAPI), signing-key rotation | Settings, `docs/openapi.json` |
 | **For developers** | MCP address + key for any agent; a small SDK; the `gate` command line (`verify`, `sign`, `keygen`) | README |
 
@@ -75,7 +76,8 @@ Run `pnpm run secrets`, put the new values in `.env`, and set `APP_ENV=productio
 3. Open **Approvals**, look at the invoice and vendor, press **Approve**. The demo finishes.
 4. Open **Activity**, click the payment, press **Verify this receipt**.
 5. Open **Evidence**, download the auditor pack, and check it: `pnpm govern verify ~/Downloads/auditor-pack-….zip`.
-6. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
+6. Open **Alerts**. The demo agent paid a vendor it had never paid before, so there is a "New vendor" alert explaining why. Press **Acknowledge**. The **Emergency stop** button there pauses every agent at once; **Resume agents** in the red banner undoes it.
+7. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
 
 ## 5. How to remove things
 
