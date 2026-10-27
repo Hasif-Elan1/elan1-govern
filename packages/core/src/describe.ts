@@ -76,9 +76,10 @@ function conditionWords(field: string, cond: unknown): string {
 }
 
 /** "Ask finance before: Record a payment, when the amount is over ₹50,000" */
-export function describeRule(rule: { tool?: string; tag?: RiskTag; decide: string; approver?: string; when?: Record<string, unknown> }): string {
+export function describeRule(rule: { tool?: string; tag?: RiskTag; decide: string; approver?: string; when?: Record<string, unknown>; unless?: Record<string, unknown> }): string {
   const label = rule.tool === undefined ? `any action that ${RISK_TAG_LABELS[rule.tag as RiskTag] ?? rule.tag}` : isKnownTool(rule.tool) ? TOOLS[rule.tool].label : rule.tool;
   const when = Object.entries(rule.when ?? {}).map(([k, v]) => conditionWords(k, v));
+  const unless = Object.entries(rule.unless ?? {}).map(([k, v]) => conditionWords(k, v));
   const verb = rule.decide === "allow" ? "Allow" : rule.decide === "ask" ? `Ask ${rule.approver ?? "a person"} before` : "Never allow";
-  return `${verb}: ${rule.tool === undefined ? label : label.toLowerCase()}${when.length ? `, when ${when.join(" and ")}` : ""}`;
+  return `${verb}: ${rule.tool === undefined ? label : label.toLowerCase()}${when.length ? `, when ${when.join(" and ")}` : ""}${unless.length ? `, unless ${unless.join(" and ")}` : ""}`;
 }

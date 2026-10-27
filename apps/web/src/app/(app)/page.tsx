@@ -9,6 +9,7 @@ import { cn, timeLeft } from "@/lib/utils";
 import { can } from "@/server/policy";
 import { activity, chainStatus, todayStats } from "@/server/queries";
 import { requireCtx } from "@/server/session";
+import { suggestionTotals, totalsLine } from "@/server/suggestions";
 import { DemoButton, LiveFeed } from "./today-client";
 
 export const metadata: Metadata = { title: "Today" };
@@ -38,14 +39,16 @@ export default async function Today() {
   const ctx = await requireCtx();
   const db = forOrg(ctx.org.id);
   const mineWhere = { status: "pending" as const, expiresAt: { gt: new Date() }, approvers: { has: ctx.user.email } };
-  const [stats, chain, feed, agents, mine, mineCount] = await Promise.all([
+  const [stats, chain, feed, agents, mine, mineCount, suggested] = await Promise.all([
     todayStats(ctx.org.id),
     chainStatus(ctx.org.id),
     activity(ctx.org.id, { limit: 25 }),
     db.agent.count(),
     db.approval.findMany({ where: mineWhere, orderBy: { createdAt: "asc" }, take: 3 }),
     db.approval.count({ where: mineWhere }),
+    suggestionTotals(ctx.org.id),
   ]);
+  const suggestionLine = totalsLine(suggested);
   const first = ctx.user.name.split(" ")[0];
   const canDecide = can(ctx.role, "approvals:decide");
   const date = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long" });
@@ -113,6 +116,15 @@ export default async function Today() {
               </span>
             </Link>
           </div>
+
+          {suggestionLine ? (
+            <p className="mt-5 text-sm text-ink-2" data-testid="suggestions-line">
+              {suggestionLine}{" "}
+              <Link href="/rulebooks" className="font-medium text-accent hover:underline">
+                See suggestions
+              </Link>
+            </p>
+          ) : null}
 
           <Section title="Live activity" description="Every action your agents try, as it happens." className="mt-10" actions={<Link href="/activity" className="text-sm font-medium text-accent hover:underline">All activity</Link>}>
             <LiveFeed initial={feed} />

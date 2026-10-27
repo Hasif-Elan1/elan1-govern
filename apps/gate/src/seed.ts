@@ -4,6 +4,7 @@ import { addMembership, enableFrameworks, forOrg, membershipsForUser, prisma } f
 import argon2 from "argon2";
 import pino from "pino";
 import { adminEvent, createOrg, setUpDemoAgent } from "./admin";
+import { addDemoHistory } from "./demo/history";
 import { makeDeps } from "./deps";
 import { readGateEnv } from "./env";
 
@@ -66,6 +67,9 @@ export async function seed() {
   } else {
     await db.apiKey.updateMany({ where: { keyHash: hashToken(demoKey) }, data: { revokedAt: null } });
   }
+
+  // A month of resolved payment approvals, so the Rulebooks page has a suggestion to show.
+  await addDemoHistory(deps, orgId, owner.email);
 
   // A second client org where the CA is an auditor, to show the client switcher.
   const clientOwner = await user(DEMO.clientOwner.email, DEMO.clientOwner.name, password);

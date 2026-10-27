@@ -4,6 +4,7 @@ import { expireDue } from "./approvals";
 import { CHAT_QUEUE, deliverChatMessage, sweepChat } from "./chat/outbox";
 import { noQueue, type Deps, type JobQueue } from "./deps";
 import { checkpointAll } from "./evidence";
+import { findAllSuggestions } from "./suggestions";
 import { DELIVER_QUEUE, deliverWebhook } from "./webhooks";
 import { purgeReplay } from "./replay";
 
@@ -20,6 +21,7 @@ export const QUEUES = {
   deliver: DELIVER_QUEUE,
   replayPurge: "replay-purge",
   chat: CHAT_QUEUE,
+  suggestions: "rule-suggestions-nightly",
 } as const;
 
 const CRON: { queue: string; cron: string }[] = [
@@ -27,6 +29,8 @@ const CRON: { queue: string; cron: string }[] = [
   { queue: QUEUES.checkpoints, cron: "0 * * * *" },
   { queue: QUEUES.sweep, cron: "* * * * *" },
   { queue: QUEUES.replayPurge, cron: "17 * * * *" },
+  // 02:00 India time (pg-boss cron runs in UTC).
+  { queue: QUEUES.suggestions, cron: "30 20 * * *" },
 ];
 
 /** Re-sends deliveries that are due but whose job was lost (a crash, or written before jobs ran). */
@@ -80,6 +84,7 @@ export async function startJobs(deps: Deps, opts: { schedule?: boolean; pollingI
   await boss.work(QUEUES.checkpoints, polling, () => runLogged(deps, QUEUES.checkpoints, async () => ({ signed: await checkpointAll(deps) })));
   await boss.work(QUEUES.sweep, polling, () => runLogged(deps, QUEUES.sweep, async () => ({ attempted: await sweepWebhooks(deps), chat: await sweepChat(deps) })));
   await boss.work(QUEUES.replayPurge, polling, () => runLogged(deps, QUEUES.replayPurge, async () => ({ purged: await purgeReplay(deps) })));
+  await boss.work(QUEUES.suggestions, polling, () => runLogged(deps, QUEUES.suggestions, async () => ({ open: await findAllSuggestions(deps) })));
   await boss.work<{ orgId: string; deliveryId: string }>(QUEUES.deliver, { ...polling, batchSize: 5, localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) await deliverWebhook(deps, job.data.orgId, job.data.deliveryId);
   });

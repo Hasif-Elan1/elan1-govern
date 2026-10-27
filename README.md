@@ -384,6 +384,37 @@ Onboarding asks for the kind of work and where you operate (India, EU, US, UK, o
 
 Everything here is labelled **Draft — needs legal review**, on screen and in every export. The library lives in `packages/core/src/frameworks` (`@gate/core/frameworks`).
 
+## Rule suggestions
+
+People approve the same kinds of actions again and again. Every night (and when you press **Look for suggestions** on Rulebooks), Elan1 Govern reads the last 30 days of answered approvals for each agent and, when a clear group was always approved, drafts a rule that would let that group through without asking:
+
+> **Raise the no-approval limit for payments from ₹50,000 to ₹1,00,000.** In the last 30 days people approved all 41 payments over ₹50,000 and up to ₹1,00,000, to 6 vendors (none rejected). Allow payments up to ₹1,00,000 without asking?
+
+Each card shows the evidence (approved, rejected, nobody answered, the usual wait), how many approvals a month it would save, the change as a YAML diff, and two buttons. **Open as draft** loads the drafted rulebook into the builder; nothing changes until someone with permission to publish signs and publishes it. **Dismiss** hides it. Today shows one line when there are suggestions ("1 rule suggestion could save about 43 approvals a month.").
+
+What it can suggest, all built from values already stored with approvals (amounts, vendor or domain identifiers, the tool), never from message bodies:
+
+| Kind | The draft |
+|---|---|
+| `raise_limit` | Moves the line between an allow rule and an ask rule (`pay-small` up to ₹50,000, `pay-large` over it) to a new cap |
+| `allow_under_amount` | Adds an allow rule for amounts up to a cap and narrows the ask rule to match |
+| `allow_for_known_counterparties` | Allows a short list of counterparties (customer ids, reply domains) that were always approved. Never for tools that move money |
+| `allow_combined` | Both: up to a cap, and only for those counterparties |
+
+The rules it follows: at least 10 approvals over at least 7 days, the latest in the last 14 days; no rejection or expiry anywhere in the group it would allow; the cap is at most the largest approved amount and below any refuse threshold; only ask rules that name one tool are changed, never refuse rules, and never tools tagged `deletes`, `changes_access` or `changes_production`. Before a draft is shown, every past approval is replayed against it: it may only turn asks a person approved into allows, and every other decision must stay the same. A dismissed suggestion comes back only when the approvals behind it have at least doubled (and grown by 10 or more). Opening and dismissing are receipted (`suggestion.applied`, `suggestion.dismissed`). Owners and admins open and dismiss; everyone else can read them.
+
+To carve a subset out of an ask rule, rules can have an exception: `unless` takes the same conditions as `when`, only on ask rules, and the ask stands aside only when every exception condition holds (a missing value never holds).
+
+```yaml
+- id: refund-ask
+  tool: pay.refund
+  decide: ask
+  approver: support
+  unless: { amount: { lte: 3000 }, customer_id: { in: [c_101, c_102] } }
+```
+
+`pnpm db:seed` adds a month of resolved payment approvals to the demo org, so one suggestion is waiting on Rulebooks. The miner is `packages/core/src/suggest.ts` (pure, unit and property tested); the job and storage are in `apps/gate/src/suggestions.ts`.
+
 ---
 
 ## What's inside

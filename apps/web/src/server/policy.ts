@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   "keys:rotate": ["owner"],
   // Slack and WhatsApp approval channels. Approvers manage their own WhatsApp number with approvals:decide.
   "notifications:manage": ["owner", "admin"],
+  // Rule suggestions: whoever edits rulebooks opens or dismisses them. Publishing is still rulebooks:publish.
+  "suggestions:manage": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

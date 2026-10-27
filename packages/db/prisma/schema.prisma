@@ -504,3 +504,33 @@ model ChatMessage {
   @@index([orgId, approvalId])
   @@index([status, nextAttemptAt])
 }
+
+// A rule change proposed from past approvals (packages/core/src/suggest.ts). Nothing here changes a
+// rulebook: "Open as draft" loads its drafted rulebook into the builder, and a person signs and publishes it.
+model RuleSuggestion {
+  id                String    @id @default(cuid())
+  orgId             String
+  agentId           String
+  kind              String // allow_under_amount | allow_for_known_counterparties | allow_combined | raise_limit
+  fingerprint       String // sha256 of the drafted change
+  ruleId            String
+  tool              String
+  status            String    @default("new") // new | dismissed | applied
+  title             String
+  proposal          String
+  confidence        String
+  explanation       String
+  evidence          Json
+  savedPerMonth     Int
+  medianWaitSeconds Int? // median wait of the approvals it would have saved
+  covered           Int // approvals behind it; a dismissed one returns only when this has grown a lot
+  baseVersion       Int // the rulebook version it was drafted from
+  draftYaml         String // the whole drafted rulebook, unsigned
+  decidedBy         String?
+  decidedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([orgId, agentId, kind, fingerprint])
+  @@index([orgId, status])
+}

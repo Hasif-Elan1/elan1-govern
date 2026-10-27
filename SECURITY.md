@@ -183,6 +183,22 @@ Chat is a doorbell: rules, decisions and receipts stay in Elan1 Govern. Both cha
 | **D** | A crash loses due work | Jobs are durable rows; overdue approvals are also expired on access, and `webhook-sweep` re-sends any delivery whose job was lost | `gate/jobs.test.ts` "the sweep picks up deliveries whose job was lost" |
 | **E** | The job queue becomes a way into tenant data | Job payloads carry only ids; handlers re-read rows through `forOrg(orgId)`; tables live in a separate `pgboss` schema | `db/isolation.test.ts` (tenant scan) |
 
+### Rule suggestions
+
+Suggestions are learned from approvals, so they are a way for history to change policy. Two properties keep that safe: a suggestion can never weaken a refuse rule, and it can never publish itself.
+
+- **It cannot weaken a refuse rule.** The miner only edits ask rules that name one tool, and only to turn a subset of them into allow. Refuse rules are copied unchanged, and the engine's strictest-wins rule means a refuse that matches still wins over any added allow. Exceptions (`unless`) are rejected by the rulebook schema on anything but an ask rule. Caps stay at or below the largest approved amount and below any refuse threshold. Tools tagged `deletes`, `changes_access` or `changes_production` are never suggested, and counterparty-only drafts are never made for tools that move money.
+- **It is checked against history.** Before a draft is stored, every past approval of the agent is replayed against it: a draft that would allow anything a person rejected or left to expire, or change any other decision, is thrown away. Property tests check this, and that `decide()` never allows what a refuse rule refused, over random histories and rulebooks.
+- **It cannot publish itself.** Applying a suggestion only marks it applied (with a receipt) and opens its drafted rulebook in the builder. Publishing is the existing signed step, needs `rulebooks:publish`, and runs the same validation and high-risk checks as any other rulebook. A draft made from an older rulebook version is refused.
+- **It adds no personal data.** The miner reads only the argument summaries already stored on approvals (amounts, ids, a domain, a vendor display name). Display names are shown to people as context and never used in a rule.
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **T** | A suggestion loosens policy past what people approved | Only ask to allow for always-approved subsets; replay check; refuse rules untouched; schema rejects `unless` outside ask rules | `core/suggest.test.ts` (unit and property) |
+| **E** | Someone without publish rights changes a rulebook through a suggestion | Applying creates a draft only; `suggestions:manage` (owners, admins) to open or dismiss; publishing still needs `rulebooks:publish` | `gate/suggestions.test.ts`; `web/policy.test.ts`; `e2e/security.spec.ts`; `e2e/suggestions.spec.ts` |
+| **I** | One org sees another's suggestions | `RuleSuggestion` is a tenant model read and written through `forOrg` | `gate/suggestions.test.ts` "keeps each org's suggestions to itself"; `db/isolation.test.ts` |
+| **R** | Nobody can tell who opened or dismissed a suggestion | `suggestion.applied` and `suggestion.dismissed` admin receipts on the chain | `gate/suggestions.test.ts` |
+
 ## Configuration safety
 
 - All secrets come from the environment. `.env` is git-ignored; `.env.example` holds **dev-only** sample values so a fresh clone runs.

@@ -22,6 +22,7 @@ const EXPECTED: Record<Permission, Role[]> = {
   "webhooks:manage": ["owner", "admin"],
   "keys:rotate": ["owner"],
   "notifications:manage": ["owner", "admin"],
+  "suggestions:manage": ["owner", "admin"],
 };
 
 describe("authz matrix (policy)", () => {

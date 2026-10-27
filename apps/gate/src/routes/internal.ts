@@ -24,6 +24,8 @@ import { rotateSigningKey } from "../keys";
 import { addUpstream, removeUpstream, syncUpstream, updateUpstreamTool, type UpstreamFail } from "../upstream";
 import { createWebhook, deleteWebhook, testWebhook, WEBHOOK_EVENTS } from "../webhooks";
 import { replayAllowed, replayDraft } from "../replay";
+import { applySuggestion, dismissSuggestion, findSuggestions } from "../suggestions";
+import { addDemoHistory } from "../demo/history";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -281,6 +283,30 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
         void run.finally(() => deps.background.delete(run));
       }
       return r;
+    });
+
+    // Dev only: a month of resolved demo approvals, so a rule suggestion appears.
+    internal.post<P>("/internal/orgs/:org/demo/history", async (req, reply) => {
+      if (deps.env.NODE_ENV === "production") return reply.code(404).send({ error: "not found" });
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      return addDemoHistory(deps, orgId, b.actor);
+    });
+
+    // ---- Rule suggestions: look now, open as a draft, dismiss. Publishing stays a separate, signed step. ----
+
+    internal.post<P>("/internal/orgs/:org/suggestions/run", async (req) => {
+      const orgId = await org(req.params.org);
+      const b = parse(z.object({ actor, agentId: id.optional() }).strict(), req.body);
+      return findSuggestions(deps, orgId, b.agentId ? { agentId: b.agentId } : {});
+    });
+
+    internal.post<P>("/internal/orgs/:org/suggestions/:id/:kind", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      const action = parse(z.enum(["apply", "dismiss"]), req.params.kind);
+      const r = await (action === "apply" ? applySuggestion : dismissSuggestion)(deps, orgId, parse(id, req.params.id), b.actor);
+      return r.ok ? r : reply.code(r.status).send({ error: r.error });
     });
   });
 }

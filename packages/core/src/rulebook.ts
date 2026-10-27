@@ -38,6 +38,8 @@ export const RuleSchema = z
     /** … or every tool with a risk tag, e.g. moves_money. */
     tag: z.enum(RISK_TAGS).optional(),
     when: WhenSchema.optional(),
+    /** Ask rules only: the rule stands aside when all of these hold (same conditions as `when`). */
+    unless: WhenSchema.optional(),
     decide: z.enum(DECISIONS),
     approver: slug.optional(),
     expires_in: z.string().regex(durationRe, "use a duration like 30m, 24h or 2d").optional(),
@@ -97,6 +99,12 @@ function makeSchema(registry: ToolRegistry) {
         }
         if (rule.expires_in && durationRe.test(rule.expires_in) && durationMs(rule.expires_in) > 30 * 86_400_000) at("expiry can be at most 30 days", "expires_in");
         for (const msg of checkWhen(spec, rule.when ?? {}, rb.lists ?? {})) at(msg, "when");
+        if (rule.unless !== undefined) {
+          // Exceptions only ever narrow an ask. A refuse rule never has one, so nothing can slip past it.
+          if (rule.decide !== "ask") at("only ask rules can have exceptions (unless)", "unless");
+          if (!Object.keys(rule.unless).length) at("unless needs at least one condition", "unless");
+          for (const msg of checkWhen(spec, rule.unless, rb.lists ?? {})) at(msg, "unless");
+        }
       });
       const qids = new Set<string>();
       (rb.quotas ?? []).forEach((q, i) => {
@@ -174,7 +182,7 @@ export function parseRulebookYaml(text: string, registry: ToolRegistry = builtin
 }
 
 const KEY_ORDER = ["version", "agent", "owner", "default", "approvers", "lists", "limits", "quotas", "rules", "signature"] as const;
-const RULE_KEY_ORDER = ["id", "tool", "tag", "when", "decide", "approver", "expires_in", "reason", "approve_in_chat"] as const;
+const RULE_KEY_ORDER = ["id", "tool", "tag", "when", "unless", "decide", "approver", "expires_in", "reason", "approve_in_chat"] as const;
 
 export function rulebookToYaml(rb: Rulebook): string {
   const ordered: Record<string, unknown> = {};
@@ -191,9 +199,9 @@ export function rulebookToYaml(rb: Rulebook): string {
   YAML.visit(doc, {
     Pair(_, pair) {
       const key = YAML.isScalar(pair.key) ? pair.key.value : undefined;
-      if ((key === "when" || key === "approvers" || key === "lists" || key === "max_sum") && YAML.isCollection(pair.value)) {
+      if ((key === "when" || key === "unless" || key === "approvers" || key === "lists" || key === "max_sum") && YAML.isCollection(pair.value)) {
         // Keep `when` short like the docs; group lists stay inline.
-        if (key === "when" || key === "max_sum") pair.value.flow = true;
+        if (key === "when" || key === "unless" || key === "max_sum") pair.value.flow = true;
         else YAML.visit(pair.value, { Seq(_, seq) { seq.flow = true; } });
       }
     },

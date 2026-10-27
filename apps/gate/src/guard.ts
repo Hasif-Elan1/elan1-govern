@@ -37,7 +37,7 @@ export type GuardResult =
 export const GATE_ERROR_REASON = "Elan1 Govern could not check this action safely, so it was refused.";
 
 export function usesList(rb: Rulebook, tool: string, list: string) {
-  return rb.rules.some((r) => (r.tool === tool || r.tag !== undefined) && r.when?.to_domain_in === list);
+  return rb.rules.some((r) => (r.tool === tool || r.tag !== undefined) && (r.when?.to_domain_in === list || r.unless?.to_domain_in === list));
 }
 
 /** Current usage of every quota that applies to this tool, in each quota's own window. */

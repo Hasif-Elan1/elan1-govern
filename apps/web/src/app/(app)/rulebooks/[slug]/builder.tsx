@@ -37,6 +37,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/misc";
 import { Pill, Stamp } from "@/components/ui/status";
+import { YamlDiff } from "@/components/yaml-diff";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError } from "@/lib/client";
 import { cn, fmtDate, shortHash } from "@/lib/utils";
@@ -86,6 +87,7 @@ function numberFieldsFor(rule: Rule, registry: ToolRegistry): string[] {
 }
 
 function condKind(rule: Rule, numbers: string[]): CondKind {
+  if (rule.unless) return "custom";
   const keys = Object.keys(rule.when ?? {});
   if (!keys.length) return "always";
   if (keys.length === 1 && numbers.includes(keys[0]!)) {
@@ -202,6 +204,7 @@ function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }
       delete next.approver;
       delete next.expires_in;
       delete next.approve_in_chat;
+      delete next.unless;
     } else if (!next.approver) next.approver = groups[0];
     if (!next.when || !Object.keys(next.when).length) delete next.when;
     onChange(next);
@@ -217,8 +220,8 @@ function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }
           disabled={disabled}
           onChange={(e) => {
             const v = e.target.value;
-            if (v.startsWith("tag:")) set({ tool: undefined, tag: v.slice(4) as RiskTag, when: undefined });
-            else set({ tool: v, tag: undefined, when: undefined });
+            if (v.startsWith("tag:")) set({ tool: undefined, tag: v.slice(4) as RiskTag, when: undefined, unless: undefined });
+            else set({ tool: v, tag: undefined, when: undefined, unless: undefined });
           }}
         >
           <optgroup label="One tool">
@@ -303,7 +306,7 @@ function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }
         </span>
       </div>
       {rule.decide === "ask" ? <ChatToggle rule={rule} registry={registry} disabled={disabled} index={index} onChange={(on) => set({ approve_in_chat: on || undefined })} /> : null}
-      {rule.when ? <p className="mt-2 text-[13px] text-ink-3">{describeRule(rule)}</p> : null}
+      {rule.when || rule.unless ? <p className="mt-2 text-[13px] text-ink-3">{describeRule(rule)}</p> : null}
     </li>
   );
 }
@@ -484,14 +487,7 @@ function History({ versions, onRestore, canPublish }: { versions: Version[]; onR
               ))}
             </Select>
           </div>
-          <pre className="max-h-[420px] overflow-auto rounded-lg border border-line bg-sunken py-2 font-mono text-[12px] leading-relaxed" data-testid="diff">
-            {diff.map((d, i) => (
-              <div key={i} className={cn("px-3", d.type === "add" && "bg-ok-soft text-ok", d.type === "remove" && "bg-no-soft text-no")}>
-                {d.type === "add" ? "+ " : d.type === "remove" ? "- " : "  "}
-                {d.text}
-              </div>
-            ))}
-          </pre>
+          <YamlDiff lines={diff} />
         </>
       ) : null}
     </div>
@@ -509,6 +505,7 @@ export function Builder({
   vendorDomains,
   versions,
   extraTools,
+  suggested,
 }: {
   slug: string;
   owner: string;
@@ -518,14 +515,16 @@ export function Builder({
   vendorDomains: string[];
   versions: Version[];
   extraTools: ExtraTool[];
+  /** A drafted rulebook from a rule suggestion: loaded as the draft, never published until someone signs it. */
+  suggested?: { yaml: string; title: string };
 }) {
   // The built-in tools plus the org's enabled MCP server tools, the same set Elan1 Govern checks against.
   const [registry] = useState<ToolRegistry>(() => (extraTools.length ? mergeRegistries(builtinRegistry, createRegistry(extraTools.map(specFromJsonSchema))) : builtinRegistry));
   const router = useRouter();
   const toast = useToast();
   const latest = versions[0];
-  const [draft, setDraftState] = useState<Draft>(() => toDraft(latest?.yaml, slug, owner, registry));
-  const [yamlText, setYamlText] = useState(() => rulebookToYaml(toDraft(latest?.yaml, slug, owner, registry) as Rulebook));
+  const [draft, setDraftState] = useState<Draft>(() => toDraft(suggested?.yaml ?? latest?.yaml, slug, owner, registry));
+  const [yamlText, setYamlText] = useState(() => rulebookToYaml(toDraft(suggested?.yaml ?? latest?.yaml, slug, owner, registry) as Rulebook));
   const [yamlErrors, setYamlErrors] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -586,6 +585,12 @@ export function Builder({
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="grid content-start gap-6">
         {readOnly ? <p className="rounded-lg border border-line bg-sunken px-4 py-3 text-sm text-ink-2">You can read these rules and try actions. Only owners and admins can publish changes.</p> : null}
+        {suggested ? (
+          <div className="rounded-lg border border-accent-line bg-accent-soft px-4 py-3 text-sm" data-testid="suggested-draft">
+            <p className="font-medium">Draft from a suggestion: {suggested.title}</p>
+            <p className="mt-1 text-ink-2">Nothing has changed yet. Check the rules below, then sign and publish to make it live, or leave this page to discard the draft.</p>
+          </div>
+        ) : null}
 
         <section>
           <div className="mb-3 flex items-center justify-between">
