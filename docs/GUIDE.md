@@ -33,6 +33,7 @@ Everything below is working code with tests. Each item says where to find it in 
 | **Team and security** | Roles (Owner, Admin, Approver, Viewer, Auditor); auditors can switch between client companies; two-step sign-in; **single sign-on** (Okta, Microsoft, Google) | Settings |
 | **Platform** | Background jobs that survive restarts, webhooks, an API description (OpenAPI), signing-key rotation | Settings, `docs/openapi.json` |
 | **For developers** | MCP address + key for any agent; a small SDK; the `gate` command line (`verify`, `sign`, `keygen`) | README |
+| **Python agents** | A Python SDK with no outside dependencies: check before a tool runs, record after, wait for approvals, check webhooks; a `guarded` decorator; examples for LangChain, the OpenAI Agents SDK and plain Python, and how to connect Claude Desktop, Claude Code or Cursor | `packages/sdk-python`, `examples/` |
 
 **Quality checks that pass:** 409 automated tests, plus 19 browser tests covering sign-up, approving on a phone, the rule builder, the demo, and security (every role against every page, other companies' data, forged links, CSRF, injection attacks). Dependency audit, semgrep, gitleaks and the OWASP ZAP scan are clean of serious findings. Details are in `SECURITY.md`.
 

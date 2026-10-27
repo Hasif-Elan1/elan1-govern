@@ -38,6 +38,7 @@ This document explains how the pieces fit, the invariants that keep it safe, and
 | `packages/db` | Prisma schema and migrations, `forOrg()` tenant scoping, serialized chain writer, quota usage, lookups that start from a secret. | core, Prisma |
 | `packages/connectors` | Gmail, Zoho Books (India data centre) and mock connectors behind one `Connector` interface. OAuth helpers. | core |
 | `packages/sdk` | `check` / `record` / `waitForApproval` for agents with their own loop. | none |
+| `packages/sdk-python` | The same for Python (`elan1-govern`), plus a `guarded` decorator and `verify_webhook`. Not a pnpm workspace package; tested with `pnpm test:python`. | Python standard library only |
 | `packages/cli` | `govern verify`, `govern sign`, `govern keygen`. | core |
 | `apps/gate` | The guard: MCP server, REST Event API (+ OpenAPI), approvals, upstream MCP proxy, evidence and framework reports, webhooks, pg-boss jobs, key provider and rotation, internal admin API, OAuth callbacks. | core, db, connectors |
 | `apps/web` | The console: operations (Today, Approvals, Activity, Agents, Rulebooks, Connectors) and governance (Inventory, Assessments, Evidence, Compliance), plus SSO. Reads with `forOrg`, writes chain-affecting state only through the gate service. | core, db |

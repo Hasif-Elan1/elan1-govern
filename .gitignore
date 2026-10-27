@@ -13,3 +13,5 @@ test-results
 *.tsbuildinfo
 .turbo
 zap-report.*
+__pycache__/
+*.egg-info

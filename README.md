@@ -133,6 +133,29 @@ if (check.decision === "allow") {
 
 REST equivalents: `POST /v1/check`, `POST /v1/record`, `GET /v1/approvals/:id?wait=30`.
 
+### Python agents
+
+The Python SDK (`packages/sdk-python`, package `elan1-govern`) does the same with the standard library only, Python 3.9+:
+
+```bash
+pip install ./packages/sdk-python
+```
+
+```python
+import os
+from elan1_govern import Govern, guarded
+
+gov = Govern("http://localhost:4000", api_key=os.environ["GATE_KEY"])
+
+@guarded(gov, "zoho.record_bill_payment", ref=lambda r: r["payment_id"])
+def record_payment(bill_id: str, amount_inr: int) -> dict:
+    return pay_in_zoho(bill_id, amount_inr)               # runs only if Elan1 Govern allows it
+```
+
+`guarded` checks first, runs the function only on **allow** (or after approval, with `wait=True`), then records `ok` or `error`. A refusal raises `Refused` with the rule and reason; a pending approval raises `ApprovalPending` with the link. If Elan1 Govern cannot be reached, it raises and the function does not run. The client also has `check()`, `record()`, `wait_for_approval()` and `verify_webhook()`, with the same meanings as the TypeScript SDK. See [`packages/sdk-python/README.md`](packages/sdk-python/README.md).
+
+Examples in [`examples/`](examples): a [LangChain tool](examples/python/langchain_tool.py), an [OpenAI Agents SDK function tool](examples/python/openai_agents.py), [plain Python](examples/python/plain.py), and [connecting Claude Desktop, Claude Code, Cursor or any MCP client](examples/mcp/README.md).
+
 ### API reference
 
 The agent-facing API (`/v1/check`, `/v1/record`, `/v1/approvals/{id}`) and the MCP endpoint are described in **OpenAPI 3.1**:
@@ -314,7 +337,9 @@ packages/core       Rule engine, receipt chain, crypto, bundle verifier (pure, n
 packages/db         Prisma schema, tenant-scoped client (forOrg), serialized chain writer
 packages/connectors Gmail, Zoho Books (zoho.in) and mock connectors
 packages/sdk        gate.check() / gate.record() / gate.waitForApproval() / verifyWebhook()
+packages/sdk-python Python SDK (stdlib only): Govern.check() / record() / wait_for_approval(), guarded(), verify_webhook()
 packages/cli        govern verify | sign | keygen
+examples            LangChain, OpenAI Agents SDK and plain Python tools; MCP client setup
 e2e                 Playwright end-to-end and security tests
 ```
 
@@ -323,6 +348,7 @@ e2e                 Playwright end-to-end and security tests
 | `pnpm test` | Unit and integration tests (Vitest, real Postgres) |
 | `pnpm test:coverage` | Same, with coverage (core ≥ 95%, overall ≥ 80% enforced) |
 | `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder, demo, inventory and assessment sign-off, authz matrix, CSRF, injection |
+| `pnpm test:python` | Python SDK tests (unittest, standard library; needs `python3` ≥ 3.9 on `PATH`) |
 | `pnpm lint` · `pnpm typecheck` | ESLint, strict TypeScript |
 | `pnpm security` | `pnpm audit`, semgrep, gitleaks |
 | `pnpm security:zap` | OWASP ZAP baseline against the running stack |
