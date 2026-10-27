@@ -23,6 +23,7 @@ import { exportBundle, exportFrameworkReport, exportPack } from "../evidence";
 import { rotateSigningKey } from "../keys";
 import { addUpstream, removeUpstream, syncUpstream, updateUpstreamTool, type UpstreamFail } from "../upstream";
 import { createWebhook, deleteWebhook, testWebhook, WEBHOOK_EVENTS } from "../webhooks";
+import { replayAllowed, replayDraft } from "../replay";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -85,6 +86,7 @@ const schemas = {
   actorOnly: z.object({ actor }).strict(),
   upstreamTool: z.object({ enabled: z.boolean().optional(), tags: z.array(z.enum(RISK_TAGS)).max(RISK_TAGS.length).optional(), actor }).strict(),
   webhook: z.object({ url: z.string().trim().min(1).max(2000), events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(WEBHOOK_EVENTS.length), actor }).strict(),
+  replay: z.object({ yaml: z.string().max(200_000), days: z.union([z.literal(7), z.literal(30)]).default(30), actor }).strict(),
 };
 
 export function registerInternal(app: FastifyInstance, deps: Deps) {
@@ -245,6 +247,17 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       const orgId = await org(req.params.org);
       const b = parse(schemas.upstreamTool, req.body);
       return done(reply, await updateUpstreamTool(deps, orgId, parse(id, req.params.id), parse(id, req.params.tool), b));
+    });
+
+    // Test a draft rulebook on past actions: a simulation over the replay store. Nothing runs or is published.
+    internal.post<P>("/internal/orgs/:org/agents/:id/replay", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.replay, req.body);
+      if (!replayAllowed(orgId)) return reply.code(429).send({ error: "Too many tests in a minute. Try again shortly." });
+      const r = await replayDraft(deps, orgId, parse(id, req.params.id), b.yaml, b.days);
+      if (!r.ok) return reply.code(r.status).send({ error: r.error, ...(r.errors ? { errors: r.errors } : {}) });
+      deps.log.info({ orgId, days: b.days, total: r.report.total, changed: r.report.changed }, "rulebook replayed");
+      return r.report;
     });
 
     // Dev only: give the demo agent's org a fresh mock mailbox and ledger.

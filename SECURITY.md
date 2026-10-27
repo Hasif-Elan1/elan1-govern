@@ -31,7 +31,7 @@ Secrets are split so no single component holds everything:
 | Secret | Holder | Used for |
 |---|---|---|
 | `GATE_MASTER_KEY` | Elan1 Govern only | AES-256-GCM encryption of each org's Ed25519 signing key, all OAuth tokens and upstream MCP auth headers |
-| `GATE_MASTER_KEY` | Elan1 Govern only | AES-256-GCM encryption (via the `KeyProvider`) of each org's Ed25519 signing keys, all OAuth tokens and webhook signing secrets |
+| `GATE_MASTER_KEY` | Elan1 Govern only | AES-256-GCM encryption (via the `KeyProvider`) of each org's Ed25519 signing keys, all OAuth tokens and webhook signing secrets, and the replay store's call arguments |
 | `INTERNAL_API_SECRET` | Elan1 Govern and web | HMAC on internal calls and OAuth `state` |
 | `APPROVAL_LINK_SECRET` | Elan1 Govern and web | HMAC on emailed approval links |
 | `WEB_ENC_KEY` | Web only | AES-256-GCM encryption of TOTP secrets |
@@ -140,6 +140,23 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **R** | An org denies a rotation happened, or when | The handover is a receipt on the chain; bundles list each key with its retirement time in the signed manifest | `gate/keys.test.ts` "rotation…" |
 | **I** | Private keys at rest | Wrapped by a `KeyProvider` (env master key, AES-256-GCM, AAD bound to org and key id); a cloud KMS can implement the same interface | `gate/keys.test.ts` |
 | **E** | A non-owner rotates the key | `keys:rotate` is owner-only and needs a sign-in within 10 minutes | `web/policy.test.ts`; `e2e/security.spec.ts` authz matrix; `e2e/platform.spec.ts` |
+
+### Replay store ("Test on past actions")
+
+**What is stored.** `ReplayCall`: for each guarded call that reached the rules, the validated tool arguments (which can include personal data, email bodies or bank details) plus org, agent, tool, time, receipt `seq` and the original decision and rule. Receipts stay minimal (invariant 7); this table is the only place full arguments are kept after a decision.
+**Encryption.** AES-256-GCM (`authTagLength` 16) with `GATE_MASTER_KEY`, which only the gate service holds; the AAD is `replay-args:<org>:<seq>`, so a ciphertext moved to another org or row does not decrypt. The web app can count and delete rows but cannot read them.
+**Retention.** 30 days, deleted by the hourly `replay-purge` job. Per-org switch `replayStore` (on by default, Owner/Admin in Settings); switching it off deletes every row at once, and the purge job also removes any row an in-flight call wrote after that.
+**Use.** Only the gate's signed internal replay route reads it, decrypting in memory to run `decide()`. Its answer carries counts, decisions, rule ids and a description built from the receipt's minimal summary, never the stored arguments. Arguments are never logged; a failed write logs only an error code.
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | Someone without rulebook rights runs a replay | `rulebooks:publish` (Owner, Admin) on the web route; the gate route needs the HMAC-signed internal call | `web/replay.test.ts` (Viewer, Approver, Auditor refused); `e2e/security.spec.ts` authz matrix; `gate/replay.test.ts` (unsigned call refused) |
+| **T** | A stored row is altered or swapped to change a replay | GCM authentication with AAD bound to org and receipt; an unreadable row counts as "could not be judged", never as a guess | `gate/replay.test.ts` "org A cannot replay over org B's calls" |
+| **R** | A replay changes what happened | It is a simulation: nothing runs, nothing is signed or published, no receipt or rulebook is written | `gate/replay.test.ts` (rulebook count unchanged) |
+| **I** | Full arguments leak from the database, logs or the replay answer | Encrypted at rest with a key the web app does not have; only the receipt summary is returned; arguments never logged; 30-day retention; the store can be switched off and emptied | `gate/replay.test.ts` "stores each guarded call's arguments encrypted…" (ciphertext and logs do not contain the value), "purges rows older than 30 days…"; `web/replay.test.ts` "switching it off deletes…" |
+| **I** | Org A replays over org B's calls | `ReplayCall` is a tenant model read only through `forOrg`; the agent must belong to the org in the path | `db/isolation.test.ts`; `gate/replay.test.ts` "org A cannot replay over org B's calls" |
+| **D** | Replays used to load the service (each decrypts up to a month of calls) | Per-IP and per-org limits in the web app (10/min), 6/min per org in the gate, at most 50,000 calls per run | `web/replay.test.ts` "limits runs per organisation"; `gate/replay.test.ts` (429) |
+| **E** | The store changes live decisions | It is written after the decision and receipt, never read by the guard; a failed write is ignored | `gate/replay.test.ts` "a write failure never changes the answer" |
 
 ### Background jobs
 

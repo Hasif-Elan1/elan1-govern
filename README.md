@@ -202,6 +202,18 @@ app.post("/gate-events", express.raw({ type: "application/json" }), (req, res) =
 
 Any 2xx counts as delivered. Anything else (or no answer within 10 seconds) is retried with backoff, up to 8 attempts over about an hour; Settings shows each delivery's status and last error, and **Send a test event** checks an endpoint at once. Events are sent after the receipt is committed, from a durable job queue, so agents never wait for them. Elan1 Govern refuses to call private, loopback or link-local addresses unless `WEBHOOK_ALLOW_PRIVATE=true` (the default outside production, so a local receiver works in development).
 
+## Test a rulebook on past actions
+
+Before you publish a change, see what it would have done. In **Rulebooks → an agent → Test on past actions**, pick the last 7 or 30 days and press **Run test**. Elan1 Govern decides every one of that agent's real calls again with your draft, quotas included (worked out in order, in your organisation's time zone), and compares the result with what actually happened:
+
+```
+Of 412 calls, 12 more would be refused, 30 more would ask a person and 5 fewer would ask a person. 3 could not be judged.
+```
+
+Below that is a list of up to 200 changed calls: the action in plain words, the old and new decision, and the rule that would decide. Nothing runs, nothing is signed and nothing is published; the draft must be a valid rulebook but need not pass the checks that only publishing applies (such as the high-risk "Ask" rule). If you ran a test for the draft you are about to publish, the **Sign and publish** confirmation repeats its numbers.
+
+How it works: receipts are deliberately minimal, so they cannot be replayed. Instead, the gate service keeps a separate **replay store**: each guarded call's validated arguments, AES-256-GCM encrypted with `GATE_MASTER_KEY` (only the gate service can read them), tagged with the agent, tool, time, receipt number and original decision. Rows are deleted after **30 days** by an hourly job. The store is on by default; owners and admins can switch it off in **Settings → Past actions for testing rules**, which deletes everything stored at once. A call "could not be judged" when its arguments were not kept: older than 30 days, made while the store was off, or refused before any rule was checked (a paused agent, an unknown tool, invalid arguments). Owners and admins (whoever can publish rulebooks) can run a test, a few times a minute.
+
 ## Rotating keys
 
 Each organisation signs receipts, checkpoints, rulebooks and evidence with its own Ed25519 key. To replace it (a scheduled rotation, or someone left who could have seen it), an owner opens **Settings → Signing keys → Rotate signing key** and confirms (a sign-in within the last 10 minutes is required).
@@ -347,7 +359,7 @@ e2e                 Playwright end-to-end and security tests
 |---|---|
 | `pnpm test` | Unit and integration tests (Vitest, real Postgres) |
 | `pnpm test:coverage` | Same, with coverage (core ≥ 95%, overall ≥ 80% enforced) |
-| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder, demo, inventory and assessment sign-off, authz matrix, CSRF, injection |
+| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder and testing on past actions, demo, inventory and assessment sign-off, authz matrix, CSRF, injection |
 | `pnpm test:python` | Python SDK tests (unittest, standard library; needs `python3` ≥ 3.9 on `PATH`) |
 | `pnpm lint` · `pnpm typecheck` | ESLint, strict TypeScript |
 | `pnpm security` | `pnpm audit`, semgrep, gitleaks |

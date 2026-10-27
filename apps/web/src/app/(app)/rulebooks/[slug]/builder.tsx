@@ -39,6 +39,8 @@ import { Pill, Stamp } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError } from "@/lib/client";
 import { cn, fmtDate, shortHash } from "@/lib/utils";
+import { replaySummary, type ReplayReport } from "@/lib/replay";
+import { ReplayCounts, ReplayPanel } from "./replay-panel";
 
 type Version = { version: number; yaml: string; hash: string; signedBy: string; createdAt: string };
 type Draft = Omit<Rulebook, "signature">;
@@ -508,6 +510,7 @@ export function Builder({
   const [publishing, setPublishing] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
+  const [replay, setReplay] = useState<{ yaml: string; report: ReplayReport } | null>(null);
   const readOnly = !canPublish;
 
   const setDraft = (d: Draft) => {
@@ -532,6 +535,8 @@ export function Builder({
   const groups = Object.keys(draft.approvers);
   const original = latest ? toDraft(latest.yaml, slug, owner, registry) : null;
   const changed = !original || canonicalize({ ...original, version: 0 }) !== canonicalize({ ...draft, version: 0 });
+  const draftYaml = rulebookToYaml(draft as Rulebook);
+  const replayForDraft = replay && replay.yaml === draftYaml && replay.report.total > 0 ? replay.report : null;
 
   const updateRule = (i: number, r: Rule) => setDraft({ ...draft, rules: draft.rules.map((x, j) => (j === i ? r : x)) });
   const addRule = () => {
@@ -645,6 +650,7 @@ export function Builder({
           <TabsList className="mb-4">
             <TabsTrigger value="yaml">YAML</TabsTrigger>
             <TabsTrigger value="try">Try an action</TabsTrigger>
+            <TabsTrigger value="replay">Test on past actions</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
           <TabsContent value="yaml">
@@ -662,6 +668,9 @@ export function Builder({
           <TabsContent value="try">
             <TestPanel draft={draft} vendorDomains={vendorDomains} registry={registry} />
           </TabsContent>
+          <TabsContent value="replay">
+            <ReplayPanel slug={slug} yaml={yamlErrors.length || !validation.ok ? null : draftYaml} ready={!yamlErrors.length && validation.ok} canRun={canPublish} result={replay} onResult={setReplay} />
+          </TabsContent>
           <TabsContent value="history">
             <History versions={versions} canPublish={canPublish} onRestore={(y) => onYaml(rulebookToYaml(toDraft(y, slug, owner, registry) as Rulebook))} />
           </TabsContent>
@@ -675,6 +684,13 @@ export function Builder({
             <li className="flex gap-2"><Pill tone="wait">{draft.rules.filter((r) => r.decide === "ask").length}</Pill> rules ask a person</li>
             <li className="flex gap-2"><Pill tone="no">{draft.rules.filter((r) => r.decide === "refuse").length}</Pill> rules refuse</li>
           </ul>
+          {replayForDraft ? (
+            <div className="mb-5 grid gap-2 rounded-lg border border-line bg-sunken p-3 text-sm" data-testid="publish-replay">
+              <p className="font-medium">On the last {replayForDraft.days} days of past actions</p>
+              <p className="text-ink-2">{replaySummary(replayForDraft)}</p>
+              <ReplayCounts report={replayForDraft} />
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirm(false)}>Cancel</Button>
             <Button variant="primary" disabled={publishing} onClick={publish}>

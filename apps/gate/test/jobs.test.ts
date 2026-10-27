@@ -53,7 +53,7 @@ afterAll(async () => {
 describe("background jobs (pg-boss)", () => {
   it("registers the cron schedules in the database", async () => {
     const names = (await jobs.boss.getSchedules()).map((s) => s.name).sort();
-    expect(names).toEqual([QUEUES.checkpoints, QUEUES.expire, QUEUES.sweep].sort());
+    expect(names).toEqual([QUEUES.checkpoints, QUEUES.expire, QUEUES.sweep, QUEUES.replayPurge].sort());
     expect(ctx.deps.queue).not.toBe(noQueue);
   });
 

@@ -8,6 +8,7 @@ import { can, ROLE_HINTS, ROLE_LABELS, ROLES } from "@/server/policy";
 import { requireCtx } from "@/server/session";
 import { InviteForm, MemberRow, OrgForm, TwoStep } from "./client";
 import { RotateKey, WebhookForm, WebhookRow, type WebhookView } from "./platform";
+import { ReplayStore } from "./replay";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -44,6 +45,12 @@ export default async function Settings() {
         <Section title="Organisation">
           <Card className="p-5">
             <OrgForm name={org.name} notifyEmail={org.notifyEmail ?? ""} retentionDays={org.retentionDays} disabled={!manage} />
+          </Card>
+        </Section>
+
+        <Section title="Past actions for testing rules" description="So you can test a rulebook change on what your agents actually did, Elan1 Govern keeps each call's details for 30 days, encrypted. Receipts never hold them.">
+          <Card className="p-5">
+            <ReplayStore on={org.replayStore} disabled={!manage} />
           </Card>
         </Section>
 
