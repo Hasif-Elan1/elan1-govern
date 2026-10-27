@@ -23,6 +23,9 @@ const EXPECTED: Record<Permission, Role[]> = {
   "keys:rotate": ["owner"],
   "notifications:manage": ["owner", "admin"],
   "suggestions:manage": ["owner", "admin"],
+  "alerts:acknowledge": ["owner", "admin", "approver"],
+  "alerts:configure": ["owner", "admin"],
+  "emergency:stop": ["owner", "admin"],
 };
 
 describe("authz matrix (policy)", () => {

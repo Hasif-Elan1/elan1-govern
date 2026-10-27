@@ -9,3 +9,4 @@ export * from "./diff";
 export * from "./inventory";
 export * from "./assessments";
 export * from "./chat";
+export * from "./behaviour";

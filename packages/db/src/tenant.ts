@@ -27,6 +27,8 @@ export const TENANT_MODELS = [
   "ChatNumber",
   "ChatMessage",
   "RuleSuggestion",
+  "BehaviourAlert",
+  "Incident",
 ] as const;
 
 const WHERE_OPS = new Set([

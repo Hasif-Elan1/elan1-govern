@@ -1,6 +1,7 @@
 import type { Receipt, ReceiptInput } from "@gate/core";
 import { createCheckpoint, withChain, type Append, type ChainKey, type ChainTx, type KeySource } from "@gate/db";
-import type { Deps } from "./deps";
+import { inlineBehaviourCheck } from "./behaviour";
+import { raiseAlert, type Deps } from "./deps";
 import { signer } from "./keys";
 import { enqueueReceiptEvents } from "./webhooks";
 
@@ -27,6 +28,13 @@ export async function chain<T>(deps: Deps, orgId: string, fn: (append: Append, t
     deps.db,
   );
   if (written.length) background(deps, enqueueReceiptEvents(deps, orgId, written));
+  // Unusual-behaviour checks on new decisions: after commit, in the background. They can never
+  // slow or fail the call; a failure becomes a health alert (alerting fails open, decisions do not).
+  const decisions = written.filter((r) => r.kind === "decision");
+  if (decisions.length) {
+    const check = (async () => (deps.behaviourInline ?? inlineBehaviourCheck)(deps, orgId, decisions))();
+    background(deps, check.catch((e: Error) => raiseAlert(deps, "behaviour-check-failed", `Unusual-behaviour check failed: ${e.message}`, orgId)));
+  }
   return result;
 }
 

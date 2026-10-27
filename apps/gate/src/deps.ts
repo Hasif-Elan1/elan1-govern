@@ -27,6 +27,8 @@ export interface Deps {
   alerts: { at: string; kind: string; message: string; orgId?: string }[];
   /** Background demo runs, kept so tests and shutdown can await them. */
   background: Set<Promise<unknown>>;
+  /** Override in tests: the post-commit behaviour check for new decision receipts (see behaviour.ts). */
+  behaviourInline?: (deps: Deps, orgId: string, receipts: readonly import("@gate/core").Receipt[]) => Promise<unknown>;
 }
 
 export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partial<Deps> = {}): Deps {

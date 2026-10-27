@@ -64,10 +64,10 @@ export async function exportPack(deps: Deps, orgId: string, r: Range, actor: str
 // ---- PDF ----
 
 /** Standard PDF fonts use WinAnsi, which has no rupee sign. */
-const pdfText = (s: string) => s.replace(/\u20B9/g, "Rs ").replace(/[^\x20-\x7E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026]/g, "?");
+export const pdfText = (s: string) => s.replace(/\u20B9/g, "Rs ").replace(/[^\x20-\x7E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026]/g, "?");
 const inr = (n: number) => `Rs ${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n)}`;
 
-class Writer {
+export class Writer {
   page!: PDFPage;
   y = 0;
   constructor(private doc: PDFDocument, private font: PDFFont, private bold: PDFFont) {

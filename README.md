@@ -176,6 +176,7 @@ Send Elan1 Govern's events to a SIEM, a log store or your own tools. In **Settin
 | `receipt.created` | Every receipt: decisions, approvals, outcomes, setup changes | The receipt itself (already minimised: no email bodies, bank details or tokens) |
 | `approval.pending` | An action waits for a person | Approval id, agent, tool, rule, summary, expiry |
 | `approval.resolved` | It was approved, rejected or expired | The same, plus who decided and the outcome |
+| `alert.created` | An agent did something unusual for it (see [Alerts](#unusual-behaviour-alerts-and-the-emergency-stop)) | Alert id, agent, detector, severity, title, the plain-English explanation and the receipts it is about |
 
 Elan1 Govern shows the endpoint's **signing secret once**. Each delivery is a `POST` with `content-type: application/json` and:
 
@@ -261,6 +262,29 @@ Everything else still gets a message, with an **Open in Elan1 Govern** link inst
 Without them, Elan1 Govern sends interactive and text messages, which work inside the 24-hour window (ask approvers to send any message to the business number first). App-only actions are always sent as a text message with the link, so outside the window they rely on email.
 
 For tests, `SLACK_API_URL` and `WHATSAPP_API_URL` point the clients at fake servers; in production Elan1 Govern refuses to start unless they are `https://slack.com/…` and `https://graph.facebook.com/…`.
+
+## Unusual-behaviour alerts and the emergency stop
+
+Elan1 Govern learns what is normal for each agent from its own receipts, and raises an alert when it does something unusual for it. **Alerts** in the sidebar lists them; each one says, in plain words, what happened and the numbers behind it, and links to the receipts in Activity.
+
+| Check | Raised when | Severity |
+|---|---|---|
+| Unusual number of calls | Calls in the last hour, overall or for one tool, are far above a typical busy hour of the last 14 days (median and median absolute deviation, not mean and standard deviation) | Medium, high |
+| Activity at an unusual time | Calls in an hour of the week (in the org's time zone) when the agent has almost never been active | Low, medium |
+| New counterparty | A vendor, recipient domain, payee, account or customer it has not dealt with in 90 days (from the display identifiers already in receipts) | Medium with money, otherwise low |
+| First use of a tool | A tool the agent has never used | Low |
+| Many refused calls | The refused share in the last hour is far above its usual share | Medium, high |
+| Unusually large amount | An amount far above earlier amounts for the same tool | Medium, high |
+
+- **Learning period.** No alerts for an agent until it has been working for 7 days; the agent page shows "Learning: n of 7 days".
+- **When checks run.** A cheap check (new tool, new counterparty, large amount) runs right after each decision's receipt is written, in the background, so it never slows or fails a call. Every check runs in a pg-boss job every 5 minutes. If a check fails, Elan1 Govern records a health alert; the decision itself is unaffected.
+- **One open alert per agent, check and subject.** Repeats update the open alert. Owners, admins and approvers can **acknowledge** and **resolve**; viewers and auditors read. Every new alert, acknowledgement and resolution is a receipt, and medium and high alerts email the owners and admins.
+- **Thresholds** are per organisation (Alerts → *Alert settings*, owners and admins).
+- **Automatic pause.** On an agent's page, *Pause automatically on high-severity alerts* (off by default) pauses the agent the moment a high alert is raised, with an `agent.paused` receipt naming the alert.
+
+**Emergency stop.** Alerts → *Emergency stop* (owners and admins, a sign-in in the last 10 minutes, and the word `STOP` typed) pauses every running agent in one transaction, writes one `emergency.stop` receipt with the count, opens an incident and emails every owner and admin. A red banner shows on every page until someone presses **Resume agents**, which restarts only the agents the stop paused (one `emergency.resumed` receipt); anything paused before or since stays paused. **Incident report** (Alerts → Emergency stops) is a PDF: what happened, who stopped and resumed, the alerts and every receipt from an hour before the stop to the resume, and the receipt range to check with `govern verify` against an evidence bundle for those days.
+
+The seeded demo org turns its learning period off after a little ordinary work, then pays a vendor the agent has never paid, so the Alerts page shows a real "New vendor" alert.
 
 ## Rotating keys
 
@@ -438,7 +462,7 @@ e2e                 Playwright end-to-end and security tests
 |---|---|
 | `pnpm test` | Unit and integration tests (Vitest, real Postgres) |
 | `pnpm test:coverage` | Same, with coverage (core ≥ 95%, overall ≥ 80% enforced) |
-| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder and testing on past actions, demo, inventory and assessment sign-off, authz matrix, CSRF, injection |
+| `pnpm test:e2e` | Playwright: onboarding, phone approval, rule builder and testing on past actions, demo, emergency stop, inventory and assessment sign-off, authz matrix, CSRF, injection |
 | `pnpm test:python` | Python SDK tests (unittest, standard library; needs `python3` ≥ 3.9 on `PATH`) |
 | `pnpm lint` · `pnpm typecheck` | ESLint, strict TypeScript |
 | `pnpm security` | `pnpm audit`, semgrep, gitleaks |

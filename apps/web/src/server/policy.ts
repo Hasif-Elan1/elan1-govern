@@ -28,6 +28,11 @@ export const PERMISSIONS = {
   "notifications:manage": ["owner", "admin"],
   // Rule suggestions: whoever edits rulebooks opens or dismisses them. Publishing is still rulebooks:publish.
   "suggestions:manage": ["owner", "admin"],
+  // Unusual-behaviour alerts: approvers can acknowledge and resolve them; viewers and auditors read.
+  "alerts:acknowledge": ["owner", "admin", "approver"],
+  "alerts:configure": ["owner", "admin"],
+  // Pausing every agent at once is a denial of service if misused: owners and admins, fresh sign-in.
+  "emergency:stop": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

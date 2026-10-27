@@ -11,8 +11,10 @@ import { fmtDate, relative } from "@/lib/utils";
 import { env } from "@/server/env";
 import { can } from "@/server/policy";
 import { activity } from "@/server/queries";
+import { SeverityPill } from "@/components/alert-bits";
+import { agentBehaviour } from "@/server/alerts";
 import { requireCtx } from "@/server/session";
-import { AgentTabs, KillSwitch } from "./client";
+import { AgentTabs, AutoPause, KillSwitch } from "./client";
 
 export const metadata: Metadata = { title: "Agent" };
 
@@ -22,11 +24,12 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
   const db = forOrg(ctx.org.id);
   const agent = await db.agent.findFirst({ where: { slug } });
   if (!agent) notFound();
-  const [rb, keys, recent, creator] = await Promise.all([
+  const [rb, keys, recent, creator, behaviour] = await Promise.all([
     agent.activeRulebookId ? db.rulebook.findFirst({ where: { id: agent.activeRulebookId } }) : null,
     db.apiKey.findMany({ where: { agentId: agent.id }, orderBy: { createdAt: "desc" } }),
     activity(ctx.org.id, { agent: agent.slug, limit: 12 }),
     agent.createdById ? prisma.user.findUnique({ where: { id: agent.createdById }, select: { email: true } }) : null,
+    agentBehaviour(ctx.org.id, agent),
   ]);
   const parsed = rb ? parseRulebookYaml(rb.yaml, lenientRegistry(builtinRegistry)) : null; // upstream tools are not in the built-in registry
   const rules = parsed?.ok ? parsed.rulebook.rules : [];
@@ -49,6 +52,32 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
                 ["Rulebook", rb ? `Version ${rb.version}, signed by ${rb.signedBy}` : "None published"],
               ]}
             />
+          </Card>
+        </Section>
+        <Section title="Behaviour" actions={<Link href={`/alerts?agent=${agent.slug}&show=all`} className="text-sm font-medium text-accent hover:underline">All alerts</Link>}>
+          <Card className="grid gap-4 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[15px] font-medium">{behaviour.learning.label}</span>
+              <span className="text-sm text-ink-3">
+                {behaviour.learning.learning ? "Elan1 Govern is learning what is normal for this agent. No alerts until then." : `${behaviour.open === 1 ? "1 open alert" : `${behaviour.open} open alerts`}.`}
+              </span>
+            </div>
+            <AutoPause slug={agent.slug} on={agent.autoPauseOnHigh} manage={manage} />
+            {behaviour.recent.length ? (
+              <ul className="divide-y divide-line rounded-md border border-line text-sm">
+                {behaviour.recent.map((a) => (
+                  <li key={a.id}>
+                    <Link href={`/alerts/${a.id}`} className="flex items-center gap-3 px-3 py-2 hover:bg-sunken">
+                      <SeverityPill severity={a.severity} />
+                      <span className="min-w-0 flex-1 truncate">{a.title}</span>
+                      <span className="shrink-0 text-[13px] text-ink-3">{relative(a.createdAt)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink-3">No alerts for this agent yet.</p>
+            )}
           </Card>
         </Section>
         <Section title="Risk">

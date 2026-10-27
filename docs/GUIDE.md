@@ -34,6 +34,7 @@ Everything below is working code with tests. Each item says where to find it in 
 | **Compliance** | Ten framework libraries; coverage from real evidence; gaps called out; framework report PDF; all marked "Draft — needs legal review" | Compliance |
 | **Industry packs** | Starter rules and frameworks for finance, healthcare, HR, support, sales, engineering, and general; chosen during sign-up | Sign-up, Add agent |
 | **Team and security** | Roles (Owner, Admin, Approver, Viewer, Auditor); auditors can switch between client companies; two-step sign-in; **single sign-on** (Okta, Microsoft, Google) | Settings |
+| **Alerts and emergency stop** | Learns what is normal for each agent and flags the unusual: bursts of calls, odd hours, new vendors or recipients, first use of a tool, many refusals, large amounts. Can pause an agent on a serious alert. One button (owners and admins, password and the word STOP) pauses every agent at once, with an incident report | Alerts, Agents |
 | **Platform** | Background jobs that survive restarts, webhooks, an API description (OpenAPI), signing-key rotation | Settings, `docs/openapi.json` |
 | **For developers** | MCP address + key for any agent; a small SDK; the `gate` command line (`verify`, `sign`, `keygen`) | README |
 | **Python agents** | A Python SDK with no outside dependencies: check before a tool runs, record after, wait for approvals, check webhooks; a `guarded` decorator; examples for LangChain, the OpenAI Agents SDK and plain Python, and how to connect Claude Desktop, Claude Code or Cursor | `packages/sdk-python`, `examples/` |
@@ -85,7 +86,8 @@ Run `pnpm run secrets`, put the new values in `.env`, and set `APP_ENV=productio
 5. Open **Evidence**, download the auditor pack, and check it: `pnpm govern verify ~/Downloads/auditor-pack-….zip`.
 6. Open **Rulebooks → AP bot**. Change the small-payment limit from ₹50,000 to ₹10,000, open **Test on past actions** and press **Run test**: the ₹18,000 payment from step 2 would now wait for a person. Nothing is published until you press **Sign and publish**.
 7. Open **Rulebooks**. Under **Suggestions**, Elan1 Govern noticed that every payment between ₹50,000 and ₹1,00,000 last month was approved. Press **See the change to the rulebook**, then **Open as draft**: the builder shows the new limit, still unpublished. Leave the page to discard it, or press **Sign and publish** to make it live.
-8. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
+8. Open **Alerts**. The demo agent paid a vendor it had never paid before, so there is a "New vendor" alert explaining why. Press **Acknowledge**. The **Emergency stop** button there pauses every agent at once; **Resume agents** in the red banner undoes it.
+9. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
 
 ## 5. How to remove things
 

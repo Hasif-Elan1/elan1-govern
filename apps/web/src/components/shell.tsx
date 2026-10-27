@@ -1,18 +1,20 @@
 "use client";
 
-import { Activity, Bot, BookText, Boxes, Check, ChevronsUpDown, ClipboardCheck, FileCheck2, Inbox, LogOut, Menu, Monitor, Moon, Plug, Scale, Settings, Sun, SunMedium } from "lucide-react";
+import { Activity, BellRing, Bot, BookText, Boxes, Check, ChevronsUpDown, ClipboardCheck, FileCheck2, Inbox, LogOut, Menu, Monitor, Moon, Plug, Scale, Settings, Sun, SunMedium } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { DropdownMenu as DM, Dialog as D } from "radix-ui";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { cn } from "@/lib/utils";
+import { EmergencyBanner, type IncidentBannerProps } from "./emergency";
 import { Logo } from "./logo";
 
 const NAV = [
   { href: "/", label: "Today", icon: SunMedium },
   { href: "/approvals", label: "Approvals", icon: Inbox, badge: true },
   { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/alerts", label: "Alerts", icon: BellRing, alerts: true },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/inventory", label: "Inventory", icon: Boxes },
   { href: "/assessments", label: "Assessments", icon: ClipboardCheck },
@@ -29,10 +31,14 @@ type Props = {
   role: string;
   memberships: { orgId: string; orgName: string; role: string }[];
   waiting: number;
+  /** Unresolved behaviour alerts, shown as a count next to Alerts. */
+  alerts?: number;
+  /** An emergency stop in place: a red banner across every page. */
+  incident?: IncidentBannerProps | null;
   children: React.ReactNode;
 };
 
-function NavList({ waiting, onNavigate }: { waiting: number; onNavigate?: () => void }) {
+function NavList({ waiting, alerts = 0, onNavigate }: { waiting: number; alerts?: number; onNavigate?: () => void }) {
   const path = usePathname();
   return (
     <nav aria-label="Main" className="grid gap-0.5">
@@ -54,6 +60,11 @@ function NavList({ waiting, onNavigate }: { waiting: number; onNavigate?: () => 
             {n.badge && waiting > 0 ? (
               <span className="min-w-5 rounded-full bg-wait-soft px-1.5 text-center text-xs leading-5 font-semibold text-wait" aria-label={`${waiting} waiting`}>
                 {waiting}
+              </span>
+            ) : null}
+            {"alerts" in n && n.alerts && alerts > 0 ? (
+              <span className="min-w-5 rounded-full bg-sunken px-1.5 text-center text-xs leading-5 font-semibold text-ink-2" aria-label={`${alerts} open alerts`}>
+                {alerts}
               </span>
             ) : null}
           </Link>
@@ -181,7 +192,7 @@ function Sidebar(props: Props & { onNavigate?: () => void }) {
         Elan1 Govern
       </Link>
       <OrgSwitcher org={props.org} role={props.role} memberships={props.memberships} />
-      <NavList waiting={props.waiting} onNavigate={props.onNavigate} />
+      <NavList waiting={props.waiting} alerts={props.alerts} onNavigate={props.onNavigate} />
       <div className="mt-auto">
         <UserMenu user={props.user} />
       </div>
@@ -222,7 +233,10 @@ export function Shell(props: Props) {
         ) : null}
       </div>
       <main className="min-w-0 px-4 py-7 sm:px-8 lg:px-12 lg:py-10">
-        <div className="mx-auto max-w-[1080px]">{props.children}</div>
+        <div className="mx-auto max-w-[1080px]">
+          {props.incident ? <EmergencyBanner {...props.incident} /> : null}
+          {props.children}
+        </div>
       </main>
     </div>
   );

@@ -26,6 +26,8 @@ import { createWebhook, deleteWebhook, testWebhook, WEBHOOK_EVENTS } from "../we
 import { replayAllowed, replayDraft } from "../replay";
 import { applySuggestion, dismissSuggestion, findSuggestions } from "../suggestions";
 import { addDemoHistory } from "../demo/history";
+import { actOnAlert, setAutoPause, updateBehaviourSettings } from "../behaviour";
+import { emergencyStop, incidentReport, resumeAfterStop } from "../incidents";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const email = z.string().email().max(320).transform((e) => e.toLowerCase());
@@ -89,6 +91,10 @@ const schemas = {
   upstreamTool: z.object({ enabled: z.boolean().optional(), tags: z.array(z.enum(RISK_TAGS)).max(RISK_TAGS.length).optional(), actor }).strict(),
   webhook: z.object({ url: z.string().trim().min(1).max(2000), events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(WEBHOOK_EVENTS.length), actor }).strict(),
   replay: z.object({ yaml: z.string().max(200_000), days: z.union([z.literal(7), z.literal(30)]).default(30), actor }).strict(),
+  alertAction: z.object({ action: z.enum(["acknowledge", "resolve"]), actor }).strict(),
+  autoPause: z.object({ autoPauseOnHigh: z.boolean(), actor }).strict(),
+  alertSettings: z.object({ settings: z.record(z.string(), z.unknown()), actor }).strict(),
+  stop: z.object({ actor, reason: z.string().trim().min(1).max(300).optional() }).strict(),
 };
 
 export function registerInternal(app: FastifyInstance, deps: Deps) {
@@ -260,6 +266,51 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       if (!r.ok) return reply.code(r.status).send({ error: r.error, ...(r.errors ? { errors: r.errors } : {}) });
       deps.log.info({ orgId, days: b.days, total: r.report.total, changed: r.report.changed }, "rulebook replayed");
       return r.report;
+    });
+
+    // ---- Unusual-behaviour alerts and the emergency stop ----
+
+    internal.post<P>("/internal/orgs/:org/alerts/:id", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.alertAction, req.body);
+      const r = await actOnAlert(deps, orgId, parse(id, req.params.id), b.action, b.actor);
+      return r.ok ? r : reply.code(r.status).send({ error: r.error });
+    });
+
+    internal.post<P>("/internal/orgs/:org/alert-settings", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.alertSettings, req.body);
+      const r = await updateBehaviourSettings(deps, orgId, b.settings, b.actor);
+      return r.ok ? r : reply.code(400).send({ error: r.error });
+    });
+
+    internal.post<P>("/internal/orgs/:org/agents/:id/auto-pause", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.autoPause, req.body);
+      const r = await setAutoPause(deps, orgId, parse(id, req.params.id), b.autoPauseOnHigh, b.actor);
+      return r ?? reply.code(404).send({ error: "No such agent." });
+    });
+
+    internal.post<P>("/internal/orgs/:org/emergency-stop", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.stop, req.body);
+      const r = await emergencyStop(deps, orgId, b.actor, b.reason);
+      return r.ok ? r : reply.code(r.status).send({ error: r.error });
+    });
+
+    internal.post<P>("/internal/orgs/:org/emergency-stop/resume", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      const r = await resumeAfterStop(deps, orgId, b.actor);
+      return r.ok ? r : reply.code(r.status).send({ error: r.error });
+    });
+
+    internal.post<P>("/internal/orgs/:org/incidents/:id/report", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.actorOnly, req.body);
+      const bytes = await incidentReport(deps, orgId, parse(id, req.params.id), b.actor);
+      if (!bytes) return reply.code(404).send({ error: "No such incident." });
+      return reply.type("application/pdf").send(Buffer.from(bytes));
     });
 
     // Dev only: give the demo agent's org a fresh mock mailbox and ledger.

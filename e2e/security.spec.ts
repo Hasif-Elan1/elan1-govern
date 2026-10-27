@@ -73,6 +73,13 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/notifications/whatsapp", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/notifications/whatsapp/number", body: {}, allowed: DRAFTERS },
   { method: "PUT", path: "/api/notifications/whatsapp/number", body: {}, allowed: DRAFTERS },
+  // Unusual-behaviour alerts: approvers and up act on alerts; only owners and admins configure or stop everything.
+  { method: "POST", path: "/api/alerts/al_none", body: {}, allowed: DRAFTERS },
+  { method: "PUT", path: "/api/alerts/settings", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/agents/ap-bot/behaviour", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/emergency-stop", body: { confirm: "stop" }, allowed: ADMINS },
+  { method: "POST", path: "/api/emergency-stop/resume", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/incidents/none/report", allowed: ["owner", "admin", "auditor"] },
 ];
 
 test("authz matrix: API routes", async () => {
@@ -100,7 +107,7 @@ test("authz matrix: side-effect routes", async () => {
 });
 
 test("authz matrix: pages", async () => {
-  const pages = ["/", "/approvals", "/activity", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/settings", "/settings/notifications", "/inventory", "/assessments", "/compliance", "/compliance/eu-ai-act"];
+  const pages = ["/", "/approvals", "/activity", "/alerts", "/agents", "/agents/ap-bot", "/rulebooks", "/rulebooks/ap-bot", "/connectors", "/evidence", "/settings", "/settings/notifications", "/inventory", "/assessments", "/compliance", "/compliance/eu-ai-act"];
   const anon = await Client.anonymous();
   for (const p of [...pages, "/agents/new"]) {
     const res = await anon.get(p);
