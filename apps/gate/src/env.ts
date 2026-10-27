@@ -23,7 +23,7 @@ export const GateEnvSchema = z.object({
   GATE_PORT: z.coerce.number().int().default(4000),
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().int().default(1025),
-  MAIL_FROM: z.string().default("Elan1 Govern <gate@localhost>"),
+  MAIL_FROM: z.string().default("Elan1 Govern <govern@localhost>"),
   CONNECTOR_MODE: z.enum(["mock", "live"]).default("mock"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
