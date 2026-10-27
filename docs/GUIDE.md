@@ -24,6 +24,7 @@ Everything below is working code with tests. Each item says where to find it in 
 | **Today screen** | What's waiting for you, today's numbers, live activity | Today |
 | **Agents** | Registry of agents with owner, risk level, keys and an instant pause switch; a 3-step "Add agent" wizard | Agents |
 | **Rules** | A visual rule builder kept in sync with the text version; "Try an action" test panel; versions and differences; sign and publish | Rulebooks |
+| **Rule suggestions** | Notices actions people approve every time (say, payments under ₹1,00,000) and drafts a rule to stop asking; shows the evidence and the approvals it would save; you open it as a draft, then sign and publish, or dismiss it | Rulebooks, Today |
 | **Rules for any industry** | Rules can name one tool, or a kind of action (anything that moves money, contacts outsiders, deletes data…); limits like "50 emails an hour" | Rulebooks |
 | **Connectors** | Gmail and Zoho Books (India), demo data by default; **any MCP server** can be put behind Elan1 Govern, with each tool tagged and switched on by you | Connectors |
 | **AI inventory** | Every AI system you use, not only agents: owner, data it touches, stage, risk, next review | Inventory |
@@ -75,7 +76,8 @@ Run `pnpm run secrets`, put the new values in `.env`, and set `APP_ENV=productio
 3. Open **Approvals**, look at the invoice and vendor, press **Approve**. The demo finishes.
 4. Open **Activity**, click the payment, press **Verify this receipt**.
 5. Open **Evidence**, download the auditor pack, and check it: `pnpm govern verify ~/Downloads/auditor-pack-….zip`.
-6. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
+6. Open **Rulebooks**. Under **Suggestions**, Elan1 Govern noticed that every payment between ₹50,000 and ₹1,00,000 last month was approved. Press **See the change to the rulebook**, then **Open as draft**: the builder shows the new limit, still unpublished. Leave the page to discard it, or press **Sign and publish** to make it live.
+7. Look at **Compliance**, **Inventory** and **Assessments** to see the governance side.
 
 ## 5. How to remove things
 
