@@ -196,6 +196,9 @@ model Approval {
   resolvedAt    DateTime?
   createdAt     DateTime       @default(now())
   links         ApprovalLink[]
+  chatApproval  Boolean        @default(false) // the deciding rule allows approving in Slack or WhatsApp
+  channel       String? // where it was decided: web | email | slack | whatsapp
+  channelUser   String? // the chat user id (Slack team/user, or a hash of the WhatsApp number); never a phone number
 
   @@index([orgId, status])
 }
@@ -418,5 +421,66 @@ model WebhookDelivery {
   createdAt      DateTime  @default(now())
 
   @@index([orgId, webhookId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+// ---- Approvals in Slack and WhatsApp (a doorbell: rules, decisions and receipts stay in Elan1 Govern) ----
+
+// One Slack app or WhatsApp business number per organisation.
+model ChatChannel {
+  id         String        @id @default(cuid())
+  orgId      String
+  kind       String // slack | whatsapp
+  config     Json // not secret: Slack team and channel id; WhatsApp phone-number id and template names
+  secretsEnc String // AES-GCM, key only in the gate service env: bot token + signing secret, or access token + app secret
+  verifyHash String? // WhatsApp: sha256 of the webhook verify token (shown once)
+  enabled    Boolean       @default(true)
+  createdBy  String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  messages   ChatMessage[]
+
+  @@unique([orgId, kind])
+}
+
+// An approver's WhatsApp number in one organisation. Receipts and logs only ever see numberHash or last4.
+model ChatNumber {
+  id           String    @id @default(cuid())
+  orgId        String
+  userId       String
+  numberEnc    String // E.164, AES-GCM, needed to send messages
+  numberHash   String // HMAC of the number, to match incoming messages
+  last4        String
+  verifiedAt   DateTime?
+  codeHash     String?
+  codeExpires  DateTime?
+  codeAttempts Int       @default(0)
+  codesSent    Int       @default(0) // in the current window
+  windowStart  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([orgId, userId])
+  @@unique([orgId, numberHash])
+}
+
+// One outgoing chat message (post, update) with its own retry state, like WebhookDelivery.
+model ChatMessage {
+  id              String      @id @default(cuid())
+  orgId           String
+  channelId       String
+  channel         ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  approvalId      String
+  kind            String // slack.post | slack.update | whatsapp.send
+  recipientUserId String? // WhatsApp: the approver it goes to
+  status          String      @default("pending") // pending | sent | failed
+  attempts        Int         @default(0)
+  lastError       String?
+  externalId      String? // Slack message ts, or WhatsApp message id
+  externalChannel String? // Slack channel id the message is in
+  nextAttemptAt   DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime    @default(now())
+
+  @@index([orgId, approvalId])
   @@index([status, nextAttemptAt])
 }

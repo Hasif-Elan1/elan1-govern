@@ -39,6 +39,16 @@ export const GateEnvSchema = z.object({
   WEBHOOK_ALLOW_PRIVATE: z.enum(["true", "false"]).optional(),
   /** Postgres schema for the pg-boss job tables. */
   JOBS_SCHEMA: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/).default("pgboss"),
+  /** Slack Web API base URL. Only slack.com in production; tests point it at a local fake. */
+  SLACK_API_URL: z.string().url().default("https://slack.com/api"),
+  /** WhatsApp Cloud API (Meta Graph API) base URL, with its version. Only graph.facebook.com in production. */
+  WHATSAPP_API_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
+}).superRefine((e, ctx) => {
+  if (e.APP_ENV !== "production") return;
+  for (const [name, host] of [["SLACK_API_URL", "slack.com"], ["WHATSAPP_API_URL", "graph.facebook.com"]] as const) {
+    const u = new URL(e[name]);
+    if (u.protocol !== "https:" || u.hostname !== host) ctx.addIssue({ code: "custom", path: [name], message: `must be an https://${host}/ URL in production` });
+  }
 }).transform((e) => ({ ...e, WEBHOOK_ALLOW_PRIVATE: e.WEBHOOK_ALLOW_PRIVATE ? e.WEBHOOK_ALLOW_PRIVATE === "true" : e.APP_ENV !== "production" }));
 
 export const allowPrivateUpstreams = (env: GateEnv) => (env.UPSTREAM_ALLOW_PRIVATE ? env.UPSTREAM_ALLOW_PRIVATE === "true" : env.APP_ENV !== "production");

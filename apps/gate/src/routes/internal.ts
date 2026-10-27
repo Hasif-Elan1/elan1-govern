@@ -157,7 +157,7 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       const b = parse(schemas.resolve, req.body);
       const r = await resolveApproval(deps, orgId, parse(id, req.params.id), b);
       if (r.ok) return r;
-      const code = { not_found: 404, not_pending: 409, expired: 410, not_approver: 403, link_invalid: 410 }[r.code];
+      const code = { not_found: 404, not_pending: 409, expired: 410, not_approver: 403, link_invalid: 410, app_only: 403 }[r.code];
       return reply.code(code).send(r);
     });
 

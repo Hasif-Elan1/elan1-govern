@@ -3,6 +3,7 @@
 import {
   builtinRegistry,
   canonicalize,
+  chatApprovalBlocker,
   createRegistry,
   mergeRegistries,
   specFromJsonSchema,
@@ -198,6 +199,7 @@ function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }
     if (next.decide !== "ask") {
       delete next.approver;
       delete next.expires_in;
+      delete next.approve_in_chat;
     } else if (!next.approver) next.approver = groups[0];
     if (!next.when || !Object.keys(next.when).length) delete next.when;
     onChange(next);
@@ -298,8 +300,26 @@ function RuleRow({ rule, groups, registry, onChange, onRemove, disabled, index }
           ) : null}
         </span>
       </div>
+      {rule.decide === "ask" ? <ChatToggle rule={rule} registry={registry} disabled={disabled} index={index} onChange={(on) => set({ approve_in_chat: on || undefined })} /> : null}
       {rule.when ? <p className="mt-2 text-[13px] text-ink-3">{describeRule(rule)}</p> : null}
     </li>
+  );
+}
+
+/** Ask rules only: whether an approver may decide from a Slack or WhatsApp button. Off unless the rule is low-impact enough. */
+function ChatToggle({ rule, registry, disabled, index, onChange }: { rule: Rule; registry: ToolRegistry; disabled: boolean; index: number; onChange: (on: boolean) => void }) {
+  const blocker = chatApprovalBlocker(rule, registry);
+  const on = rule.approve_in_chat === true;
+  // A blocked rule can still be switched off, so a bad YAML edit is easy to fix here.
+  const locked = disabled || (!!blocker && !on);
+  return (
+    <div className="mt-3 text-sm">
+      <label className={cn("inline-flex items-center gap-2", locked ? "text-ink-3" : "cursor-pointer")}>
+        <input type="checkbox" className="accent-[var(--accent)]" data-testid={`chat-${index}`} checked={on} disabled={locked} onChange={(e) => onChange(e.target.checked)} />
+        Can be approved in Slack or WhatsApp
+      </label>
+      {blocker ? <p className="mt-1 text-[13px] text-ink-3" data-testid={`chat-reason-${index}`}>{blocker}</p> : null}
+    </div>
   );
 }
 

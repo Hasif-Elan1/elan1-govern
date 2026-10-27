@@ -7,6 +7,7 @@ import { makeDeps, type Deps } from "./deps";
 import type { GateEnv } from "./env";
 import { registerMcp } from "./mcp";
 import { registerAgentApi } from "./routes/agent-api";
+import { registerChat } from "./routes/chat";
 import { registerInternal } from "./routes/internal";
 import { registerOAuth } from "./routes/oauth";
 
@@ -14,7 +15,7 @@ export async function buildApp(env: GateEnv, overrides: Partial<Deps> = {}): Pro
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
-      redact: { paths: ["req.headers.authorization", "req.headers.cookie", 'req.headers["x-gate-signature"]'], remove: true },
+      redact: { paths: ["req.headers.authorization", "req.headers.cookie", 'req.headers["x-gate-signature"]', 'req.headers["x-slack-signature"]', 'req.headers["x-hub-signature-256"]'], remove: true },
       serializers: {
         // Paths only: query strings can carry OAuth codes and state.
         req: (req: FastifyRequest) => ({ id: req.id, method: req.method, path: req.url.split("?")[0] }),
@@ -77,5 +78,6 @@ export async function buildApp(env: GateEnv, overrides: Partial<Deps> = {}): Pro
   registerAgentApi(app, deps);
   registerInternal(app, deps);
   registerOAuth(app, deps);
+  registerChat(app, deps);
   return { app, deps };
 }

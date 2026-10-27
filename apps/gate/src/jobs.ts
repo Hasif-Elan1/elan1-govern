@@ -1,6 +1,7 @@
 import { dueWebhookDeliveries } from "@gate/db";
 import { PgBoss } from "pg-boss";
 import { expireDue } from "./approvals";
+import { CHAT_QUEUE, deliverChatMessage, sweepChat } from "./chat/outbox";
 import { noQueue, type Deps, type JobQueue } from "./deps";
 import { checkpointAll } from "./evidence";
 import { DELIVER_QUEUE, deliverWebhook } from "./webhooks";
@@ -16,6 +17,7 @@ export const QUEUES = {
   checkpoints: "checkpoints-hourly",
   sweep: "webhook-sweep",
   deliver: DELIVER_QUEUE,
+  chat: CHAT_QUEUE,
 } as const;
 
 const CRON: { queue: string; cron: string }[] = [
@@ -66,14 +68,19 @@ export async function startJobs(deps: Deps, opts: { schedule?: boolean; pollingI
   for (const { queue } of CRON) await boss.createQueue(queue, { policy: "stately", retryLimit: 0, expireInSeconds: 600 });
   // Delivery retries are tracked on WebhookDelivery rows, not by pg-boss.
   await boss.createQueue(QUEUES.deliver, { policy: "standard", retryLimit: 0, expireInSeconds: 60 });
+  // Slack and WhatsApp messages: retries are tracked on ChatMessage rows, the same way.
+  await boss.createQueue(QUEUES.chat, { policy: "standard", retryLimit: 0, expireInSeconds: 60 });
   if (opts.schedule !== false) for (const { queue, cron } of CRON) await boss.schedule(queue, cron);
 
   const polling = { pollingIntervalSeconds: opts.pollingIntervalSeconds ?? 2 };
   await boss.work(QUEUES.expire, polling, () => runLogged(deps, QUEUES.expire, async () => ({ expired: await expireDue(deps) })));
   await boss.work(QUEUES.checkpoints, polling, () => runLogged(deps, QUEUES.checkpoints, async () => ({ signed: await checkpointAll(deps) })));
-  await boss.work(QUEUES.sweep, polling, () => runLogged(deps, QUEUES.sweep, async () => ({ attempted: await sweepWebhooks(deps) })));
+  await boss.work(QUEUES.sweep, polling, () => runLogged(deps, QUEUES.sweep, async () => ({ attempted: await sweepWebhooks(deps), chat: await sweepChat(deps) })));
   await boss.work<{ orgId: string; deliveryId: string }>(QUEUES.deliver, { ...polling, batchSize: 5, localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) await deliverWebhook(deps, job.data.orgId, job.data.deliveryId);
+  });
+  await boss.work<{ orgId: string; messageId: string }>(QUEUES.chat, { ...polling, batchSize: 5, localConcurrency: 4 }, async (jobs) => {
+    for (const job of jobs) await deliverChatMessage(deps, job.data.orgId, job.data.messageId);
   });
 
   deps.queue = bossQueue(boss);

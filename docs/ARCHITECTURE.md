@@ -67,6 +67,7 @@ These are enforced in code and covered by tests. Changing any of them is a secur
 5. Compute usage for each **quota** that applies (count and/or sum of a field over a window: `day` in the org's time zone, or a rolling duration). One parameterised SQL query per quota.
 6. `decide()` (pure, in core): match rules by tool name or by tag, evaluate conditions (`eq`, `lt`, `lte`, `gt`, `gte`, `in`, `to_domain_in`, `fields_include`), pick the strictest, apply quotas.
 7. Act: run via the connector and write one receipt; or hold for approval (receipt + approval row + single-use signed links + email); or refuse with a receipt naming the rule.
+8. Held approvals also queue Slack and WhatsApp messages (`apps/gate/src/chat/`) as background jobs. Chat decisions arrive on signed inbound endpoints (`routes/chat.ts`) and go through the same `resolveApproval` as the web app; buttons appear only when the deciding rule has `approve_in_chat` and passes `chatApprovalBlocker` (core `chat.ts`).
 
 Rules can target a tool (`tool: zoho.record_bill_payment`) or every tool with a tag (`tag: moves_money`). Tag rules are what let one rulebook govern tools Elan1 Govern has never seen, which is what makes it work across industries.
 

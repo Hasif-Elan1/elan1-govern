@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { decrypt, describeAction, encrypt, hmacSign, type DecisionResult, type Receipt, type ReceiptInput } from "@gate/core";
 import { dueApprovals, forOrg } from "@gate/db";
-import { chain } from "./chain";
+import { background, chain } from "./chain";
+import type { DecisionChannel } from "./chat/common";
+import { chatResolved, notifyChat } from "./chat/outbox";
 import { publicError, resolveConnectorFor, type Resolved } from "./connectors";
 import { registryFor } from "./registry";
 import { raiseAlert, type Deps } from "./deps";
@@ -32,6 +34,8 @@ export async function holdForApproval(
     decision: DecisionResult;
     connector?: Resolved;
     executor: "gate" | "agent";
+    /** The deciding rule lets approvers decide in Slack or WhatsApp (see chatApprovalAllowed). */
+    chatApproval?: boolean;
   },
 ): Promise<GuardResult> {
   const { orgId, decision: d } = input;
@@ -63,6 +67,7 @@ export async function holdForApproval(
           heldSeq: receipt.seq,
           expiresAt,
           executor: input.executor,
+          chatApproval: input.chatApproval === true,
         },
       });
       const links = [];
@@ -84,6 +89,8 @@ export async function holdForApproval(
     });
     await deps.mailer.send(mail).catch((e: Error) => deps.log.warn({ err: e.message, approvalId: id }, "approval email failed"));
   }
+  // Slack and WhatsApp are queued in the background: the guard never waits for them.
+  background(deps, notifyChat(deps, orgId, id));
 
   return { status: "pending", ruleId: d.ruleId, reason: d.reason, seq: receipt.seq, approvalId: id, expiresAt: expiresAt.toISOString(), approvalUrl: approvalUrl(deps, id) };
 }
@@ -93,7 +100,7 @@ async function heldReceipt(deps: Deps, orgId: string, seq: number): Promise<Rece
   return row.body as unknown as Receipt;
 }
 
-function followUp(held: Receipt, approval: NonNullable<ReceiptInput["approval"]>, outcome: NonNullable<ReceiptInput["outcome"]>): ReceiptInput {
+function followUp(held: Receipt, approval: NonNullable<ReceiptInput["approval"]>, outcome: NonNullable<ReceiptInput["outcome"]>, details?: Record<string, unknown>): ReceiptInput {
   return {
     kind: "approval",
     agent: held.agent,
@@ -107,18 +114,22 @@ function followUp(held: Receipt, approval: NonNullable<ReceiptInput["approval"]>
     approval,
     outcome,
     ref_seq: held.seq,
+    ...(details ? { details } : {}),
   };
 }
 
-export type ResolveError = { ok: false; code: "not_found" | "not_pending" | "expired" | "not_approver" | "link_invalid"; message: string };
+export type ResolveError = { ok: false; code: "not_found" | "not_pending" | "expired" | "not_approver" | "link_invalid" | "app_only"; message: string };
 export type ResolveResult = { ok: true; status: "approved" | "rejected"; outcome: { status: string; ref?: string; error?: string }; selfApproval: boolean } | ResolveError;
 
 export async function resolveApproval(
   deps: Deps,
   orgId: string,
   approvalId: string,
-  input: { userId: string; email: string; result: "approved" | "rejected"; note?: string; linkId?: string },
+  input: { userId: string; email: string; result: "approved" | "rejected"; note?: string; linkId?: string; channel?: DecisionChannel; channelUser?: string },
 ): Promise<ResolveResult> {
+  // Every decision, from the web, an email link, Slack or WhatsApp, comes through here.
+  const channel: DecisionChannel = input.channel ?? (input.linkId ? "email" : "web");
+  const inChat = channel === "slack" || channel === "whatsapp";
   const db = forOrg(orgId, deps.db);
   const email = input.email.toLowerCase();
   const approval = await db.approval.findFirst({ where: { id: approvalId } });
@@ -132,6 +143,7 @@ export async function resolveApproval(
   if (!member || !APPROVER_ROLES.has(member.role) || !approval.approvers.includes(email)) {
     return { ok: false, code: "not_approver", message: "You are not one of the approvers for this rule." };
   }
+  if (inChat && !approval.chatApproval) return { ok: false, code: "app_only", message: "This action can only be approved in Elan1 Govern." };
   const agent = await db.agent.findFirstOrThrow({ where: { id: approval.agentId } });
   const selfApproval = agent.createdById === input.userId;
   const now = new Date();
@@ -147,7 +159,7 @@ export async function resolveApproval(
       }
       const claimed = await tx.approval.updateMany({
         where: { id: approvalId, status: "pending", expiresAt: { gt: now } },
-        data: { status: input.result, resolvedBy: email, note: input.note ?? null, selfApproval, resolvedAt: now },
+        data: { status: input.result, resolvedBy: email, note: input.note ?? null, selfApproval, resolvedAt: now, channel, channelUser: inChat ? (input.channelUser ?? null) : null },
       });
       if (claimed.count !== 1) throw new ClaimError();
     });
@@ -183,13 +195,14 @@ export async function resolveApproval(
       deps,
       orgId,
       async (append, tx) => {
-        await append(followUp(held, decided, outcome));
+        await append(followUp(held, decided, outcome, { channel, ...(inChat && input.channelUser ? { channel_user: input.channelUser } : {}) }));
         await tx.approval.update({ where: { id: approvalId }, data: { argsEnc: null, result: { ...outcome, ...(data !== undefined ? { data } : {}) } as object } });
       },
     );
   } catch (e) {
     await raiseAlert(deps, "receipt-write-failed", `Approval ${approvalId} was ${input.result} (${outcome.status}) but its receipt could not be written: ${(e as Error).message}`, orgId);
   }
+  background(deps, chatResolved(deps, orgId, approvalId));
   return { ok: true, status: input.result, outcome, selfApproval };
 }
 
@@ -198,7 +211,7 @@ class ClaimError extends Error {}
 
 /** Expire one approval if it is pending and past its time. Returns true when it expired it. */
 export async function expireApproval(deps: Deps, orgId: string, approvalId: string): Promise<boolean> {
-  return chain(
+  const expired = await chain(
     deps,
     orgId,
     async (append, tx) => {
@@ -211,6 +224,8 @@ export async function expireApproval(deps: Deps, orgId: string, approvalId: stri
       return true;
     },
   );
+  if (expired) background(deps, chatResolved(deps, orgId, approvalId));
+  return expired;
 }
 
 export interface ApprovalStatus {
