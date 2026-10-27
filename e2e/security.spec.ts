@@ -62,6 +62,9 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/webhooks", body: {}, allowed: ADMINS },
   { method: "DELETE", path: "/api/webhooks/wh_none", allowed: ADMINS },
   { method: "POST", path: "/api/webhooks/wh_none/test", allowed: ADMINS },
+  { method: "POST", path: "/api/suggestions", body: { nope: 1 }, allowed: ADMINS },
+  { method: "POST", path: "/api/suggestions/rs_none/apply", body: { nope: 1 }, allowed: ADMINS },
+  { method: "POST", path: "/api/suggestions/rs_none/dismiss", body: { nope: 1 }, allowed: ADMINS },
   // Owners only, with a fresh sign-in; the empty body fails validation (400), so nothing rotates.
   { method: "POST", path: "/api/signing-key", body: {}, allowed: ["owner"] },
 ];

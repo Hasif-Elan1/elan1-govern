@@ -90,6 +90,12 @@ export function adminTitle(r: Receipt): string {
       return `Added a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
     case "webhook.deleted":
       return `Deleted a webhook${d.host ? ` to ${String(d.host)}` : ""}`;
+    case "suggestion.applied":
+      return `Opened a suggested rule change${agent} as a draft`;
+    case "suggestion.dismissed":
+      return `Dismissed a suggested rule change${agent}`;
+    case "demo.history_added":
+      return `Loaded a month of demo approvals${agent}`;
     default:
       return r.action ?? "Setup change";
   }

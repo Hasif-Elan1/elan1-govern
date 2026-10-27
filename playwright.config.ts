@@ -21,7 +21,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: { baseURL: WEB, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
-    { name: "e2e", testMatch: /flows\.spec\.ts|builder\.spec\.ts|demo\.spec\.ts|governance\.spec\.ts|platform\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    { name: "e2e", testMatch: /flows\.spec\.ts|builder\.spec\.ts|demo\.spec\.ts|governance\.spec\.ts|platform\.spec\.ts|suggestions\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     { name: "security", testMatch: /security\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: [

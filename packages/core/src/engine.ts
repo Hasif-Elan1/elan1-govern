@@ -68,7 +68,14 @@ function resolveList(ref: unknown, rb: Rulebook, ctx: DecideContext): string[] {
 export function ruleMatches(rule: Rule, tool: string, args: Args, rb: Rulebook, ctx: DecideContext = {}): boolean {
   const registry = ctx.registry ?? builtinRegistry;
   if (!ruleTargets(rule, registry.get(tool), tool)) return false;
-  for (const [key, cond] of Object.entries(rule.when ?? {})) {
+  if (!conditionsHold(rule.when ?? {}, args, rb, ctx)) return false;
+  // An exception: the rule stands aside only when every `unless` condition holds. A missing value never holds.
+  const unless = rule.unless ?? {};
+  return !(Object.keys(unless).length > 0 && conditionsHold(unless, args, rb, ctx));
+}
+
+function conditionsHold(when: Record<string, unknown>, args: Args, rb: Rulebook, ctx: DecideContext): boolean {
+  for (const [key, cond] of Object.entries(when)) {
     if (key === "to_domain_in") {
       const domain = domainOf(args.to);
       const list = resolveList(cond, rb, ctx).map((d) => d.toLowerCase());
@@ -103,7 +110,7 @@ export function summarizeArgs(tool: string, args: Args, rb: Rulebook, registry: 
   };
   spec.summaryFields.forEach(keep);
   for (const rule of rb.rules.filter((r) => ruleTargets(r, spec, tool))) {
-    for (const key of Object.keys(rule.when ?? {})) {
+    for (const key of [...Object.keys(rule.when ?? {}), ...Object.keys(rule.unless ?? {})]) {
       if (key === "to_domain_in") {
         const d = domainOf(args.to);
         if (d) out.to_domain = d;

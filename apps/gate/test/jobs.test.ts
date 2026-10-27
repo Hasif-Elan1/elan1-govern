@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { forOrg } from "@gate/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { addDemoHistory } from "../src/demo/history";
 import { noQueue } from "../src/deps";
 import { QUEUES, runLogged, startJobs, sweepWebhooks, type Jobs } from "../src/jobs";
 import { demoOrg, gateMeta, internal, makeApp, tool } from "./helpers";
@@ -53,7 +54,7 @@ afterAll(async () => {
 describe("background jobs (pg-boss)", () => {
   it("registers the cron schedules in the database", async () => {
     const names = (await jobs.boss.getSchedules()).map((s) => s.name).sort();
-    expect(names).toEqual([QUEUES.checkpoints, QUEUES.expire, QUEUES.sweep].sort());
+    expect(names).toEqual([QUEUES.checkpoints, QUEUES.expire, QUEUES.sweep, QUEUES.suggestions].sort());
     expect(ctx.deps.queue).not.toBe(noQueue);
   });
 
@@ -72,6 +73,16 @@ describe("background jobs (pg-boss)", () => {
     const d = await demoOrg(ctx.deps);
     await jobs.boss.send(QUEUES.checkpoints, {});
     await until(async () => (await d.db.checkpoint.count()) > 0);
+  });
+
+  it("the nightly suggestions job looks at every org and logs only a count", async () => {
+    const d = await demoOrg(ctx.deps);
+    await addDemoHistory(ctx.deps, d.org.id, d.owner.email);
+    await d.db.ruleSuggestion.deleteMany({});
+    await jobs.boss.send(QUEUES.suggestions, {});
+    await until(async () => (await d.db.ruleSuggestion.count({ where: { status: "new" } })) > 0);
+    const line = await until(async () => logs.find((l) => l.obj.job === QUEUES.suggestions && typeof l.obj.open === "number"));
+    expect(JSON.stringify(line.obj)).not.toMatch(/@/);
   });
 
   it("webhook deliveries go through the queue", async () => {
