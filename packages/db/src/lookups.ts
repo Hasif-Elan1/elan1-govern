@@ -57,3 +57,13 @@ export function findSsoForDomain(domain: string, client: PrismaClient = defaultC
 export function domainClaimedElsewhere(domain: string, orgId: string, client: PrismaClient = defaultClient) {
   return client.ssoConnection.findFirst({ where: { verifiedDomains: { has: domain.toLowerCase() }, orgId: { not: orgId } }, select: { id: true } });
 }
+
+/**
+ * Replay store retention, for every org at once: drop rows older than `before`, and any row of an
+ * org that has the store switched off (a call in flight when it was switched off may have added one).
+ */
+export async function purgeReplayCalls(before: Date, client: PrismaClient = defaultClient): Promise<number> {
+  const off = (await client.org.findMany({ where: { replayStore: false }, select: { id: true } })).map((o) => o.id);
+  const r = await client.replayCall.deleteMany({ where: { OR: [{ ts: { lt: before } }, ...(off.length ? [{ orgId: { in: off } }] : [])] } });
+  return r.count;
+}

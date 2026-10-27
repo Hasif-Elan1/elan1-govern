@@ -22,6 +22,7 @@ export const TENANT_MODELS = [
   "OrgKey",
   "Webhook",
   "WebhookDelivery",
+  "ReplayCall",
 ] as const;
 
 const WHERE_OPS = new Set([

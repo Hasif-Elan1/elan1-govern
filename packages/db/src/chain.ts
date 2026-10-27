@@ -1,6 +1,7 @@
 import {
   GENESIS,
   buildReceipt,
+  startOfDayIn,
   signCheckpoint,
   type ChainHead,
   type Checkpoint,
@@ -107,17 +108,8 @@ export function toCheckpoint(row: { orgId: string; seq: number; hash: string; ts
   return { org: row.orgId, seq: row.seq, hash: row.hash, ts: row.ts.toISOString(), ...(row.kid ? { kid: row.kid } : {}), sig: row.sig };
 }
 
-/** Midnight today in an IANA time zone. */
-export function startOfDayIn(timeZone: string, now = new Date()): Date {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      .formatToParts(now)
-      .map((p) => [p.type, p.value]),
-  );
-  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
-  const offset = asUtc - Math.floor(now.getTime() / 1000) * 1000;
-  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) - offset);
-}
+/** Midnight today in an IANA time zone (the same function the replay uses). */
+export { startOfDayIn };
 
 /**
  * How much of a quota is used: successful calls of these tools since `since`,

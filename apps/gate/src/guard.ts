@@ -16,6 +16,7 @@ import { holdForApproval } from "./approvals";
 import { record } from "./chain";
 import { publicError, resolveConnectorFor } from "./connectors";
 import { registryFor } from "./registry";
+import { storeReplayCall } from "./replay";
 import { orgKey, raiseAlert, type Deps } from "./deps";
 
 export interface AgentIdentity {
@@ -34,7 +35,7 @@ export type GuardResult =
 
 export const GATE_ERROR_REASON = "Elan1 Govern could not check this action safely, so it was refused.";
 
-function usesList(rb: Rulebook, tool: string, list: string) {
+export function usesList(rb: Rulebook, tool: string, list: string) {
   return rb.rules.some((r) => (r.tool === tool || r.tag !== undefined) && r.when?.to_domain_in === list);
 }
 
@@ -105,21 +106,26 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     const d = decide(rb, tool, args, ctx);
     const display = conn.ok ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
     const common: ReceiptInput = { ...base, args_summary: { ...d.argsSummary, ...display }, rulebook, rule_id: d.ruleId, reason: d.reason };
+    // The replay store: the validated arguments, encrypted, so a draft rulebook can be tested on this call later.
+    const keep = (seq: number) => storeReplayCall(deps, orgId, { agentId: agent.id, seq, tool, args, decision: d.decision, ruleId: d.ruleId });
 
     if (d.decision === "refuse") {
       const r = await record(deps, orgId, { ...common, decision: "refuse" });
+      await keep(r.seq);
       await touch();
       return { status: "refused", ruleId: d.ruleId, reason: d.reason, seq: r.seq };
     }
 
     if (d.decision === "ask") {
       const held = await holdForApproval(deps, { orgId, agentId: agent.id, agentName: agent.name, tool, args, receipt: common, decision: d, connector: conn, executor: mode === "execute" ? "gate" : "agent" });
+      if (held.seq !== undefined) await keep(held.seq);
       await touch();
       return held;
     }
 
     if (mode === "check") {
       const r = await record(deps, orgId, { ...common, decision: "allow" });
+      await keep(r.seq);
       await touch();
       return { status: "ok", ruleId: d.ruleId, reason: d.reason, seq: r.seq };
     }
@@ -145,6 +151,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
       await raiseAlert(deps, "receipt-write-failed", `${tool} ran (${outcome.status}${outcome.ref ? `, ${outcome.ref}` : ""}) but its receipt could not be written: ${(e as Error).message}`, orgId);
       return { status: "refused", ruleId: "gate-error", reason: GATE_ERROR_REASON };
     }
+    await keep(seq);
     await touch();
     if (outcome.status === "ok") return { status: "ok", ruleId: d.ruleId, reason: d.reason, seq, result, ...(outcome.ref ? { ref: outcome.ref } : {}) };
     return { status: "failed", ruleId: d.ruleId, reason: `Allowed by rule "${d.ruleId}", but it did not complete: ${outcome.error}.`, seq };
