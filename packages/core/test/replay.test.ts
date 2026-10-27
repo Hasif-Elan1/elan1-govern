@@ -152,6 +152,8 @@ describe("replay helpers", () => {
 const TOOLS = ["zoho.record_bill_payment", "zoho.create_bill", "gmail.read_message", "gmail.send_reply"] as const;
 const ZONES = ["Asia/Kolkata", "UTC", "America/New_York"];
 
+type Of<A> = A extends fc.Arbitrary<infer T> ? T : never;
+
 const ruleArb = fc.record({
   target: fc.constantFrom<string>(...TOOLS, "tag:moves_money", "tag:reads_data"),
   op: fc.constantFrom("none", "lte", "gt"),
@@ -166,7 +168,7 @@ const quotaArb = fc.record({
   approver: fc.boolean(),
 });
 
-function makeRulebook(rules: fc.infer<typeof ruleArb>[], quotas: fc.infer<typeof quotaArb>[]): Rulebook {
+function makeRulebook(rules: Of<typeof ruleArb>[], quotas: Of<typeof quotaArb>[]): Rulebook {
   const target = (t: string) => (t.startsWith("tag:") ? { tag: t.slice(4) } : { tool: t });
   return parse({
     ...base,
@@ -208,7 +210,7 @@ function argsFor(tool: string, amount: number, i: number): Record<string, unknow
  * The guard, simplified: decide each call with the usage of everything that ran before it in each
  * quota's window, computed naively from the whole history.
  */
-function liveHistory(rbk: Rulebook, specs: fc.infer<typeof callArb>[], tz: string) {
+function liveHistory(rbk: Rulebook, specs: Of<typeof callArb>[], tz: string) {
   const lists = { vendor_domains: ["vendor.in"] };
   const ran: { ts: number; tool: string; values: Record<string, unknown> }[] = [];
   const calls: ReplayCall[] = [];

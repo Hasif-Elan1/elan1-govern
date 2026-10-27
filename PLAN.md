@@ -18,3 +18,4 @@ Each phase ends with lint, typecheck and tests green, then a commit.
 - [x] **11. Frameworks and industry packs** — ten framework libraries, 13 controls, coverage from live evidence, framework report, seven industry packs, industry step in onboarding.
 - [x] **12. Platform** — pg-boss jobs, signed webhooks, OpenAPI 3.1, signing-key rotation with key ids.
 - [x] **13. Enterprise sign-in** — OIDC single sign-on with DNS-verified domains and optional enforcement.
+- [x] **14. Test on past actions** — encrypted 30-day replay store, replay of a draft rulebook over real calls (quotas simulated in order), builder tab and publish summary.

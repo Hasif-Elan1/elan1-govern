@@ -17,7 +17,7 @@ export interface ReplayChange {
   reason: string;
 }
 
-export interface ReplayReport {
+export type ReplayReport = {
   days: number;
   since: string;
   storeOn: boolean;
@@ -33,7 +33,7 @@ export interface ReplayReport {
   after: DecisionCounts;
   changes: ReplayChange[];
   truncated: boolean;
-}
+};
 
 export const REPLAY_DAYS = [7, 30] as const;
 
