@@ -82,6 +82,16 @@ await shot(page, "16-assessments", "/assessments");
 await shot(page, "17-compliance", "/compliance");
 await shot(page, "18-compliance-eu-ai-act", "/compliance/eu-ai-act");
 await shot(page, "19-single-sign-on", "/settings/sso");
+await shot(page, "20-alerts", "/alerts");
+await shot(page, "21-rule-suggestions", "/rulebooks");
+await shot(page, "22-test-on-past-actions", "/rulebooks/ap-bot", {
+  before: async (p) => {
+    await p.getByRole("tab", { name: "Test on past actions" }).click();
+    await p.getByRole("button", { name: /Run test/ }).click().catch(() => undefined);
+    await p.waitForTimeout(1500);
+  },
+});
+await shot(page, "23-notifications", "/settings/notifications");
 await ctx.close();
 
 // Dark mode

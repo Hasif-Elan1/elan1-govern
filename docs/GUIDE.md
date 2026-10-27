@@ -39,7 +39,7 @@ Everything below is working code with tests. Each item says where to find it in 
 | **For developers** | MCP address + key for any agent; a small SDK; the `gate` command line (`verify`, `sign`, `keygen`) | README |
 | **Python agents** | A Python SDK with no outside dependencies: check before a tool runs, record after, wait for approvals, check webhooks; a `guarded` decorator; examples for LangChain, the OpenAI Agents SDK and plain Python, and how to connect Claude Desktop, Claude Code or Cursor | `packages/sdk-python`, `examples/` |
 
-**Quality checks that pass:** 456 automated tests, plus 20 browser tests covering sign-up, approving on a phone, the rule builder, Slack and WhatsApp settings, the demo, and security (every role against every page, other companies' data, forged links, CSRF, injection attacks). Dependency audit, semgrep, gitleaks and the OWASP ZAP scan are clean of serious findings. Details are in `SECURITY.md`.
+**Quality checks that pass:** 580 automated tests and 40 Python SDK tests, plus 23 browser tests covering sign-up, approving on a phone, the rule builder and testing on past actions, rule suggestions, Slack and WhatsApp settings, alerts and the emergency stop, the demo, and security (every role against every page, other companies' data, forged links, CSRF, injection attacks). Dependency audit, semgrep, gitleaks and the OWASP ZAP scan are clean of serious findings. Details are in `SECURITY.md`.
 
 ### What can only be approved in Elan1 Govern
 

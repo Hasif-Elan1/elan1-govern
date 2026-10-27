@@ -73,8 +73,9 @@ Then look around:
 | ![Agents](docs/screenshots/06-agent.png) **Agents**: owner, risk tier, keys, and a kill switch. | ![Add agent](docs/screenshots/07-add-agent.png) **Add agent**: name, five risk questions, connect tools, copy the MCP address and key. |
 
 | ![Inventory](docs/screenshots/15-inventory.png) **Inventory**: every AI system you use, with owner, data, risk and next review. | ![Compliance](docs/screenshots/17-compliance.png) **Compliance**: frameworks that apply to you, with coverage from live evidence. |
+| ![Alerts](docs/screenshots/20-alerts.png) **Alerts**: unusual behaviour per agent, with the emergency stop. | ![Rule suggestions](docs/screenshots/21-rule-suggestions.png) **Rule suggestions**: approvals people always give, drafted as a rule. |
 
-More: [assessments](docs/screenshots/16-assessments.png), [a framework's requirements](docs/screenshots/18-compliance-eu-ai-act.png), [connectors and MCP servers](docs/screenshots/09-connectors.png), [settings](docs/screenshots/11-settings.png), [single sign-on](docs/screenshots/19-single-sign-on.png), [dark mode](docs/screenshots/12-today-dark.png), [sign-in](docs/screenshots/01-sign-in.png).
+More: [assessments](docs/screenshots/16-assessments.png), [testing a rulebook on past actions](docs/screenshots/22-test-on-past-actions.png), [Slack and WhatsApp settings](docs/screenshots/23-notifications.png), [a framework's requirements](docs/screenshots/18-compliance-eu-ai-act.png), [connectors and MCP servers](docs/screenshots/09-connectors.png), [settings](docs/screenshots/11-settings.png), [single sign-on](docs/screenshots/19-single-sign-on.png), [dark mode](docs/screenshots/12-today-dark.png), [sign-in](docs/screenshots/01-sign-in.png).
 
 New here? Start with [docs/GUIDE.md](docs/GUIDE.md), the plain-English guide to what Elan1 Govern does and how to run it.
 
