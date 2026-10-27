@@ -56,3 +56,43 @@ test("a high-risk agent cannot publish without an ask rule for payments", async 
   await expect(page.getByText(/High-risk agents need at least one "Ask" rule/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign and publish" })).toBeDisabled();
 });
+
+test("test a draft on past actions before publishing", async ({ page }) => {
+  const owner = await Client.owner("Replay Co");
+  expect((await owner.send("POST", "/api/demo")).status()).toBe(200);
+  // The demo agent's steps: reads, a small payment, a large one, a bank change, an unknown tool.
+  await expect(async () => expect(((await (await owner.get("/api/activity?decision=refuse")).json()).items as unknown[]).length).toBeGreaterThanOrEqual(2)).toPass({ timeout: 30_000 });
+  await signInUI(page, owner.email);
+  await page.goto("/rulebooks/ap-bot");
+  const yaml = page.getByTestId("yaml");
+  await expect(yaml).toHaveValue(/id: pay-large/);
+
+  // Lower the payment threshold to ₹10,000: the ₹18,000 payment would now ask a person.
+  const text = await yaml.inputValue();
+  await yaml.fill(text.replace("lte: 50000", "lte: 10000").replace("gt: 50000", "gt: 10000"));
+
+  await page.getByRole("tab", { name: "Test on past actions" }).click();
+  await page.getByRole("radio", { name: "Last 7 days" }).click();
+  await page.getByRole("button", { name: "Run test" }).click();
+  // The unknown tool was refused before any rule was checked, so it cannot be judged.
+  await expect(page.getByTestId("replay-summary")).toHaveText(/^Of \d+ calls, 1 more would ask a person and 1 fewer would be allowed\. 1 could not be judged\.$/);
+  const changes = page.getByTestId("replay-changes");
+  await expect(changes.getByRole("listitem")).toHaveCount(1);
+  await expect(changes).toContainText("Pay ₹18,000 to Kaveri Logistics for KL-1187");
+  await expect(changes).toContainText("Allowed");
+  await expect(changes).toContainText("Ask a person");
+  await expect(changes).toContainText("pay-large");
+  await expect(page.getByTestId("replay-counts")).toContainText("Would change");
+
+  // The publish confirmation repeats it for this draft.
+  await page.getByRole("button", { name: "Sign and publish" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByTestId("publish-replay")).toContainText("1 more would ask a person");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Change the draft again: the result is marked out of date.
+  await page.getByRole("tab", { name: "YAML" }).click();
+  await yaml.fill((await yaml.inputValue()).replace("lte: 10000", "lte: 9000").replace("gt: 10000", "gt: 9000"));
+  await page.getByRole("tab", { name: "Test on past actions" }).click();
+  await expect(page.getByText("The rules changed since this test.")).toBeVisible();
+});

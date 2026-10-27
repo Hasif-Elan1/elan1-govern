@@ -42,6 +42,7 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/agents/ap-bot/status", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/agents/ap-bot/keys", body: { nope: 1 }, allowed: ADMINS },
   { method: "POST", path: "/api/rulebooks/ap-bot", body: {}, allowed: ADMINS },
+  { method: "POST", path: "/api/rulebooks/ap-bot/replay", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/connectors/gmail", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/upstreams", body: {}, allowed: ADMINS },
   { method: "PATCH", path: "/api/upstreams/none/tools/none", body: { nope: 1 }, allowed: ADMINS },
