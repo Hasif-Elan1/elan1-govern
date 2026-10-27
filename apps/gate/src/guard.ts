@@ -1,4 +1,5 @@
 import {
+  chatApprovalAllowed,
   decide,
   durationMs,
   hashCanonical,
@@ -117,7 +118,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     }
 
     if (d.decision === "ask") {
-      const held = await holdForApproval(deps, { orgId, agentId: agent.id, agentName: agent.name, tool, args, receipt: common, decision: d, connector: conn, executor: mode === "execute" ? "gate" : "agent" });
+      const held = await holdForApproval(deps, { orgId, agentId: agent.id, agentName: agent.name, tool, args, receipt: common, decision: d, connector: conn, executor: mode === "execute" ? "gate" : "agent", chatApproval: chatApprovalAllowed(rb, d, registry) });
       if (held.seq !== undefined) await keep(held.seq);
       await touch();
       return held;

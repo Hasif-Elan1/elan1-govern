@@ -13,3 +13,4 @@ export * from "./diff";
 export * from "./inventory";
 export * from "./assessments";
 export * from "./replay";
+export * from "./chat";

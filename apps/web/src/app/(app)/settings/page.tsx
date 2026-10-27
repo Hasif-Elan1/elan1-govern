@@ -123,6 +123,15 @@ export default async function Settings() {
           </Card>
         </Section>
 
+        <Section title="Notifications" description="Approvals in Slack and WhatsApp, as well as email. Rules, decisions and receipts stay in Elan1 Govern.">
+          <Card className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm">
+            <span className="text-ink-2">Connect Slack or WhatsApp, and add your own WhatsApp number.</span>
+            <Link href="/settings/notifications" className="font-medium text-accent hover:underline">
+              Set up notifications
+            </Link>
+          </Card>
+        </Section>
+
         {hooksAllowed ? (
           <Section title="Webhooks" description="Send receipts and approval events to your SIEM, log store or other tools. Each request is signed with a secret only you and Elan1 Govern know.">
             <div className="grid gap-3">

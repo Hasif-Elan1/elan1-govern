@@ -23,6 +23,9 @@ export const TENANT_MODELS = [
   "Webhook",
   "WebhookDelivery",
   "ReplayCall",
+  "ChatChannel",
+  "ChatNumber",
+  "ChatMessage",
 ] as const;
 
 const WHERE_OPS = new Set([

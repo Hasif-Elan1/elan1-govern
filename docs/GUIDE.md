@@ -20,6 +20,7 @@ Everything below is working code with tests. Each item says where to find it in 
 |---|---|---|
 | **The guard** | Checks every tool call against a signed rulebook; refuses anything not allowed; refuses if anything goes wrong | Elan1 Govern service (`apps/gate`) |
 | **Approvals** | Holds risky actions for a named person, by email or on the phone, with the evidence (invoice, vendor, amount); single-use links; asks for your password again before approving | Approvals |
+| **Approvals in Slack and WhatsApp** | Tells approvers in a Slack channel or on WhatsApp that an action is waiting. Low-risk rules marked "Can be approved in Slack or WhatsApp" get Approve and Reject buttons; everything else gets a link to Elan1 Govern. The decision and receipt stay in Elan1 Govern, and the receipt says where it was decided | Settings → Notifications; Rulebooks |
 | **Receipts and proof** | Signed, chained receipts; hourly checkpoints; one-click "Verify this receipt"; downloadable auditor pack checked with `govern verify` | Activity, Evidence |
 | **Today screen** | What's waiting for you, today's numbers, live activity | Today |
 | **Agents** | Registry of agents with owner, risk level, keys and an instant pause switch; a 3-step "Add agent" wizard | Agents |
@@ -36,7 +37,11 @@ Everything below is working code with tests. Each item says where to find it in 
 | **For developers** | MCP address + key for any agent; a small SDK; the `gate` command line (`verify`, `sign`, `keygen`) | README |
 | **Python agents** | A Python SDK with no outside dependencies: check before a tool runs, record after, wait for approvals, check webhooks; a `guarded` decorator; examples for LangChain, the OpenAI Agents SDK and plain Python, and how to connect Claude Desktop, Claude Code or Cursor | `packages/sdk-python`, `examples/` |
 
-**Quality checks that pass:** 409 automated tests, plus 19 browser tests covering sign-up, approving on a phone, the rule builder, the demo, and security (every role against every page, other companies' data, forged links, CSRF, injection attacks). Dependency audit, semgrep, gitleaks and the OWASP ZAP scan are clean of serious findings. Details are in `SECURITY.md`.
+**Quality checks that pass:** 456 automated tests, plus 20 browser tests covering sign-up, approving on a phone, the rule builder, Slack and WhatsApp settings, the demo, and security (every role against every page, other companies' data, forged links, CSRF, injection attacks). Dependency audit, semgrep, gitleaks and the OWASP ZAP scan are clean of serious findings. Details are in `SECURITY.md`.
+
+### What can only be approved in Elan1 Govern
+
+Chat buttons skip the password check, so Elan1 Govern never offers them for actions that delete data, change who can access what, change production systems, touch personal data, or move money without an upper limit on the amount. Those are always decided in the app (from the email link or Approvals), with your password if you signed in more than 10 minutes ago. Elan1 Govern refuses to publish a rulebook that tries otherwise and explains why.
 
 ## 3. How to run it
 

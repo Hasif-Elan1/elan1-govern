@@ -67,3 +67,13 @@ export async function purgeReplayCalls(before: Date, client: PrismaClient = defa
   const r = await client.replayCall.deleteMany({ where: { OR: [{ ts: { lt: before } }, ...(off.length ? [{ orgId: { in: off } }] : [])] } });
   return r.count;
 }
+
+/** Inbound Slack and WhatsApp requests name their channel in the URL; that channel's own secret then verifies the request. */
+export function findChatChannel(id: string, kind: string, client: PrismaClient = defaultClient) {
+  return client.chatChannel.findFirst({ where: { id, kind, enabled: true } });
+}
+
+/** Chat messages that are due (or whose worker vanished mid-attempt), oldest first. */
+export function dueChatMessages(now: Date, client: PrismaClient = defaultClient, take = 200) {
+  return client.chatMessage.findMany({ where: { status: "pending", nextAttemptAt: { lte: now } }, select: { id: true, orgId: true }, orderBy: { nextAttemptAt: "asc" }, take });
+}

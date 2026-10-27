@@ -214,6 +214,54 @@ Below that is a list of up to 200 changed calls: the action in plain words, the 
 
 How it works: receipts are deliberately minimal, so they cannot be replayed. Instead, the gate service keeps a separate **replay store**: each guarded call's validated arguments, AES-256-GCM encrypted with `GATE_MASTER_KEY` (only the gate service can read them), tagged with the agent, tool, time, receipt number and original decision. Rows are deleted after **30 days** by an hourly job. The store is on by default; owners and admins can switch it off in **Settings → Past actions for testing rules**, which deletes everything stored at once. A call "could not be judged" when its arguments were not kept: older than 30 days, made while the store was off, or refused before any rule was checked (a paused agent, an unknown tool, invalid arguments). Owners and admins (whoever can publish rulebooks) can run a test, a few times a minute.
 
+## Approvals in Slack and WhatsApp
+
+When an action waits for a person, Elan1 Govern can also ring the approver in Slack or WhatsApp. It is a doorbell, not a replacement: the rules, the decision, the receipt and the audit trail stay in Elan1 Govern, and the email still goes out.
+
+**Which actions can be approved from a chat button.** An ask rule can say `approve_in_chat: true` (in the rule builder: **Can be approved in Slack or WhatsApp**). It is off by default. Elan1 Govern refuses to publish it on any rule that reaches a tool tagged:
+
+- `deletes`, `changes_access`, `changes_production` or `personal_data`: always decided in Elan1 Govern, with the password check;
+- `moves_money`, unless the rule has an upper amount (`lt` or `lte` on the amount), for example:
+
+```yaml
+- id: pay-mid
+  tool: zoho.record_bill_payment
+  when: { amount_inr: { gt: 50000, lte: 200000 } }
+  decide: ask
+  approver: finance
+  approve_in_chat: true
+```
+
+Everything else still gets a message, with an **Open in Elan1 Govern** link instead of buttons. Limits (quotas) that turn an allow into an ask are never approvable in chat.
+
+**How a chat decision is checked.** Slack: the request signature (`X-Slack-Signature`, 5-minute window), then the clicking user's email as **confirmed by Slack**, which must belong to a member of this organisation who is an approver for the rule. WhatsApp: Meta's `X-Hub-Signature-256`, then the sender's number, which the member must have verified. The decision then goes through exactly the same code as the web app: one decision per approval, however many clicks. The receipt records `details.channel` (`web`, `email`, `slack` or `whatsapp`) and the chat user id (Slack `team/user`; for WhatsApp a hash of the number, never the number). Anyone else gets "You can't approve this here."
+
+### Slack
+
+1. At [api.slack.com/apps](https://api.slack.com/apps), **Create New App → From scratch**, in your workspace.
+2. **OAuth & Permissions → Bot Token Scopes**: `chat:write`, `users:read`, `users:read.email`. Install the app and copy the **Bot User OAuth Token** (`xoxb-…`).
+3. **Basic Information → App Credentials**: copy the **Signing Secret**.
+4. In Slack, create a channel for approvals, invite the app (`/invite @your-app`), and copy the channel ID from the channel's details (`C0…`).
+5. In Elan1 Govern, **Settings → Notifications → Slack** (owners and admins, sign-in within 10 minutes): paste the token, secret and channel ID. Elan1 Govern checks the token with Slack, stores both secrets encrypted and never shows them again.
+6. Back in the Slack app: **Interactivity & Shortcuts → On**, with the **Request URL** that Elan1 Govern shows: `https://<your Elan1 Govern service>/chat/slack/<id>/interactions`.
+
+### WhatsApp (Meta WhatsApp Cloud API)
+
+1. In [Meta for Developers](https://developers.facebook.com/apps), create a **Business** app and add the **WhatsApp** product. Add your business phone number under **WhatsApp → API Setup** and note its **Phone-number ID** (a long number, not the phone number).
+2. Create a **system user** in Meta Business settings with the `whatsapp_business_messaging` permission and generate a permanent access token. Copy the **App secret** from **App settings → Basic**.
+3. In Elan1 Govern, **Settings → Notifications → WhatsApp**: paste the phone-number ID, token and app secret. Elan1 Govern shows a webhook URL and a **verify token** once.
+4. In the Meta app, **WhatsApp → Configuration → Webhook**: set the callback URL and verify token, and subscribe to the `messages` field.
+5. Each approver opens **Settings → Notifications → Your WhatsApp number**, enters their number and types the 6-digit code they receive (3 codes per 15 minutes, 5 tries each, valid 10 minutes).
+
+**Templates and the 24-hour window.** Meta only delivers free-form messages to someone who wrote to your business number in the last 24 hours. For anything else you need approved message templates:
+
+- **Approval template** (field "Approval template"): category Utility, body with three variables, `{{1}}` what the agent wants, `{{2}}` the rule, `{{3}}` the expiry, and two **quick-reply** buttons, Approve then Reject. Elan1 Govern fills in the button payloads per approval. Used for chat-approvable actions.
+- **Code template** (field "Code template"): category Authentication, with a copy-code button. Used for the 6-digit check.
+
+Without them, Elan1 Govern sends interactive and text messages, which work inside the 24-hour window (ask approvers to send any message to the business number first). App-only actions are always sent as a text message with the link, so outside the window they rely on email.
+
+For tests, `SLACK_API_URL` and `WHATSAPP_API_URL` point the clients at fake servers; in production Elan1 Govern refuses to start unless they are `https://slack.com/…` and `https://graph.facebook.com/…`.
+
 ## Rotating keys
 
 Each organisation signs receipts, checkpoints, rulebooks and evidence with its own Ed25519 key. To replace it (a scheduled rotation, or someone left who could have seen it), an owner opens **Settings → Signing keys → Rotate signing key** and confirms (a sign-in within the last 10 minutes is required).

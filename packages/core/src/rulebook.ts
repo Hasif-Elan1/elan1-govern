@@ -1,5 +1,6 @@
 import YAML from "yaml";
 import { z } from "zod";
+import { chatApprovalProblems } from "./chat";
 import { builtinRegistry, HIGH_IMPACT_TAGS, RISK_TAGS, RISK_TAG_LABELS, VENDOR_FIELDS, type RiskTag, type ToolRegistry, type ToolSpec } from "./tools";
 
 export const DECISIONS = ["allow", "ask", "refuse"] as const;
@@ -41,6 +42,8 @@ export const RuleSchema = z
     approver: slug.optional(),
     expires_in: z.string().regex(durationRe, "use a duration like 30m, 24h or 2d").optional(),
     reason: z.string().max(300).optional(),
+    /** Ask rules only: the approver may decide in Slack or WhatsApp, not only in Elan1 Govern. Default false. */
+    approve_in_chat: z.boolean().optional(),
   })
   .strict();
 export type Rule = z.infer<typeof RuleSchema>;
@@ -90,6 +93,7 @@ function makeSchema(registry: ToolRegistry) {
         } else {
           if (rule.approver) at("only ask rules take an approver", "approver");
           if (rule.expires_in) at("only ask rules can expire", "expires_in");
+          if (rule.approve_in_chat) at("only ask rules can be approved in Slack or WhatsApp", "approve_in_chat");
         }
         if (rule.expires_in && durationRe.test(rule.expires_in) && durationMs(rule.expires_in) > 30 * 86_400_000) at("expiry can be at most 30 days", "expires_in");
         for (const msg of checkWhen(spec, rule.when ?? {}, rb.lists ?? {})) at(msg, "when");
@@ -170,7 +174,7 @@ export function parseRulebookYaml(text: string, registry: ToolRegistry = builtin
 }
 
 const KEY_ORDER = ["version", "agent", "owner", "default", "approvers", "lists", "limits", "quotas", "rules", "signature"] as const;
-const RULE_KEY_ORDER = ["id", "tool", "tag", "when", "decide", "approver", "expires_in", "reason"] as const;
+const RULE_KEY_ORDER = ["id", "tool", "tag", "when", "decide", "approver", "expires_in", "reason", "approve_in_chat"] as const;
 
 export function rulebookToYaml(rb: Rulebook): string {
   const ordered: Record<string, unknown> = {};
@@ -215,7 +219,7 @@ export function quotasOf(rb: Rulebook): Quota[] {
 
 /** Checks that block publishing, beyond schema validity. */
 export function publishProblems(rb: Rulebook, tier: RiskTier, registry: ToolRegistry = builtinRegistry): string[] {
-  const problems: string[] = [];
+  const problems: string[] = chatApprovalProblems(rb, registry);
   if (tier !== "high") return problems;
   for (const spec of registry.list().filter((t) => t.tags.some((tag) => HIGH_IMPACT_TAGS.includes(tag)))) {
     const rules = rb.rules.filter((r) => ruleTargets(r, spec, spec.name));
