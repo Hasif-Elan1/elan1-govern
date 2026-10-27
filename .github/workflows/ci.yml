@@ -31,6 +31,9 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test:coverage
+      # Python SDK: stdlib only, so the runner's preinstalled python3 is enough (no setup action).
+      - run: python3 --version && pnpm test:python
+      - run: python3 -c "import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]" examples/python/*.py
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm --filter @gate/web build
       - run: pnpm test:e2e

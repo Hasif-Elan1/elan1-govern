@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:python": "python3 -m unittest discover -s packages/sdk-python/tests",
     "db:migrate": "pnpm --filter @gate/db migrate",
     "db:seed": "pnpm --filter @gate/gate seed",
     "govern": "node packages/cli/bin/gate.mjs",
