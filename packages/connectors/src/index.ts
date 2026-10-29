@@ -2,7 +2,7 @@ import { TOOLS, type ToolName } from "@gate/core";
 import { gmailConnector } from "./gmail";
 import { mockGmail, mockZoho } from "./mock";
 import type { Fetch } from "./oauth";
-import type { Connector, ConnectorKind } from "./types";
+import type { Connector, ConnectorKind, EgressHook } from "./types";
 import { zohoConnector, type ZohoConfig } from "./zoho";
 
 export * from "./types";
@@ -18,16 +18,18 @@ export interface LiveConfig {
   google?: { clientId: string; clientSecret: string };
   zoho?: ZohoConfig;
   fetch?: Fetch;
+  /** The egress gate, asked before every live request. */
+  egress?: EgressHook;
 }
 
 export function connectorFor(kind: ConnectorKind, mode: ConnectorMode, live: LiveConfig): Connector {
   if (mode === "mock") return kind === "gmail" ? mockGmail : mockZoho;
   if (kind === "gmail") {
     if (!live.google) throw new Error("Gmail is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET");
-    return gmailConnector(live.google, live.fetch);
+    return gmailConnector(live.google, live.fetch, live.egress);
   }
   if (!live.zoho) throw new Error("Zoho Books is not configured: set ZOHO_CLIENT_ID and ZOHO_CLIENT_SECRET");
-  return zohoConnector(live.zoho, live.fetch);
+  return zohoConnector(live.zoho, live.fetch, live.egress);
 }
 
 export function connectorKindOf(tool: ToolName): ConnectorKind {

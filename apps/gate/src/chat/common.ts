@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { decrypt, describeAction, encrypt, formatINR } from "@gate/core";
+import { EgressBlocked } from "@gate/db";
 import type { Deps } from "../deps";
 
 // Approvals in Slack and WhatsApp. Chat is a doorbell: rules, decisions, receipts and the audit
@@ -39,18 +40,27 @@ export function openChatSecrets<T extends Record<string, string>>(deps: Deps, or
 
 function baseUrl(deps: Deps, kind: ChatKind): URL {
   const raw = kind === "slack" ? deps.env.SLACK_API_URL : deps.env.WHATSAPP_API_URL;
+  // Empty in the sovereign profile unless the operator points it at an internal relay.
+  if (!raw) throw new ChatApiError(`${CHAT_LABELS[kind]} is not available in this deployment`, false);
   return new URL(raw.endsWith("/") ? raw : `${raw}/`);
 }
 
 /**
  * The only way Elan1 Govern calls Slack or Meta. The URL is always built from the configured base
  * (slack.com or graph.facebook.com in production, checked at startup), any path that would leave
- * it is refused, redirects are never followed and every call times out.
+ * it is refused, then the egress gate decides (deny-all in the sovereign profile), redirects are
+ * never followed and every call times out.
  */
-export async function chatFetch(deps: Deps, kind: ChatKind, path: string, init: RequestInit): Promise<Response> {
+export async function chatFetch(deps: Deps, orgId: string, kind: ChatKind, path: string, init: RequestInit): Promise<Response> {
   const base = baseUrl(deps, kind);
   const url = new URL(path.replace(/^\/+/, ""), base);
   if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) throw new ChatApiError(`refused to call outside the ${CHAT_LABELS[kind]} API`, false);
+  try {
+    await deps.egress.check(url, `chat-${kind}`, { orgId });
+  } catch (e) {
+    if (e instanceof EgressBlocked) throw new ChatApiError(`this deployment's egress policy does not allow ${CHAT_LABELS[kind]}`, false);
+    throw e;
+  }
   try {
     return await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(CHAT_TIMEOUT_MS) });
   } catch (e) {

@@ -765,4 +765,63 @@ model ScimUser {
 
   @@unique([orgId, userId])
   @@unique([orgId, userName])
+// ── sovereign ──
+
+// One organisation's additions to the deployment's egress allow-list (GATE_PROFILE=sovereign).
+// Exact internal hosts only: no wildcards, no public names (see packages/db/src/egress.ts).
+model EgressRule {
+  id        String   @id @default(cuid())
+  orgId     String
+  host      String // lower case host name or private IP
+  port      Int? // null = any port
+  purpose   String? // null = any purpose (webhook, upstream-mcp, chat-slack, smtp, oidc, ...)
+  note      String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+}
+
+// Every outbound connection decision (allowed or blocked). orgId is null for platform-level
+// connections (SMTP relay, start-up). Kept for EGRESS_LOG_RETENTION_DAYS by the egress-purge job.
+model EgressLog {
+  id         String   @id @default(cuid())
+  orgId      String?
+  host       String
+  port       Int
+  purpose    String
+  decision   String // allowed | blocked
+  profile    String // standard | sovereign
+  reason     String?
+  actor      String? // a person who caused the attempt, when there was one
+  receiptSeq Int? // the egress.blocked receipt, when one was written
+  alerted    Boolean  @default(false) // a receipt or health alert was raised for this block
+  at         DateTime @default(now())
+
+  @@index([at])
+  @@index([orgId, at])
+  @@index([orgId, host, purpose, decision, at])
+}
+
+// Signed update bundles imported into this deployment (platform-wide, not per organisation).
+model UpdateRecord {
+  id              String    @id @default(cuid())
+  version         String    @unique
+  manifest        Json // the signed manifest as imported
+  manifestSha256  String
+  kid             String // release key fingerprint that signed it
+  sourceDir       String
+  status          String // verified | staged | active | inactive | rolled_back
+  previousVersion String? // the version that was active when this one was applied
+  importedBy      String
+  importedAt      DateTime  @default(now())
+  stagedBy        String?
+  stagedAt        DateTime?
+  appliedBy       String?
+  appliedAt       DateTime?
+  rolledBackBy    String?
+  rolledBackAt    DateTime?
+  rollbackReason  String?
+
+  @@index([status])
 }

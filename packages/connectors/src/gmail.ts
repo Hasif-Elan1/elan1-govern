@@ -1,4 +1,5 @@
 import { authedJson } from "./http";
+import type { EgressHook } from "./types";
 import type { Fetch, ProviderConfig } from "./oauth";
 import { ConnectorError, type Connector, type ConnectorContext } from "./types";
 
@@ -40,10 +41,10 @@ function rawReply(to: string, subject: string, inReplyTo: string, body: string):
   return Buffer.from(msg, "utf8").toString("base64url");
 }
 
-export function gmailConnector(cfg: ProviderConfig, f: Fetch = fetch): Connector {
-  const get = (ctx: ConnectorContext, path: string) => authedJson("gmail", cfg, ctx, `${API}${path}`, { method: "GET", authScheme: "Bearer" }, f) as Promise<Record<string, unknown>>;
+export function gmailConnector(cfg: ProviderConfig, f: Fetch = fetch, egress?: EgressHook): Connector {
+  const get = (ctx: ConnectorContext, path: string) => authedJson("gmail", cfg, ctx, `${API}${path}`, { method: "GET", authScheme: "Bearer" }, f, egress) as Promise<Record<string, unknown>>;
   const post = (ctx: ConnectorContext, path: string, body: unknown) =>
-    authedJson("gmail", cfg, ctx, `${API}${path}`, { method: "POST", authScheme: "Bearer", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, f) as Promise<Record<string, unknown>>;
+    authedJson("gmail", cfg, ctx, `${API}${path}`, { method: "POST", authScheme: "Bearer", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, f, egress) as Promise<Record<string, unknown>>;
 
   const message = async (ctx: ConnectorContext, id: string) => {
     const m = (await get(ctx, `/messages/${encodeURIComponent(id)}?format=full`)) as { id: string; threadId: string; payload?: Part };

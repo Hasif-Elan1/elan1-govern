@@ -5,6 +5,7 @@ import { expireDue } from "./approvals";
 import { CHAT_QUEUE, deliverChatMessage, sweepChat } from "./chat/outbox";
 import { scanAll } from "./behaviour";
 import { noQueue, type Deps, type JobQueue } from "./deps";
+import { purgeEgress } from "./egress";
 import { checkpointAll } from "./evidence";
 import { findAllSuggestions } from "./suggestions";
 import { DELIVER_QUEUE, deliverWebhook } from "./webhooks";
@@ -26,6 +27,7 @@ export const QUEUES = {
   suggestions: "rule-suggestions-nightly",
   behaviour: "behaviour-scan",
   anchors: ANCHOR_QUEUE,
+  egressPurge: "egress-purge",
 } as const;
 
 const CRON: { queue: string; cron: string }[] = [
@@ -38,6 +40,7 @@ const CRON: { queue: string; cron: string }[] = [
   { queue: QUEUES.behaviour, cron: "*/5 * * * *" },
   // L2+ Merkle batches, timestamped by every configured authority (anchors.ts).
   { queue: QUEUES.anchors, cron: "*/15 * * * *" },
+  { queue: QUEUES.egressPurge, cron: "41 * * * *" },
 ];
 
 /** Re-sends deliveries that are due but whose job was lost (a crash, or written before jobs ran). */
@@ -94,6 +97,7 @@ export async function startJobs(deps: Deps, opts: { schedule?: boolean; pollingI
   await boss.work(QUEUES.suggestions, polling, () => runLogged(deps, QUEUES.suggestions, async () => ({ open: await findAllSuggestions(deps) })));
   await boss.work(QUEUES.behaviour, polling, () => runLogged(deps, QUEUES.behaviour, () => scanAll(deps)));
   await boss.work(QUEUES.anchors, polling, () => runLogged(deps, QUEUES.anchors, () => anchorAll(deps)));
+  await boss.work(QUEUES.egressPurge, polling, () => runLogged(deps, QUEUES.egressPurge, async () => ({ purged: await purgeEgress(deps) })));
   await boss.work<{ orgId: string; deliveryId: string }>(QUEUES.deliver, { ...polling, batchSize: 5, localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) await deliverWebhook(deps, job.data.orgId, job.data.deliveryId);
   });

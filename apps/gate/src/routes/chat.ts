@@ -43,8 +43,8 @@ function chatReply(r: ResolveResult): string {
 async function slackDecision(deps: Deps, orgId: string, secrets: SlackSecrets, cfg: SlackConfig, p: SlackInteraction, result: "approved" | "rejected", approvalId: string) {
   const user = p.user!.id;
   const channel = p.channel?.id ?? cfg.channelId;
-  const reply = (text: string) => slackEphemeral(deps, secrets.botToken, channel, user, text).catch((e: Error) => deps.log.warn({ job: "slack.reply", orgId, err: e.message }, "slack reply failed"));
-  const mail = await slackUserEmail(deps, secrets.botToken, user).catch(() => null);
+  const reply = (text: string) => slackEphemeral(deps, orgId, secrets.botToken, channel, user, text).catch((e: Error) => deps.log.warn({ job: "slack.reply", orgId, err: e.message }, "slack reply failed"));
+  const mail = await slackUserEmail(deps, orgId, secrets.botToken, user).catch(() => null);
   const member = mail ? await deps.db.user.findUnique({ where: { email: mail }, select: { id: true, email: true } }) : null;
   if (!member) return reply(`${CANT} Elan1 Govern could not match your Slack account to an approver in this organisation by a confirmed email.`);
   const r = await resolveApproval(deps, orgId, approvalId, { userId: member.id, email: member.email, result, channel: "slack", channelUser: `${cfg.teamId}/${user}` });
@@ -56,7 +56,7 @@ async function whatsappDecision(deps: Deps, orgId: string, secrets: WhatsAppSecr
   const d = decisionOf(m);
   if (!d) return;
   const hash = numberHash(deps, m.from);
-  const reply = (text: string) => waSend(deps, secrets.accessToken, cfg.phoneNumberId, m.from, textMessage(text)).catch((e: Error) => deps.log.warn({ job: "whatsapp.reply", orgId, err: e.message }, "whatsapp reply failed"));
+  const reply = (text: string) => waSend(deps, orgId, secrets.accessToken, cfg.phoneNumberId, m.from, textMessage(text)).catch((e: Error) => deps.log.warn({ job: "whatsapp.reply", orgId, err: e.message }, "whatsapp reply failed"));
   if (Math.abs(Date.now() / 1000 - Number(m.timestamp)) > CHAT_MAX_AGE_SECONDS) {
     deps.log.warn({ job: "whatsapp.decision", orgId, approvalId: d.approvalId, outcome: "stale" }, "whatsapp decision too old");
     return reply("That answer arrived too late to count. Open Elan1 Govern to decide.");

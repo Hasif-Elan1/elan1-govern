@@ -38,6 +38,9 @@ export const TENANT_MODELS = [
   "SamlReplay",
   "ScimConnection",
   "ScimUser",
+  // ── sovereign ──
+  "EgressRule",
+  "EgressLog",
 ] as const;
 
 const WHERE_OPS = new Set([

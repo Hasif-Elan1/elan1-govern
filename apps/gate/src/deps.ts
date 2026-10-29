@@ -1,6 +1,7 @@
 import { connectorFor, type Connector, type ConnectorKind, type ConnectorMode, type LiveConfig } from "@gate/connectors";
-import { forOrg, prisma as defaultPrisma, recordHealthAlert, type Db } from "@gate/db";
+import { forOrg, prisma as defaultPrisma, recordHealthAlert, type Db, type Egress } from "@gate/db";
 import type { FastifyBaseLogger } from "fastify";
+import { makeEgress } from "./egress";
 import type { GateEnv } from "./env";
 import { activePublicKey, envKeyProvider, type KeyProvider } from "./keys";
 import { AwsKmsKeyProvider, kmsClient, type KmsSender } from "./kms";
@@ -23,6 +24,8 @@ export interface Deps {
   keyProviders?: readonly KeyProvider[];
   queue: JobQueue;
   mailer: Mailer;
+  /** Every outbound connection asks this first (packages/db/src/egress.ts). */
+  egress: Egress;
   live: LiveConfig;
   log: FastifyBaseLogger;
   /** Override in tests to swap connectors. */
@@ -33,6 +36,8 @@ export interface Deps {
   background: Set<Promise<unknown>>;
   /** Override in tests: the post-commit behaviour check for new decision receipts (see behaviour.ts). */
   behaviourInline?: (deps: Deps, orgId: string, receipts: readonly import("@gate/core").Receipt[]) => Promise<unknown>;
+  /** Override in tests: the organisations a platform-wide event (an update step) is receipted to. Default: every org. */
+  platformOrgs?: () => Promise<string[]>;
 }
 
 /**
@@ -51,16 +56,23 @@ export function keyProvidersFromEnv(env: GateEnv, db: Db, kms?: KmsSender): { ac
 export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partial<Deps> = {}): Deps {
   const db = overrides.db ?? defaultPrisma;
   const providers = keyProvidersFromEnv(env, db);
+  // The egress gate writes receipts through the finished deps, so it is bound late.
+  const egress = overrides.egress ?? makeEgress(env, log, () => self);
   const live: LiveConfig = {
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
     ...(env.ZOHO_CLIENT_ID && env.ZOHO_CLIENT_SECRET
       ? { zoho: { clientId: env.ZOHO_CLIENT_ID, clientSecret: env.ZOHO_CLIENT_SECRET, accountsUrl: env.ZOHO_ACCOUNTS_URL, apiUrl: env.ZOHO_API_URL } }
       : {}),
+    // Live connectors ask the egress gate before every request, for the calling organisation.
+    egress: (url, orgId) => egress.check(url, "connector", { orgId }).then(() => undefined),
   };
-  return {
+  const self: Deps = {
     env,
     db,
     mailer: createMailer(env),
+    db: defaultPrisma,
+    mailer: createMailer(env, egress),
+    egress,
     live,
     log,
     connector: (kind, mode) => connectorFor(kind, mode, live),
@@ -71,6 +83,7 @@ export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partia
     queue: noQueue,
     ...overrides,
   };
+  return self;
 }
 
 /**

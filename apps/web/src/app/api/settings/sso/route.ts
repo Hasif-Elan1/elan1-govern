@@ -27,7 +27,7 @@ export const PUT = route({ auth: "org", permission: "sso:manage", body: Save, fr
   if (!existing && !body.clientSecret) throw new HttpError(400, "Enter the client secret.");
   for (const d of body.domains) if (await domainClaimedElsewhere(d, ctx.org.id)) throw new HttpError(409, `${d} is already used by another organisation.`);
   if (process.env.APP_ENV === "production" && !body.issuer.startsWith("https://")) throw new HttpError(400, "The issuer must use https.");
-  const problem = body.clientSecret ? await checkIssuer(body.issuer, body.clientId, body.clientSecret) : null;
+  const problem = body.clientSecret ? await checkIssuer(body.issuer, body.clientId, body.clientSecret, { orgId: ctx.org.id, actor: ctx.user.email }) : null;
   if (problem) throw new HttpError(400, problem);
 
   const verified = (existing?.verifiedDomains ?? []).filter((d) => body.domains.includes(d));

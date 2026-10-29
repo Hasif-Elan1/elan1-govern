@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { egress } from "./egress";
 import { env } from "./env";
 import { log } from "./log";
 
@@ -13,6 +14,9 @@ function transport() {
 export async function sendInvite(to: string, orgName: string, inviter: string, link: string, role: string) {
   try {
     await transport().sendMail({
+    await egress().check({ host: env().SMTP_HOST, port: env().SMTP_PORT }, "smtp");
+    const t = nodemailer.createTransport({ host: env().SMTP_HOST, port: env().SMTP_PORT, secure: env().SMTP_PORT === 465, ignoreTLS: env().SMTP_PORT !== 465 && process.env.APP_ENV !== "production" });
+    await t.sendMail({
       from: env().MAIL_FROM,
       to,
       subject: `${inviter} invited you to ${orgName} on Elan1 Govern`,

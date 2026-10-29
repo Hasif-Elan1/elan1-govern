@@ -62,6 +62,8 @@ export const WEB_EVENTS = [
   "scim.user_deactivated",
   "scim.user_reactivated",
   "scim.user_removed",
+  // ── sovereign ── a person's attempt the web app's egress gate refused (an OIDC issuer)
+  "egress.blocked",
 ] as const;
 
 const schemas = {
