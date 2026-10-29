@@ -2,13 +2,16 @@ import { useMemo, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import type { LevelId, Role, User } from '@/types';
 import { api, db } from '@/api';
-import { userById } from '@/mock/users';
+import { ORGS, userById } from '@/mock/users';
 import { can as canRole, type Permission } from '@/lib/permissions';
 import { hasCapability } from '@/lib/levels';
 import type { CapabilityId } from '@/types';
 import type { OrgDB } from '@/mock/db';
 import type { SessionRecord } from '@/mock/orgSettings';
 import { toast } from '@/components/ui/overlay';
+import { LIVE } from '@/api/mode';
+import { consoleUser, fetchMe, login as liveLogin, logout as liveLogout, selectOrg, type MeMembership } from '@/api/live/session';
+import { applySelf, isLoaded, loadOrg, resync, stopStream } from '@/api/live/sync';
 
 interface SessionState {
   user?: User;
@@ -32,6 +35,8 @@ interface SessionState {
   signOut: (opts?: SignOutOptions) => void;
   /** Open another of the person's organisations. Refused (returns false) where they hold no active membership. */
   switchOrg: (orgId: string) => boolean | void;
+  /** Live builds: every organisation the person belongs to, as GET /api/me lists them (suspended ones included). */
+  memberships?: MeMembership[];
 }
 
 export interface SignOutOptions { reason?: string }
@@ -41,6 +46,8 @@ type Stored = Pick<SessionState, 'user' | 'orgId' | 'signedInAt' | 'sessionOrgId
 const KEY = 'eg:session';
 
 function load(): Stored {
+  // live: the server's session is the truth; nothing about it is kept in this browser (see refreshLiveSession)
+  if (LIVE) return { orgId: 'org_demo' };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -56,6 +63,7 @@ function load(): Stored {
 }
 
 function save(s: Stored) {
+  if (LIVE) return;
   try {
     localStorage.setItem(KEY, JSON.stringify({ user: s.user, orgId: s.orgId, signedInAt: s.signedInAt, sessionOrgId: s.sessionOrgId, reauthAt: s.reauthAt }));
   } catch { /* fine */ }
@@ -64,6 +72,12 @@ function save(s: Stored) {
 export const useSession = create<SessionState>((set, get) => ({
   ...load(),
   async signIn(email, password) {
+    if (LIVE) {
+      await liveLogin(email, password);
+      const u = await refreshLiveSession();
+      if (!u) throw new Error('Sign in to continue.');
+      return u;
+    }
     const user = await api.signIn(email, password);
     // open the first organisation where the person is an active member, with the role that membership holds
     const orgId = user.orgIds.find((o) => !!db.memberRole(o, user.id)) ?? user.orgIds[0];
@@ -77,12 +91,20 @@ export const useSession = create<SessionState>((set, get) => ({
     const s = get();
     // an onClick handler passed straight through hands over a click event: only a plain { reason } counts
     const reason = opts && typeof opts === 'object' && typeof (opts as SignOutOptions).reason === 'string' ? (opts as SignOutOptions).reason! : 'Signed out';
+    if (LIVE) {
+      // the server ends the session; the page then starts again, so nothing of it stays in this tab's memory
+      set({ user: undefined, signedInAt: undefined, sessionOrgId: undefined, reauthAt: undefined, memberships: undefined });
+      stopStream();
+      void liveLogout().finally(() => window.location.replace('/login'));
+      return;
+    }
     if (s.user && s.signedInAt) endSessionRecords(s.sessionOrgId, s.orgId, s.user.id, s.signedInAt, reason);
     set({ user: undefined, signedInAt: undefined, sessionOrgId: undefined, reauthAt: undefined });
     save({ orgId: s.orgId });
   },
   switchOrg(orgId) {
     const s = get();
+    if (LIVE) return switchLiveOrg(orgId);
     // a person suspended or removed in one organisation keeps the others: that one is not opened
     if (s.user && orgId !== s.orgId && s.user.orgIds.includes(orgId)) {
       let role: Role | undefined;
@@ -157,6 +179,11 @@ export type OrgAccess = 'active' | 'suspended' | 'removed';
 /** Is this organisation open to the person? Suspension and removal are per organisation; the others are unaffected. */
 export function orgAccess(orgId: string, userId?: string): OrgAccess {
   if (!userId) return 'removed';
+  // live: an organisation whose document this tab has not fetched is judged by the person's memberships
+  if (LIVE && !db.peekDB(orgId)) {
+    const m = useSession.getState().memberships?.find((x) => x.orgId === orgId);
+    return !m ? 'removed' : m.status === 'active' ? 'active' : 'suspended';
+  }
   try {
     if (db.memberRole(orgId, userId)) return 'active';
     return db.getDB(orgId).members.find((m) => m.userId === userId)?.status === 'suspended' ? 'suspended' : 'removed';
@@ -262,3 +289,85 @@ export const markReauth = () => {
   useSession.setState({ reauthAt });
   save({ user: s.user, orgId: s.orgId, signedInAt: s.signedInAt, sessionOrgId: s.sessionOrgId, reauthAt });
 };
+
+/* ══ Live builds: the session is the server's ═══════════════════════════ */
+
+/** Organisations the console can open for this person: active memberships of organisations the console knows. */
+const openable = (ms: MeMembership[]) => ms.filter((m) => m.status === 'active' && ORGS.some((o) => o.id === m.orgId));
+
+/**
+ * Read the session from the server (GET /api/me) and open the person's organisations: each one's document and people
+ * are fetched before anything is shown, so no screen ever reads an organisation built from the demonstration seed.
+ * Undefined when signed out. `preferOrg` opens that organisation when it is one of theirs.
+ */
+export async function refreshLiveSession(preferOrg?: string): Promise<User | undefined> {
+  const me = await fetchMe();
+  if (!me) {
+    stopStream();
+    useSession.setState({ user: undefined, signedInAt: undefined, sessionOrgId: undefined, reauthAt: undefined, memberships: undefined });
+    return undefined;
+  }
+  const usable = openable(me.memberships);
+  const pick = (id?: string | null) => (id && usable.some((m) => m.orgId === id) ? id : undefined);
+  const orgId = pick(preferOrg) ?? pick(me.activeOrgId) ?? usable[0]?.orgId;
+  if (!orgId) {
+    const all = me.memberships.length && me.memberships.every((m) => m.status === 'suspended');
+    throw new Error(all ? 'Your access to every organisation you belong to is suspended, so the console cannot open one.' : 'Your account belongs to no organisation the console can open yet.');
+  }
+  // the open one must load; the others (an auditor's clients) load as well, but one that fails stays closed
+  await Promise.all(usable.map((m) => (m.orgId === orgId ? loadOrg(m.orgId) : loadOrg(m.orgId).catch(() => undefined))));
+  const user = consoleUser(me, orgId);
+  applySelf(user);
+  const role = db.memberRole(orgId, user.id) ?? user.role;
+  useSession.setState({
+    user: { ...user, role },
+    orgId,
+    signedInAt: Date.parse(me.signedInAt),
+    sessionOrgId: orgId,
+    reauthAt: Date.parse(me.lastAuthAt),
+    memberships: me.memberships,
+  });
+  // the shell listens to the open organisation's changes (src/shell/AppShell.tsx)
+  return { ...user, role };
+}
+
+/**
+ * The server no longer knows this session (any 401): sign out here and start the sign-in page afresh with the page
+ * to come back to. The page reload leaves nothing of the session in this tab's memory.
+ */
+export function endLiveSessionByServer() {
+  const s = useSession.getState();
+  if (!s.user) return;
+  stopStream();
+  useSession.setState({ user: undefined, signedInAt: undefined, sessionOrgId: undefined, reauthAt: undefined, memberships: undefined });
+  try { sessionStorage.setItem('eg:auth:ended', 'Your session ended on the server.'); } catch { /* fine */ }
+  const here = window.location.pathname + window.location.search + window.location.hash;
+  window.location.replace(/^\/login(?:[/?#]|$)/.test(here) ? '/login' : `/login?next=${encodeURIComponent(here)}`);
+}
+
+/** Live: open another of the person's organisations (the server's session follows), refusing where they are not active. */
+function switchLiveOrg(orgId: string): boolean {
+  const s = useSession.getState();
+  if (!s.user || orgId === s.orgId) return true;
+  const m = s.memberships?.find((x) => x.orgId === orgId);
+  const name = db.peekDB(orgId)?.org.name ?? m?.orgName ?? 'That organisation';
+  const active = !!m && m.status === 'active' && (!db.peekDB(orgId) || !!db.memberRole(orgId, s.user.id));
+  if (!active) {
+    const suspended = m?.status === 'suspended' || db.peekDB(orgId)?.members.find((x) => x.userId === s.user!.id)?.status === 'suspended';
+    toast.held(`${name} is not open to you`, suspended ? 'Your access there is suspended. Your other organisations are unaffected. An owner or admin there can reinstate you.' : 'You are no longer a member there.');
+    return false;
+  }
+  const open = () => {
+    const user = useSession.getState().user;
+    if (!user) return;
+    useSession.setState({ orgId, user: { ...user, role: db.memberRole(orgId, user.id) ?? user.role } });
+  };
+  void selectOrg(orgId).catch((e: Error) => toast.bad(`${name} could not be opened`, e.message));
+  if (isLoaded(orgId)) {
+    open();
+    void resync(orgId);
+  } else {
+    void loadOrg(orgId).then(open, (e: Error) => toast.bad(`${name} could not be opened`, e.message));
+  }
+  return true;
+}

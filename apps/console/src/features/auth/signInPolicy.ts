@@ -19,6 +19,7 @@ import type { OrgDB } from '@/mock/db';
 import { DEMO_ACCOUNTS, ORGS, USERS, userById } from '@/mock/users';
 import { PROVIDER_LABEL, orgApi, orgState } from '@/features/settings/orgApi';
 import { breakGlassActiveFor, breakGlassAllowsEmail } from '@/mock/ops';
+import { LIVE } from '@/api/mode';
 
 export type Refusal =
   | { kind: 'sso_only'; orgName: string; provider: string; domain: string }
@@ -109,7 +110,8 @@ export function ensureAuthSeeds(orgId: string) {
   db.touch(orgId, 'member');
 }
 
-if (typeof window !== 'undefined') {
+// live builds: the server applies these seeds to its own documents (the domain runs there); the browser never writes them
+if (typeof window !== 'undefined' && !LIVE) {
   db.subscribe((orgId, kind) => { if (kind === 'open') ensureAuthSeeds(orgId); });
   // organisations opened before this module loaded (it arrives with the sign-in pages and settings)
   window.setTimeout(() => { for (const id of db.orgIds()) if (db.peekDB(id)) ensureAuthSeeds(id); }, 0);

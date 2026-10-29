@@ -11,6 +11,7 @@ import { db } from '@/api';
 import { useSession } from '@/store/session';
 import { lifetimeMs, orgState, type Lifetime } from '@/features/settings/orgApi';
 import { createdOrg } from '@/features/auth/registry';
+import { LIVE } from '@/api/mode';
 
 export const LIFETIME_LABEL: Record<Lifetime, string> = { '8h': '8 hours', '12h': '12 hours', '24h': '24 hours', '7d': '7 days' };
 
@@ -32,6 +33,8 @@ export function sessionLimit(orgId: string, signedInAt?: number): { lifetime: Li
  * organisation's session list and signs out. Returns the reason to show, or undefined when nothing ended.
  */
 export function endExpiredSession(): string | undefined {
+  // live builds: the server's session is the truth; its end reaches the console as a 401 (src/api/http.ts)
+  if (LIVE) return undefined;
   const s = useSession.getState();
   if (!s.user || !s.signedInAt) return undefined;
   const lim = sessionLimit(s.orgId, s.signedInAt);
@@ -55,6 +58,7 @@ export function endExpiredSession(): string | undefined {
  */
 export function useSessionLifetime() {
   useEffect(() => {
+    if (LIVE) return;
     const check = () => {
       const reason = endExpiredSession();
       if (!reason) return;

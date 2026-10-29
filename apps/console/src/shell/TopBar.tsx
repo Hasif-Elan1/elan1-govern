@@ -13,6 +13,7 @@ import { Menu, useFocusTrap } from '@/components/ui/overlay';
 import { Disc } from '@/components/ui/disc';
 import { SmartLink } from './access';
 import { canSeePath } from './nav';
+import { LIVE } from '@/api/mode';
 
 /**
  * `stopIncidentId` is set while an emergency stop is engaged. The stop button then reads 'Stop is on' and opens
@@ -131,7 +132,8 @@ export function TopBar({ onStop, onMobileNav, stopIncidentId }: { onStop: () => 
             // only offered to the roles that can open it (owners and admins)
             ...(canSeePath('/agents/organisation', role, level) ? [{ label: 'Organisation (Agents door)', icon: <Settings className="h-4 w-4" />, onSelect: () => nav('/agents/organisation') }] : []),
             { label: 'Keyboard shortcuts', icon: <Keyboard className="h-4 w-4" />, hint: '?', onSelect: () => setShortcutsOpen(true) },
-            { label: 'Reset demo data', icon: <RotateCcw className="h-4 w-4" />, onSelect: () => { if (window.confirm('Reset every demo organisation to its seeded state? Approvals, publishes and stops you made in this browser are cleared.')) db.resetDemo(); } },
+            // the demonstration's own data lives in this browser; against the real backend there is nothing here to reset
+            ...(LIVE ? [] : [{ label: 'Reset demo data', icon: <RotateCcw className="h-4 w-4" />, onSelect: () => { if (window.confirm('Reset every demo organisation to its seeded state? Approvals, publishes and stops you made in this browser are cleared.')) db.resetDemo(); } }]),
             'sep',
             { label: 'Sign out', icon: <LogOut className="h-4 w-4" />, onSelect: () => { signOut(); nav('/login'); } },
           ]}

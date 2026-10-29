@@ -18,6 +18,9 @@ import { ALL_NAV, NAV_FOOT, doorHome, doorItems, doorsFor, navFor } from './nav'
 import { ScreenGuard } from './access';
 import { DoorBar } from './DoorBar';
 import { useSessionLifetime } from '@/features/you/sessionLifetime';
+import { LIVE } from '@/api/mode';
+import { ReauthDialog } from '@/api/live/ReauthDialog';
+import { startStream, stopStream } from '@/api/live/sync';
 
 /** Subscribe to the organisation's store so the shell's counts, level tags and the stop banner are always current. */
 function useOrgVersion(orgId: string) {
@@ -61,8 +64,16 @@ export function AppShell() {
     reviews: api.reviewsCount(orgId, user?.id),
   }), [d, version, orgId, user?.id]);
 
-  // live traffic — paused for auditors (read-only review) and when the user turns it off
+  // live traffic — paused for auditors (read-only review) and when the user turns it off. Against the real backend
+  // the traffic is the agents' own, through the guard: nothing is simulated in this browser.
   useEffect(() => {
+    if (LIVE) {
+      // the organisation's changes, as the server saves them; "Paused" stops taking them until it is switched back on
+      if (!liveUpdates) return;
+      // (the stream's first event names the server's version, so anything missed while paused is fetched then)
+      startStream(orgId);
+      return () => stopStream();
+    }
     if (!liveUpdates || role === 'auditor') { db.stopLive(); return; }
     db.startLive(orgId);
     return () => db.stopLive();
@@ -167,6 +178,7 @@ export function AppShell() {
       <StopDialog open={stopOpen} onClose={() => setStopOpen(false)} />
       <AskPanel />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {LIVE && <ReauthDialog email={user?.email} />}
       <Toaster />
     </div>
   );

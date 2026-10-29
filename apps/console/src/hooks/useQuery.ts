@@ -43,7 +43,8 @@ export function useQuery<T>(fn: (orgId: string) => Promise<T>, deps: unknown[] =
     let t: number | undefined;
     const off = db.subscribe((o, kind) => {
       if (o !== orgId) return;
-      if (opts.kinds && !opts.kinds.includes(kind)) return;
+      // 'resync': the server's copy of the organisation was taken (live builds), so anything may have changed
+      if (opts.kinds && kind !== 'resync' && !opts.kinds.includes(kind)) return;
       window.clearTimeout(t);
       t = window.setTimeout(() => run(false), 250);
     });

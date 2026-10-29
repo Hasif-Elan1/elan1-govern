@@ -1,4 +1,5 @@
 import { useSession } from '@/store/session';
+import { LIVE } from '@/api/mode';
 
 /**
  * 'Keep me signed in'. The choice is a per-browser preference. When it is off, the session ends when the
@@ -29,7 +30,8 @@ function browserSessionLive() {
 
 /** On start-up: sign out a stored session when 'Keep me signed in' was off and the browser has since been closed. */
 export function endSessionIfBrowserClosed() {
-  if (typeof window === 'undefined' || keepSignedIn()) return;
+  // live builds: the session is the server's cookie, which keeps its own lifetime
+  if (LIVE || typeof window === 'undefined' || keepSignedIn()) return;
   const s = useSession.getState();
   if (!s.user || browserSessionLive()) return;
   s.signOut({ reason: 'Browser closed without “Keep me signed in”' });
