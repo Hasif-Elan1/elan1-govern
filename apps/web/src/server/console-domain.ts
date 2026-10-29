@@ -423,7 +423,10 @@ function forBrowser(doc: Record<string, unknown>, viewerId?: string): Record<str
   if (papers) doc.workingPapers = viewerId && papers[viewerId] ? { [viewerId]: papers[viewerId] } : {};
   const settings = doc.orgSettings as { mfa?: Record<string, { secret?: string }>; invites?: { token?: string }[]; whatsapp?: Record<string, { pending?: unknown }> } | undefined;
   for (const m of Object.values(settings?.mfa ?? {})) delete m.secret;
-  for (const i of settings?.invites ?? []) delete i.token;
+  for (const i of settings?.invites ?? []) {
+    delete i.token;
+    delete (i as { tokenHash?: string }).tokenHash;
+  }
   for (const w of Object.values(settings?.whatsapp ?? {})) delete w.pending;
   for (const l of ((doc.platform as { links?: { token?: string }[] } | undefined)?.links ?? [])) delete l.token;
   return doc;
