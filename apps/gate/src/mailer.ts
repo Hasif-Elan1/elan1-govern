@@ -1,3 +1,4 @@
+import type { Egress } from "@gate/db";
 import nodemailer from "nodemailer";
 import type { GateEnv } from "./env";
 
@@ -12,7 +13,8 @@ export interface Mailer {
   send(mail: Mail): Promise<void>;
 }
 
-export function createMailer(env: GateEnv): Mailer {
+/** SMTP is platform-level: the relay is the deployment's own, so its egress check names no organisation. */
+export function createMailer(env: GateEnv, egress?: Egress): Mailer {
   const transport = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -22,6 +24,7 @@ export function createMailer(env: GateEnv): Mailer {
   });
   return {
     async send(mail) {
+      await egress?.check({ host: env.SMTP_HOST, port: env.SMTP_PORT }, "smtp");
       await transport.sendMail({ from: env.MAIL_FROM, ...mail });
     },
   };

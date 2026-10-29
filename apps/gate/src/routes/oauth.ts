@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { adminEvent, redirectUri } from "../admin";
 import { sealTokens } from "../connectors";
 import type { Deps } from "../deps";
+import { orgFetch } from "../egress";
 
 interface State {
   p: string;
@@ -30,7 +31,7 @@ export function registerOAuth(app: FastifyInstance, deps: Deps) {
       if (!cfg) return back("error=not_configured");
 
       try {
-        const f = deps.live.fetch ?? fetch;
+        const f = orgFetch(deps, "connector", { orgId: state.o }, deps.live.fetch ?? fetch);
         const tokens: OAuthTokens = await exchangeCode(kind, cfg, req.query.code, redirectUri(deps, kind), f);
         let meta: Record<string, unknown> = {};
         let label = CONNECTOR_LABELS[kind];

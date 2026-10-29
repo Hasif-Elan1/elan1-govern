@@ -4,6 +4,7 @@ import {
   COUNTERPARTY_FIELDS,
   COUNTERPARTY_GROUPS,
   MEMORY_DAYS,
+  PILOT,
   amountOf,
   analyseAgent,
   checkEvent,
@@ -142,7 +143,7 @@ async function notifyAlert(deps: Deps, orgId: string, agent: AgentRow, f: Findin
  * the call; the decision itself has already been made.
  */
 export async function inlineBehaviourCheck(deps: Deps, orgId: string, receipts: readonly Receipt[]): Promise<number> {
-  const todo = receipts.filter((r) => r.kind === "decision" && r.agent && r.tool && r.decision && r.rule_id !== "agent-paused");
+  const todo = receipts.filter((r) => r.kind === "decision" && r.agent && r.tool && r.decision && r.rule_id !== "agent-paused" && r.rule_id !== PILOT.ruleId);
   if (!todo.length) return 0;
   const { settings } = await orgSettings(deps, orgId);
   const db = forOrg(orgId, deps.db);

@@ -52,6 +52,12 @@ export interface Connector {
   vendorDomains(ctx: ConnectorContext): Promise<string[]>;
 }
 
+/**
+ * Asked before every live request, with the calling organisation (the egress gate in
+ * packages/db/src/egress.ts). Throws to stop the request; nothing is sent.
+ */
+export type EgressHook = (url: string, orgId: string) => Promise<void>;
+
 export class ConnectorError extends Error {
   constructor(message: string, readonly code: "not_found" | "invalid" | "auth" | "upstream" = "upstream") {
     super(message);

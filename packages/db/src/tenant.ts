@@ -30,6 +30,26 @@ export const TENANT_MODELS = [
   "BehaviourAlert",
   "Incident",
   "ConsoleState",
+  // ── custody ──
+  "KeyCeremony",
+  "KeySuccessor",
+  // ── tsa ──
+  "AnchorBatch",
+  "SamlConnection",
+  "SamlReplay",
+  "ScimConnection",
+  "ScimUser",
+  // ── sovereign ──
+  "EgressRule",
+  "EgressLog",
+  // billing
+  "BillingAccount",
+  "Invoice",
+  "CreditNote",
+  "Discount",
+  "DiscountRequest",
+  "Dispute",
+  "ReconciliationRun",
 ] as const;
 
 const WHERE_OPS = new Set([

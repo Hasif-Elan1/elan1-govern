@@ -67,6 +67,8 @@ export interface UpstreamFetchOptions {
   allowPrivate: boolean;
   timeoutMs: number;
   maxBytes: number;
+  /** Refuse any other origin (the one the egress gate approved). */
+  origin?: string;
 }
 
 /**
@@ -78,6 +80,7 @@ export function upstreamFetch(opts: UpstreamFetchOptions) {
   return async (input: string | URL, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(input);
     if (url.protocol !== "http:" && url.protocol !== "https:") throw new UpstreamBlocked("Use an http or https URL.");
+    if (opts.origin && url.origin !== opts.origin) throw new UpstreamBlocked("The MCP server tried to send Elan1 Govern to another address.");
     const host = url.hostname.replace(/^\[|\]$/g, "");
     // Literal IPs skip the DNS lookup, so check them here.
     if (!opts.allowPrivate && isIP(host) && isPrivateAddress(host)) throw new UpstreamBlocked(NOT_PUBLIC);

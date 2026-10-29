@@ -74,6 +74,14 @@ export function adminTitle(r: Receipt): string {
       return "Turned on two-step sign-in";
     case "user.2fa_disabled":
       return "Turned off two-step sign-in";
+    case "member.suspended":
+      return "Suspended a member";
+    case "auth.password_reset":
+      return "Reset their password with an emailed link";
+    case "auth.sign_in_refused":
+      return d.reason === "suspended" ? "Sign-in refused: access suspended" : "Sign-in refused";
+    case "org.level_set":
+      return `Set the assurance level to ${String(d.level ?? "?").toUpperCase().replace("SOVEREIGN", "Sovereign")}`;
     case "system.created":
       return `Added ${String(d.system ?? "an AI system")} to the inventory`;
     case "system.updated":
@@ -112,6 +120,22 @@ export function adminTitle(r: Receipt): string {
       return `Emergency stop: paused ${String(d.count ?? "every")} ${d.count === 1 ? "agent" : "agents"}`;
     case "emergency.resumed":
       return `Resumed ${String(d.count ?? "the")} ${d.count === 1 ? "agent" : "agents"} after the emergency stop`;
+    case "identity.updated":
+      return d.domain_verified ? `Verified ${String(d.domain_verified)} for SAML sign-in` : `Changed SAML sign-in${d.saml_enforced ? " (required for everyone)" : ""}`;
+    case "identity.scim_token_rotated":
+      return "Issued a new SCIM token";
+    case "auth.refused":
+      return d.reason === "saml_required" ? "Refused a password sign-in: SAML is required" : "Refused a sign-in";
+    case "auth.break_glass":
+      return "Break-glass owner signed in with a password while SAML is required";
+    case "scim.user_provisioned":
+      return `The directory added a member as ${String(d.role ?? "a member")}`;
+    case "scim.user_deactivated":
+      return "The directory deactivated a member";
+    case "scim.user_reactivated":
+      return "The directory reactivated a member";
+    case "scim.user_removed":
+      return "The directory removed a member";
     default:
       return r.action ?? "Setup change";
   }

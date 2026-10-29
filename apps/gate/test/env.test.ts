@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readGateEnv } from "../src/env";
 
@@ -23,5 +25,17 @@ describe("startup config", () => {
     const fresh = "0123456789abcdef".repeat(4);
     const real = { ...base, GATE_MASTER_KEY: fresh, INTERNAL_API_SECRET: fresh.split("").reverse().join(""), APPROVAL_LINK_SECRET: `fedcba98${fresh.slice(8)}` };
     expect(() => readGateEnv(real)).not.toThrow();
+  });
+  it("refuses the sample console demo password in production, and allows none", () => {
+    const fresh = "0123456789abcdef".repeat(4);
+    const real = { ...base, GATE_MASTER_KEY: fresh, INTERNAL_API_SECRET: fresh.split("").reverse().join(""), APPROVAL_LINK_SECRET: `fedcba98${fresh.slice(8)}` };
+    const example = readFileSync(resolve(__dirname, "../../../.env.example"), "utf8");
+    const sample = example.split("\n").find((l) => l.startsWith("DEMO_CONSOLE_PASSWORD="))!.slice("DEMO_CONSOLE_PASSWORD=".length);
+    expect(sample.length).toBeGreaterThanOrEqual(12);
+    process.env.APP_ENV = "production";
+    expect(() => readGateEnv({ ...real, DEMO_CONSOLE_PASSWORD: sample, APP_ENV: "production" })).toThrow(/DEMO_CONSOLE_PASSWORD is the example value/);
+    expect(() => readGateEnv({ ...real, DEMO_CONSOLE_PASSWORD: "a real demo password", APP_ENV: "production" })).not.toThrow();
+    expect(() => readGateEnv({ ...real, DEMO_CONSOLE_PASSWORD: undefined, APP_ENV: "production" })).not.toThrow();
+    expect(() => readGateEnv({ ...real, DEMO_CONSOLE_PASSWORD: "short", APP_ENV: "development" })).toThrow(/at least 12/);
   });
 });

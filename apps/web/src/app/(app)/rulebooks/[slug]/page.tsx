@@ -21,7 +21,7 @@ export default async function RulebookPage({ params, searchParams }: { params: P
   const agent = await db.agent.findFirst({ where: { slug } });
   if (!agent) notFound();
   const versions = await db.rulebook.findMany({ where: { agentId: agent.id }, orderBy: { version: "desc" }, select: { version: true, yaml: true, hash: true, signedBy: true, createdAt: true } });
-  const members = await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } });
+  const members = await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] }, status: "active" }, include: { user: { select: { email: true } } } });
   // The same enabled MCP server tools that Elan1 Govern validates rulebooks against.
   const upstream = await db.upstreamTool.findMany({ where: { enabled: true }, orderBy: { name: "asc" }, select: { name: true, description: true, inputSchema: true, tags: true } });
   // "Open as draft" from a rule suggestion: the builder starts from its drafted rulebook, unsigned.

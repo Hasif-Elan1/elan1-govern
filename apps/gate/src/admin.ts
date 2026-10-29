@@ -9,24 +9,24 @@ import {
   randomToken,
   rulebookHash,
   rulebookToYaml,
-  signRulebook,
   type ReceiptInput,
 } from "@gate/core";
 import { packById, starterRulebook } from "@gate/core/frameworks";
 import { addMembership, createOrgRow, forOrg, type RiskTier } from "@gate/db";
 import { chain, record } from "./chain";
 import type { Deps } from "./deps";
-import { addFirstKey, legacyKeyAad } from "./keys";
+import { addFirstKey, legacyKeyAad, signRulebookWith } from "./keys";
 import { registryFor } from "./registry";
 
 export async function adminEvent(deps: Deps, orgId: string, actor: string, action: string, details: Record<string, unknown> = {}, extra: Partial<ReceiptInput> = {}) {
   return record(deps, orgId, { kind: "admin", actor, action, details, ...extra });
 }
 
-export async function createOrg(deps: Deps, input: { name: string; ownerUserId: string; ownerEmail: string }) {
+/** `id` is for the seed only (the console's fixed demo org ids); the internal API never passes one. */
+export async function createOrg(deps: Deps, input: { id?: string; name: string; ownerUserId: string; ownerEmail: string }) {
   const keys = generateKeyPair();
   // Encrypt under an AAD bound to the org id, so the row id is needed before the key.
-  const org = await createOrgRow({ name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
+  const org = await createOrgRow({ id: input.id, name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
   await forOrg(org.id, deps.db).org.update({ where: { id: org.id }, data: { privateKeyEnc: encrypt(deps.env.GATE_MASTER_KEY, keys.privateKeyPem, legacyKeyAad(org.id)) } });
   await addFirstKey(deps, org.id, keys);
   await addMembership({ orgId: org.id, userId: input.ownerUserId, role: "owner" }, deps.db);
@@ -95,7 +95,7 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
       const rb = { ...rest, version: (latest?.version ?? 0) + 1, agent: agent.slug };
       const problems = publishProblems(rb, agent.riskTier, registry);
       if (problems.length) return { ok: false as const, errors: problems };
-      const signed = signRulebook(rb, key.privateKeyPem);
+      const signed = await signRulebookWith(rb, key);
       const text = rulebookToYaml(signed);
       const hash = rulebookHash(signed);
       const row = await tx.rulebook.create({ data: { orgId, agentId, version: rb.version, yaml: text, hash, signedBy: actor } });
@@ -166,7 +166,7 @@ export async function setUpDemoAgent(deps: Deps, orgId: string, user: { id: stri
     apiKey = (await rotateKey(deps, orgId, agent.id, user.email)).apiKey as string;
   }
   if (!agent.activeRulebookId) {
-    const approvers = (await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } })).map((m) => m.user.email);
+    const approvers = (await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] }, status: "active" }, include: { user: { select: { email: true } } } })).map((m) => m.user.email);
     const res = await publishRulebook(deps, orgId, agent.id, demoRulebookYaml(user.email, approvers), user.email);
     if (!res.ok) throw new Error(res.errors.join("; "));
   }

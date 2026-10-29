@@ -23,6 +23,7 @@ export async function startSession(userId: string, activeOrgId?: string | null) 
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   const firstOrg = activeOrgId ?? (await membershipsForUser(userId))[0]?.orgId ?? null;
   await prisma.session.create({ data: { tokenHash: hashToken(token), userId, activeOrgId: firstOrg, csrfToken: csrf, expiresAt, lastAuthAt: new Date() } });
+  await prisma.user.update({ where: { id: userId }, data: { lastSignInAt: new Date() } });
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, { ...cookieOpts(true), expires: expiresAt });
   jar.set(CSRF_COOKIE, csrf, { ...cookieOpts(false), expires: expiresAt });

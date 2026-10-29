@@ -14,6 +14,7 @@ import {
 } from "@gate/core";
 import { forOrg, quotaUsage, startOfDayIn } from "@gate/db";
 import { holdForApproval } from "./approvals";
+import { pilotGate } from "./billing";
 import { record } from "./chain";
 import { publicError, resolveConnectorFor } from "./connectors";
 import { registryFor } from "./registry";
@@ -80,6 +81,9 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
       return { status: "refused", ruleId, reason, seq: r.seq };
     };
 
+    // The free pilot's hard stop comes first: once it is stopped, no call runs for any agent.
+    const stop = await pilotGate(deps, orgId);
+    if (stop) return refuse(stop.ruleId, stop.reason);
     if (agent.status === "paused") return refuse("agent-paused", "This agent is paused. Every action is refused until someone resumes it.");
 
     const rbRow = agent.activeRulebookId ? await db.rulebook.findFirst({ where: { id: agent.activeRulebookId } }) : null;

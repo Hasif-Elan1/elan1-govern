@@ -33,7 +33,7 @@ export async function notifyChat(deps: Deps, orgId: string, approvalId: string):
     if (ch.kind === "slack") rows.push({ channelId: ch.id, approvalId, kind: "slack.post" });
     if (ch.kind === "whatsapp" && approval.approvers.length) {
       const users = await deps.db.user.findMany({ where: { email: { in: approval.approvers } }, select: { id: true } });
-      const members = await db.membership.findMany({ where: { userId: { in: users.map((u) => u.id) }, role: { in: [...APPROVER_ROLES] } }, select: { userId: true } });
+      const members = await db.membership.findMany({ where: { userId: { in: users.map((u) => u.id) }, role: { in: [...APPROVER_ROLES] }, status: "active" }, select: { userId: true } });
       const numbers = await db.chatNumber.findMany({ where: { userId: { in: members.map((m) => m.userId) }, verifiedAt: { not: null } }, select: { userId: true } });
       for (const n of numbers) rows.push({ channelId: ch.id, approvalId, kind: "whatsapp.send", recipientUserId: n.userId });
     }
@@ -90,7 +90,7 @@ export async function deliverChatMessage(deps: Deps, orgId: string, messageId: s
     if (m.kind === "slack.post") {
       if (view.status !== "pending") return finish("skipped", { error: "already decided before it was posted" });
       const cfg = SlackConfig.parse(m.channel.config);
-      const posted = await slackPost(deps, (secrets as SlackSecrets).botToken, cfg.channelId, slackApprovalMessage(view));
+      const posted = await slackPost(deps, orgId, (secrets as SlackSecrets).botToken, cfg.channelId, slackApprovalMessage(view));
       const out = await finish("sent", { externalId: posted.ts, externalChannel: posted.channel });
       // Decided while we were posting: replace the buttons straight away.
       const fresh = await db.approval.findFirst({ where: { id: m.approvalId }, select: { status: true } });
@@ -101,7 +101,7 @@ export async function deliverChatMessage(deps: Deps, orgId: string, messageId: s
       const post = await db.chatMessage.findFirst({ where: { approvalId: m.approvalId, channelId: m.channelId, kind: "slack.post" }, orderBy: { createdAt: "asc" } });
       if (!post || post.status === "failed" || post.status === "skipped") return finish("skipped", { error: "the first message was never posted" });
       if (!post.externalId || !post.externalChannel) return finish("retrying", { error: "waiting for the first message to be posted" });
-      await slackUpdate(deps, (secrets as SlackSecrets).botToken, post.externalChannel, post.externalId, slackApprovalMessage(view));
+      await slackUpdate(deps, orgId, (secrets as SlackSecrets).botToken, post.externalChannel, post.externalId, slackApprovalMessage(view));
       return finish("sent");
     }
     if (m.kind === "whatsapp.send") {
@@ -109,7 +109,7 @@ export async function deliverChatMessage(deps: Deps, orgId: string, messageId: s
       const number = m.recipientUserId ? await db.chatNumber.findFirst({ where: { userId: m.recipientUserId, verifiedAt: { not: null } } }) : null;
       if (!number) return finish("skipped", { error: "the approver no longer has a verified number" });
       const cfg = WhatsAppConfig.parse(m.channel.config);
-      const id = await waSend(deps, (secrets as WhatsAppSecrets).accessToken, cfg.phoneNumberId, openNumber(deps, orgId, number), whatsAppApprovalMessage(view, cfg));
+      const id = await waSend(deps, orgId, (secrets as WhatsAppSecrets).accessToken, cfg.phoneNumberId, openNumber(deps, orgId, number), whatsAppApprovalMessage(view, cfg));
       return finish("sent", { externalId: id });
     }
     return finish("failed", { error: `unknown message kind ${m.kind}` });

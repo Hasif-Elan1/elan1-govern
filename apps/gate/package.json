@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1153.0",
     "@fastify/helmet": "13.2.0",
     "@fastify/rate-limit": "11.2.1",
     "@gate/connectors": "workspace:*",
@@ -19,12 +20,14 @@
     "@gate/db": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "argon2": "0.45.1",
+    "asn1js": "3.1.0",
     "fastify": "5.12.7",
     "fflate": "0.8.3",
     "nodemailer": "10.2.1",
     "pdf-lib": "1.17.1",
     "pg-boss": "12.38.0",
     "pino": "9.14.0",
+    "pkijs": "3.4.2",
     "tsx": "4.23.15",
     "zod": "4.6.7"
   },

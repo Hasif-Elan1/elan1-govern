@@ -61,14 +61,17 @@ export interface ChainHead {
 
 export const GENESIS: ChainHead = { seq: 0, hash: GENESIS_HASH };
 
-export function buildReceipt(
-  input: ReceiptInput,
-  meta: { org: string; ts: string; head: ChainHead; kid?: string },
-  privateKeyPem: string,
-): Receipt {
+export type ReceiptMeta = { org: string; ts: string; head: ChainHead; kid?: string };
+
+/** The receipt with its hash, ready to sign: for signers that keep the key elsewhere (an HSM). The signature is over `hash`. */
+export function prepareReceipt(input: ReceiptInput, meta: ReceiptMeta): Omit<Receipt, "sig"> {
   const body = dropUndefined({ ...input, seq: meta.head.seq + 1, ts: meta.ts, org: meta.org, prev_hash: meta.head.hash, kid: meta.kid });
-  const hash = receiptHash(body as Receipt);
-  return { ...(body as Omit<Receipt, "hash" | "sig">), hash, sig: signText(privateKeyPem, hash) };
+  return { ...(body as Omit<Receipt, "hash" | "sig">), hash: receiptHash(body as Receipt) };
+}
+
+export function buildReceipt(input: ReceiptInput, meta: ReceiptMeta, privateKeyPem: string): Receipt {
+  const unsigned = prepareReceipt(input, meta);
+  return { ...unsigned, sig: signText(privateKeyPem, unsigned.hash) };
 }
 
 function dropUndefined<T extends object>(o: T): T {

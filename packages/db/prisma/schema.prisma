@@ -47,6 +47,10 @@ model User {
   createdAt    DateTime     @default(now())
   memberships  Membership[]
   sessions     Session[]
+  // identity: the console's profile line and "last signed in"
+  title          String          @default("")
+  lastSignInAt   DateTime?
+  passwordResets PasswordReset[]
 }
 
 model Session {
@@ -70,6 +74,8 @@ model Membership {
   role      Role
   createdAt DateTime @default(now())
 
+  // identity: a suspended member keeps the row (role and history) but holds no role until reinstated
+  status    MembershipStatus @default(active)
   @@unique([userId, orgId])
   @@index([orgId])
 }
@@ -91,6 +97,9 @@ model Org {
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
+  // Assurance level l1 | l2 | l3 | sovereign. Every change of level is a receipt (org.level_set); from l2 receipts are
+  // timestamped in Merkle batches.
+  level         String       @default("l1")
 }
 
 // ---- Tenant-scoped (every row has orgId; access only through forOrg()) ----
@@ -589,6 +598,407 @@ model Incident {
   @@index([orgId, status])
 }
 
+// ── identity ──
+enum MembershipStatus {
+  active
+  suspended
+}
+
+// A single-use password reset link. Only the token's hash is stored; it expires after 30 minutes.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ── custody ──
+// The software HSM's key store (apps/gate/src/soft-hsm.ts). Not tenant data: no org column, and
+// only the HSM module reads it. Each private key is AES-256-GCM encrypted under a key-encryption key
+// derived from GATE_MASTER_KEY, with an AAD binding the handle, org and key id, so a row moved to
+// another handle or asked for by another org does not decrypt. Signing happens inside the module.
+model HsmKey {
+  handle      String   @id // random; what OrgKey.privateKeyEnc holds for provider "soft-hsm"
+  label       String
+  publicKey   String
+  materialEnc String
+  createdAt   DateTime @default(now())
+}
+
+// A customer-held key ceremony: a new signing key whose backup key is split k-of-n among
+// custodians with Shamir. Only the encrypted backup is kept; the shares are shown once.
+model KeyCeremony {
+  id         String   @id @default(cuid())
+  orgId      String
+  kind       String   @default("generation")
+  kid        String // the key the ceremony made
+  threshold  Int // k: shares needed
+  shareCount Int // n: shares made
+  custodians Json // [{ name, role }] in share order; never the shares
+  shareSet   String // the Shamir split's set id, printed on every share
+  backupEnc  String // the private key under the split key (AES-256-GCM); useless without k shares
+  actor      String
+  seq        Int // the key.ceremony_completed receipt
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+// A successor signing key published ahead of signing (L2+): bound now, signing after a 30-day
+// overlap and a second owner or admin's confirmation. On activation it becomes an OrgKey row.
+model KeySuccessor {
+  id            String    @id @default(cuid())
+  orgId         String
+  kid           String
+  publicKey     String
+  privateKeyEnc String // as OrgKey: wrapped by its provider, or an HSM handle
+  provider      String
+  purpose       String // "planned" | "ceremony"
+  ceremonyId    String?
+  proposedBy    String
+  boundSeq      Int // the key.bound receipt
+  boundAt       DateTime
+  switchAt      DateTime // end of the overlap
+  confirmedBy   String?
+  confirmedSeq  Int?
+  activatedAt   DateTime?
+  activatedSeq  Int?
+  withdrawnAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([orgId, kid])
+  @@index([orgId, activatedAt])
+}
+
+// ── tsa ──
+// A local RFC 3161 timestamp authority: its ECDSA P-256 key and self-signed certificate, one row per
+// authority id ("local-a", "local-b"). Platform data, not tenant data; the key is wrapped by the KeyProvider.
+model TsaKey {
+  id            String   @id
+  name          String
+  certPem       String
+  privateKeyEnc String
+  provider      String   @default("env") // the KeyProvider that wrapped privateKeyEnc
+  createdAt     DateTime @default(now())
+}
+
+// A Merkle batch of an org's receipts fromSeq..toSeq (RFC 6962 root over their hashes) and its RFC 3161 timestamps.
+model AnchorBatch {
+  id         String   @id @default(cuid())
+  orgId      String
+  fromSeq    Int
+  toSeq      Int
+  root       String // hex
+  tokens     Json // TimestampToken[] (apps/gate/src/tsa/token.ts)
+  failures   Json     @default("[]") // [{ tsaId, error }] for each authority that did not stamp
+  status     String // ok (two or more timestamps) | degraded (one) | failed (none: the records go into the next batch)
+  receiptSeq Int // the anchor.batched receipt that records this batch
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, toSeq])
+}
+
+// ── saml ──
+// SAML 2.0 single sign-on and SCIM 2.0 provisioning (DECISIONS.md, SAML and SCIM).
+// One SAML identity provider per org. The org's verified domains are the union of these and
+// the OIDC connection's, so one DNS TXT proof counts for both.
+model SamlConnection {
+  id                   String   @id @default(cuid())
+  orgId                String   @unique
+  idpEntityId          String
+  idpSsoUrl            String
+  idpCertPems          String[] // PEM certificates; more than one while the IdP rolls its key
+  spEntityId           String   @unique // the audience every assertion must name
+  wantAssertionsSigned Boolean  @default(true)
+  domains              String[]
+  verifyToken          String // "gate-verify=<token>" in a DNS TXT record
+  verifiedDomains      String[]
+  enforced             Boolean  @default(false) // "Require SAML for everyone": passwords refused except break-glass owners
+  jit                  Boolean  @default(true) // create users on first sign-in
+  defaultRole          Role     @default(viewer) // never owner
+  enabled              Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// One-time use: every accepted assertion id and request id is kept until it could no longer be accepted.
+model SamlReplay {
+  id        String   @id @default(cuid())
+  orgId     String
+  key       String // "a:<assertion id>" or "r:<request id>"
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, key])
+  @@index([expiresAt])
+}
+
+// The directory's SCIM bearer token, stored as a SHA-256 hash and shown once.
+model ScimConnection {
+  id          String    @id @default(cuid())
+  orgId       String    @unique
+  tokenHash   String    @unique
+  tokenPrefix String
+  defaultRole Role      @default(viewer) // never owner or auditor
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// A user the directory provisioned or linked. active=false keeps the row but removes the membership.
+model ScimUser {
+  id          String   @id @default(cuid())
+  orgId       String
+  userId      String
+  userName    String // the email
+  externalId  String?
+  displayName String?
+  active      Boolean  @default(true)
+  role        Role // the membership's role, restored on reactivation
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@unique([orgId, userName])
+}
+
+// ── sovereign ──
+// One organisation's additions to the deployment's egress allow-list (GATE_PROFILE=sovereign).
+// Exact internal hosts only: no wildcards, no public names (see packages/db/src/egress.ts).
+model EgressRule {
+  id        String   @id @default(cuid())
+  orgId     String
+  host      String // lower case host name or private IP
+  port      Int? // null = any port
+  purpose   String? // null = any purpose (webhook, upstream-mcp, chat-slack, smtp, oidc, ...)
+  note      String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+}
+
+// Every outbound connection decision (allowed or blocked). orgId is null for platform-level
+// connections (SMTP relay, start-up). Kept for EGRESS_LOG_RETENTION_DAYS by the egress-purge job.
+model EgressLog {
+  id         String   @id @default(cuid())
+  orgId      String?
+  host       String
+  port       Int
+  purpose    String
+  decision   String // allowed | blocked
+  profile    String // standard | sovereign
+  reason     String?
+  actor      String? // a person who caused the attempt, when there was one
+  receiptSeq Int? // the egress.blocked receipt, when one was written
+  alerted    Boolean  @default(false) // a receipt or health alert was raised for this block
+  at         DateTime @default(now())
+
+  @@index([at])
+  @@index([orgId, at])
+  @@index([orgId, host, purpose, decision, at])
+}
+
+// Signed update bundles imported into this deployment (platform-wide, not per organisation).
+model UpdateRecord {
+  id              String    @id @default(cuid())
+  version         String    @unique
+  manifest        Json // the signed manifest as imported
+  manifestSha256  String
+  kid             String // release key fingerprint that signed it
+  sourceDir       String
+  status          String // verified | staged | active | inactive | rolled_back
+  previousVersion String? // the version that was active when this one was applied
+  importedBy      String
+  importedAt      DateTime  @default(now())
+  stagedBy        String?
+  stagedAt        DateTime?
+  appliedBy       String?
+  appliedAt       DateTime?
+  rolledBackBy    String?
+  rolledBackAt    DateTime?
+  rollbackReason  String?
+
+  @@index([status])
+}
+
+// ── billing ──
+// An internal ledger: meter, GST invoices, discounts, disputes and credit notes. No payment is collected.
+// Money is integer paise (BigInt), never a float; allowance is tenths of an action. The arithmetic is
+// @gate/core billing.ts. An issued or void invoice and every credit note are immutable: a trigger in the
+// billing_ledger migration refuses changes, so a correction is always a credit note.
+// One per organisation: the plan billed, the buyer printed on invoices, and the ₹0 pilot.
+model BillingAccount {
+  id               String    @id @default(cuid())
+  orgId            String    @unique
+  plan             String    @default("l1") // l1 | l2 | l3 | sovereign
+  invoicePrefix    String // EG-<prefix>-YYYYMM
+  buyerName        String
+  buyerGstin       String?
+  buyerAddress     String?
+  residency        String? // decides the place of supply (placeOfSupply in core)
+  pilotStartsAt    DateTime? // set: the organisation is (or was) on the pilot
+  pilotEndsAt      DateTime?
+  pilotCap         Int?
+  pilotStoppedAt   DateTime? // recorded once the stop is due (cap reached, 90 days, or ended early)
+  pilotStoppedWhy  String?
+  pilotStoppedSeq  Int? // the billing.pilot_stopped receipt
+  pilotConvertedAt DateTime? // moved to the paid plan: the stop is lifted and billing starts here
+  pilotConvertedTo String?
+  pilotClosedAt    DateTime? // 30 read-only days after the stop
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Invoice {
+  id            String    @id @default(cuid())
+  orgId         String
+  number        String // EG-DEMO-202610, EG-DECC-DEP-2026
+  kind          String    @default("monthly") // monthly | deployment
+  period        String // YYYY-MM (IST)
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        String    @default("draft") // draft | issued | held | void
+  subtotalPaise BigInt
+  gstPaise      BigInt
+  totalPaise    BigInt
+  heldPaise     BigInt    @default(0)
+  payablePaise  BigInt
+  gstPercent    Int       @default(18)
+  placeOfSupply String
+  irn           String
+  lines         Json // InvoiceLine[] from core, amounts in paise
+  fromSeq       Int?
+  toSeq         Int?
+  events        Int       @default(0)
+  heldByRunId   String?
+  issuedAt      DateTime?
+  dueAt         DateTime?
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([orgId, number])
+  @@index([orgId, period])
+}
+
+model CreditNote {
+  id            String   @id @default(cuid())
+  orgId         String
+  number        String // CN-<invoice without EG->-<dispute seq>
+  invoiceNumber String
+  line          String
+  disputeId     String?
+  outcome       String // upheld | partly_upheld
+  amountPaise   BigInt // the credit before GST, positive
+  gstPaise      BigInt
+  totalPaise    BigInt
+  irn           String
+  note          String
+  issuedAt      DateTime @default(now())
+
+  @@unique([orgId, number])
+  @@index([orgId, invoiceNumber])
+}
+
+// An offer from elan1 on governed actions beyond the allowance, and what an owner did with it.
+model Discount {
+  id             String    @id @default(cuid())
+  orgId          String
+  pctBasisPoints Int // 1500 = 15%
+  fromDay        String // YYYY-MM-DD, IST, inclusive (moved to the acceptance day if later)
+  untilDay       String // every discount has an end date
+  status         String    @default("offered") // offered | accepted | declined | lapsed
+  offeredBy      String // elan1 staff id
+  offeredByRole  String // lead | founder | billing
+  reference      String?
+  validUntil     String // the offer lapses after this day
+  requestId      String?
+  offerSeq       Int?
+  acceptedBy     String?
+  acceptedAt     DateTime?
+  acceptedSeq    Int?
+  declinedReason String?
+  endedAt        DateTime? // ended early by an owner
+  endedReason    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, status])
+}
+
+// An owner's request for a discount. A request is never a discount: elan1 answers with an offer, or not.
+model DiscountRequest {
+  id             String    @id @default(cuid())
+  orgId          String
+  pctBasisPoints Int
+  months         Int
+  reason         String
+  requestedBy    String
+  needs          String // lead | founder
+  status         String    @default("with_elan1") // with_elan1 | offered | withdrawn | declined
+  offerId        String?
+  declinedReason String?
+  declinedBy     String?
+  seq            Int?
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, status])
+}
+
+// An owner disputes one invoice line: it is held while the rest proceeds. Only elan1 settles it.
+model Dispute {
+  id               String    @id @default(cuid())
+  orgId            String
+  invoiceNumber    String
+  line             String
+  reason           String
+  fromSeq          Int?
+  toSeq            Int?
+  openedBy         String
+  seq              Int?
+  status           String    @default("open") // open | withdrawn | settled
+  outcome          String? // upheld | partly_upheld | rejected
+  linePaise        BigInt? // the line's amount when it was settled
+  creditPaise      BigInt?
+  creditNoteNumber String?
+  note             String?
+  decidedBy        String?
+  decidedByRole    String?
+  approvedBy       String? // a founder, for a credit above ₹1,00,000
+  settleSeq        Int?
+  closedAt         DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([orgId, invoiceNumber, line])
+  @@index([orgId, status])
+}
+
+// A two-way run for a period: the meter against the chain. The latest unmatched run holds that period's invoice.
+model ReconciliationRun {
+  id             String   @id @default(cuid())
+  orgId          String
+  period         String // YYYY-MM
+  meterEvents    Int
+  chainDecisions Int
+  meterTenths    Int // allowance in tenths of an action
+  chainTenths    Int
+  matched        Boolean
+  note           String?
+  runBy          String
+  seq            Int?
+  createdAt      DateTime @default(now())
+
+  @@index([orgId, period, createdAt])
+}
+
+// ── console ──
 // One console organisation's document: the approved console's domain state, run on the server
 // (apps/web/src/server/console-domain.ts). orgId is the console's own id (org_demo, org_northbank …).
 // No relation to Org yet: the console's demo organisations are seeded into Org in Phase 1.5.

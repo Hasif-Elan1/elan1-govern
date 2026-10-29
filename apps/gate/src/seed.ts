@@ -1,6 +1,8 @@
-import { BEHAVIOUR_DEFAULTS, hashToken } from "@gate/core";
+import { randomBytes } from "node:crypto";
+import { BEHAVIOUR_DEFAULTS, encrypt, hashToken, randomToken } from "@gate/core";
 import { packById, recommendedFrameworks, type Region } from "@gate/core/frameworks";
 import { addMembership, enableFrameworks, forOrg, membershipsForUser, prisma } from "@gate/db";
+import { CONSOLE_INVITES, CONSOLE_ORGS, CONSOLE_PEOPLE, CONSOLE_SUSPENSIONS } from "@gate/db/console-demo";
 import argon2 from "argon2";
 import pino from "pino";
 import { adminEvent, createOrg, setUpDemoAgent } from "./admin";
@@ -100,7 +102,102 @@ export async function seed() {
   await setIndustry(deps, clientId, clientOwner.email, "finance", ["india"]);
 
   console.log(`Seeded "${DEMO.org}". Sign in as ${DEMO.owner.email} (password: DEMO_OWNER_PASSWORD in .env).`);
+
+  // The approved console's four demo organisations, one per level, with their people.
+  if (env.DEMO_CONSOLE_PASSWORD) {
+    const webEncKey = process.env.WEB_ENC_KEY;
+    if (!webEncKey || !/^[0-9a-f]{64}$/i.test(webEncKey)) throw new Error("WEB_ENC_KEY must be set (64 hex characters) to seed two-step sign-in for the console's demo accounts.");
+    const r = await seedConsoleDemo(deps, { password: env.DEMO_CONSOLE_PASSWORD, webEncKey });
+    console.log(`Seeded the console's ${r.orgs} demo organisations and ${r.users} people. Every demo account signs in with DEMO_CONSOLE_PASSWORD from .env.`);
+  } else {
+    console.log("DEMO_CONSOLE_PASSWORD is not set, so the console's demo organisations were not seeded.");
+  }
   await prisma.$disconnect();
+}
+
+// ── The console's demo organisations ──
+
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+/** RFC 4648 base32 without padding, the form authenticator apps and otpauth read. */
+function base32(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const b of bytes) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+/** A fresh TOTP secret (160 bits), encrypted exactly as the web app stores one (WEB_ENC_KEY, AAD "totp"). */
+function newTotpSecretEnc(webEncKey: string): string {
+  return encrypt(webEncKey, base32(randomBytes(20)), "totp");
+}
+
+/**
+ * Seeds the console's organisations (org_demo, org_northbank, org_kaveri, org_deccan) with their fixed ids
+ * and levels, every console person with their console id, their memberships (the auditor in all four,
+ * Deepak Jain suspended at Northbank), TOTP secrets for the two-step accounts and the pending invitation.
+ * Agents and receipts are not seeded here; only the org's own setup receipts are written.
+ * Safe to run again: existing rows are reused and never overwritten (passwords, roles and secrets stay as they are).
+ */
+export async function seedConsoleDemo(deps: ReturnType<typeof makeDeps>, opts: { password: string; webEncKey: string }) {
+  const passwordHash = await argon2.hash(opts.password, { type: argon2.argon2id });
+  const byId = new Map(CONSOLE_PEOPLE.map((p) => [p.id, p]));
+
+  for (const person of CONSOLE_PEOPLE) {
+    const existing = await prisma.user.findUnique({ where: { id: person.id } });
+    if (existing) continue;
+    const clash = await prisma.user.findUnique({ where: { email: person.email }, select: { id: true } });
+    if (clash) throw new Error(`${person.email} already belongs to another account (${clash.id}), so the console's ${person.id} cannot be seeded.`);
+    await prisma.user.create({
+      data: {
+        id: person.id,
+        email: person.email,
+        name: person.name,
+        title: person.title,
+        passwordHash,
+        ...(person.mfa ? { totpSecret: newTotpSecretEnc(opts.webEncKey), totpEnabled: true } : {}),
+      },
+    });
+  }
+
+  for (const o of CONSOLE_ORGS) {
+    const owner = CONSOLE_PEOPLE.find((p) => p.memberships.some((m) => m.orgId === o.id && m.role === "owner"))!;
+    const db = forOrg(o.id);
+    if (!(await db.org.findFirst({ select: { id: true } }))) {
+      await createOrg(deps, { id: o.id, name: o.name, ownerUserId: owner.id, ownerEmail: owner.email });
+      await db.org.update({ where: { id: o.id }, data: { industry: o.industry, regions: o.regions, currency: o.currency, timezone: o.timezone, level: o.level } });
+      await adminEvent(deps, o.id, owner.email, "org.industry_set", { industry: o.industry, regions: o.regions.join(", ") });
+      if (o.level !== "l1") await adminEvent(deps, o.id, owner.email, "org.level_set", { level: o.level, from: "l1" });
+    }
+
+    for (const person of CONSOLE_PEOPLE) {
+      for (const m of person.memberships.filter((x) => x.orgId === o.id)) {
+        if (await db.membership.findFirst({ where: { userId: person.id } })) continue;
+        await db.membership.create({ data: { orgId: o.id, userId: person.id, role: m.role, status: m.status } });
+        await adminEvent(deps, o.id, owner.email, "member.joined", { role: m.role });
+        const suspension = CONSOLE_SUSPENSIONS.find((s) => s.orgId === o.id && s.userId === person.id);
+        if (suspension) await adminEvent(deps, o.id, byId.get(suspension.by)?.email ?? owner.email, "member.suspended", { member_id: person.id, reason: suspension.reason });
+      }
+    }
+
+    for (const inv of CONSOLE_INVITES.filter((i) => i.orgId === o.id)) {
+      if (await db.invite.findFirst({ where: { email: inv.email, acceptedAt: null } })) continue;
+      // The link itself is not kept: the console lists the invitation as pending; resending makes a new link.
+      const invitedBy = byId.get(inv.invitedBy)?.email ?? owner.email;
+      await db.invite.create({ data: { orgId: o.id, email: inv.email, role: inv.role, tokenHash: hashToken(randomToken()), invitedBy, expiresAt: new Date(Date.now() + 7 * 86_400_000) } });
+      await adminEvent(deps, o.id, invitedBy, "member.invited", { role: inv.role });
+    }
+  }
+  return { orgs: CONSOLE_ORGS.length, users: CONSOLE_PEOPLE.length };
 }
 
 if (process.argv[1]?.endsWith("seed.ts")) {

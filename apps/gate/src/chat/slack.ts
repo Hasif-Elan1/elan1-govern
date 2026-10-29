@@ -45,8 +45,8 @@ export type SlackInteraction = z.infer<typeof SlackInteraction>;
 const RETRYABLE = new Set(["ratelimited", "internal_error", "fatal_error", "service_unavailable", "request_timeout"]);
 const SlackOk = z.object({ ok: z.boolean(), error: z.string().optional() }).passthrough();
 
-async function slackCall(deps: Deps, token: string, method: string, body: Record<string, unknown>, form = false): Promise<Record<string, unknown>> {
-  const res = await chatFetch(deps, "slack", method, {
+async function slackCall(deps: Deps, orgId: string, token: string, method: string, body: Record<string, unknown>, form = false): Promise<Record<string, unknown>> {
+  const res = await chatFetch(deps, orgId, "slack", method, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": form ? "application/x-www-form-urlencoded" : "application/json; charset=utf-8" },
     body: form ? new URLSearchParams(body as Record<string, string>).toString() : JSON.stringify(body),
@@ -63,8 +63,8 @@ async function slackCall(deps: Deps, token: string, method: string, body: Record
   return parsed.data;
 }
 
-export async function slackAuthTest(deps: Deps, token: string): Promise<{ teamId: string; teamName?: string }> {
-  const r = z.object({ team_id: z.string().max(32), team: z.string().max(200).optional() }).safeParse(await slackCall(deps, token, "auth.test", {}, true));
+export async function slackAuthTest(deps: Deps, orgId: string, token: string): Promise<{ teamId: string; teamName?: string }> {
+  const r = z.object({ team_id: z.string().max(32), team: z.string().max(200).optional() }).safeParse(await slackCall(deps, orgId, token, "auth.test", {}, true));
   if (!r.success) throw new ChatApiError("Slack did not say which workspace this token belongs to", false);
   return { teamId: r.data.team_id, ...(r.data.team ? { teamName: r.data.team } : {}) };
 }
@@ -83,26 +83,26 @@ const SlackUser = z.object({
  * The Slack user's email, only if Slack has confirmed it (needs users:read and users:read.email).
  * Bots, deactivated users and unconfirmed emails get null, so they can never decide.
  */
-export async function slackUserEmail(deps: Deps, token: string, userId: string): Promise<string | null> {
-  const r = SlackUser.safeParse(await slackCall(deps, token, "users.info", { user: userId }, true));
+export async function slackUserEmail(deps: Deps, orgId: string, token: string, userId: string): Promise<string | null> {
+  const r = SlackUser.safeParse(await slackCall(deps, orgId, token, "users.info", { user: userId }, true));
   if (!r.success) return null;
   const u = r.data.user;
   if (u.deleted || u.is_bot || u.is_email_confirmed !== true || !u.profile.email) return null;
   return u.profile.email.toLowerCase();
 }
 
-export async function slackPost(deps: Deps, token: string, channel: string, message: SlackMessage): Promise<{ ts: string; channel: string }> {
-  const r = z.object({ ts: z.string().max(40), channel: z.string().max(32) }).safeParse(await slackCall(deps, token, "chat.postMessage", { channel, ...message, unfurl_links: false, unfurl_media: false }));
+export async function slackPost(deps: Deps, orgId: string, token: string, channel: string, message: SlackMessage): Promise<{ ts: string; channel: string }> {
+  const r = z.object({ ts: z.string().max(40), channel: z.string().max(32) }).safeParse(await slackCall(deps, orgId, token, "chat.postMessage", { channel, ...message, unfurl_links: false, unfurl_media: false }));
   if (!r.success) throw new ChatApiError("Slack did not return the message id");
   return r.data;
 }
 
-export async function slackUpdate(deps: Deps, token: string, channel: string, ts: string, message: SlackMessage): Promise<void> {
-  await slackCall(deps, token, "chat.update", { channel, ts, ...message });
+export async function slackUpdate(deps: Deps, orgId: string, token: string, channel: string, ts: string, message: SlackMessage): Promise<void> {
+  await slackCall(deps, orgId, token, "chat.update", { channel, ts, ...message });
 }
 
-export async function slackEphemeral(deps: Deps, token: string, channel: string, user: string, text: string): Promise<void> {
-  await slackCall(deps, token, "chat.postEphemeral", { channel, user, text });
+export async function slackEphemeral(deps: Deps, orgId: string, token: string, channel: string, user: string, text: string): Promise<void> {
+  await slackCall(deps, orgId, token, "chat.postEphemeral", { channel, user, text });
 }
 
 // ---- Messages (Block Kit) ----
@@ -184,7 +184,7 @@ export async function connectSlack(deps: Deps, orgId: string, input: { botToken:
   if (!SLACK_CHANNEL_RE.test(input.channelId)) return { ok: false, error: "The channel ID looks like C0123456789. In Slack, open the channel's details to copy it." };
   let team: { teamId: string; teamName?: string };
   try {
-    team = await slackAuthTest(deps, input.botToken);
+    team = await slackAuthTest(deps, orgId, input.botToken);
   } catch (e) {
     return { ok: false, error: `Slack did not accept the bot token (${(e as Error).message}).` };
   }

@@ -1,8 +1,10 @@
 import "server-only";
 import { decrypt, encrypt, randomToken } from "@gate/core";
-import { addMembership, findSsoForDomain, forOrg, prisma } from "@gate/db";
+import { addMembership, EgressBlocked, findSsoForDomain, forOrg, prisma } from "@gate/db";
 import * as oidc from "openid-client";
+import { webFetch } from "./egress";
 import { env } from "./env";
+import { deactivatedByDirectory } from "./identity";
 
 // OIDC single sign-on (Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak…).
 // Authorization code flow with PKCE, state and nonce. The transient values travel in an
@@ -22,12 +24,21 @@ export function sealClientSecret(orgId: string, secret: string) {
   return encrypt(env().WEB_ENC_KEY, secret, secretAad(orgId));
 }
 
-async function configFor(conn: { orgId: string; issuer: string; clientId: string; clientSecretEnc: string }) {
-  const secret = decrypt(env().WEB_ENC_KEY, conn.clientSecretEnc, secretAad(conn.orgId));
-  return oidc.discovery(new URL(conn.issuer), conn.clientId, secret, undefined, {
+/**
+ * Discovery, JWKS and token requests all go through the egress gate (deny-all in the sovereign
+ * profile): openid-client keeps the discovery fetch on the configuration for every later request.
+ */
+function discover(issuer: string, clientId: string, secret: string, egress: { orgId?: string; actor?: string }) {
+  return oidc.discovery(new URL(issuer), clientId, secret, undefined, {
     timeout: 10,
-    ...(insecureAllowed() && conn.issuer.startsWith("http://") ? { execute: [oidc.allowInsecureRequests] } : {}),
+    // Same shape at run time; the DOM typings only disagree about Uint8Array bodies.
+    [oidc.customFetch]: webFetch("oidc", egress) as unknown as oidc.CustomFetch,
+    ...(insecureAllowed() && issuer.startsWith("http://") ? { execute: [oidc.allowInsecureRequests] } : {}),
   });
+}
+
+async function configFor(conn: { orgId: string; issuer: string; clientId: string; clientSecretEnc: string }) {
+  return discover(conn.issuer, conn.clientId, decrypt(env().WEB_ENC_KEY, conn.clientSecretEnc, secretAad(conn.orgId)), { orgId: conn.orgId });
 }
 
 export const callbackUrl = () => `${env().WEB_URL}/api/auth/sso/callback`;
@@ -93,6 +104,7 @@ export async function finishSso(currentUrl: URL, cookie: string | undefined): Pr
   // SSO users get an unusable password: argon2 can never verify it.
   const user = (await prisma.user.findUnique({ where: { email } })) ?? (await prisma.user.create({ data: { email, name, passwordHash: `!sso:${randomToken()}` } }));
   const member = await forOrg(conn.orgId).membership.findFirst({ where: { userId: user.id } });
+  if (!member && (await deactivatedByDirectory(conn.orgId, user.id))) throw new SsoError("Your directory has deactivated your account in this organisation. Ask your admin.");
   if (!member) await addMembership({ orgId: conn.orgId, userId: user.id, role: conn.defaultRole });
   await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
   return { userId: user.id, orgId: conn.orgId, next: flow.next };
@@ -120,14 +132,13 @@ export async function domainVerified(domain: string, token: string, resolveTxt?:
 }
 
 /** Check the issuer answers OpenID discovery with these credentials before saving them. */
-export async function checkIssuer(issuer: string, clientId: string, clientSecret: string): Promise<string | null> {
+export async function checkIssuer(issuer: string, clientId: string, clientSecret: string, by?: { orgId: string; actor: string }): Promise<string | null> {
   try {
-    await oidc.discovery(new URL(issuer), clientId, clientSecret, undefined, {
-      timeout: 10,
-      ...(insecureAllowed() && issuer.startsWith("http://") ? { execute: [oidc.allowInsecureRequests] } : {}),
-    });
+    await discover(issuer, clientId, clientSecret, by ?? {});
     return null;
   } catch (e) {
+    // openid-client wraps what its fetch threw.
+    if (e instanceof EgressBlocked || (e as { cause?: unknown }).cause instanceof EgressBlocked) return `${new URL(issuer).host} is not on this deployment's egress allow-list, so Elan1 Govern cannot reach your identity provider.`;
     return `Elan1 Govern could not read the identity provider's settings at ${issuer} (${(e as Error).message.slice(0, 120)}).`;
   }
 }
