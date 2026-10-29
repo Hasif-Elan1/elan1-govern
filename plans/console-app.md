@@ -186,6 +186,16 @@ Verified when: the full journey list below passes in one `pnpm e2e` run on a fre
 - Sign in as each demo account, walk its journey, export a bundle and check it with `govern verify` (L1 and Seal v6).
 - After each phase, push `origin/console-app` and confirm the commit is there with `gh api repos/Hasif-Elan1/elan1-govern/branches/console-app`.
 
+## Integration follow-ups (from wave-1 reports)
+- The TSA `HttpTsa` must call the sovereign egress gate (`deps.egress.check(url, "tsa")`). It currently has its own guarded lookup.
+- Evidence bundles can't be signed with an HSM-held key yet: core `buildBundle` needs a signer parameter.
+- Seal v6 verifier and core receipts use different formats (bare hex vs `sha256:`/`ed25519:`/PEM); the `chain` scope maps them.
+- Pilot meter: sandbox keys don't exist yet, so every call counts until `guardsync` adds `ApiKey.environment`.
+- The console claims "TypeScript and Python seal the same 64 test vectors", but there is no Python implementation, so the claim must not be shown as run. Fix the copy (or build the Python port) before release.
+- SAML/SCIM settings are owner-only (stricter than the brief, same as OIDC and the console mock).
+- SCIM Groups, SAML encrypted assertions and single logout are not supported.
+- The bridge's state outside the document (the in-memory localStorage shim) is per process. The `ops` scope moves the domain parts into the document.
+
 ## Not yet specified (researched when each phase starts)
 - Phase 7: what "the bank's own HSM" needs beyond the software HSM (PKCS#11?). For now it's fog; only the interface is built.
 - Phase 5.5: the exact pack content for each regime comes from console's `mock/packsFactory.ts` as built; legal accuracy stays marked "Draft — needs legal review".
@@ -204,13 +214,13 @@ Verified when: the full journey list below passes in one `pnpm e2e` run on a fre
 | Phase | Status |
 |---|---|
 | 0 Import | done: 372fe48, pushed |
-| 1 Seam | pending |
+| 1 Seam | 1.1–1.2 server bridge done (a335a6f); identity 1.4–1.5 server side done; 1.3 client live mode in progress (wave 2) |
 | 2 Existing backend slices | pending |
-| 3 New L1 backends | pending |
-| 4 Billing | pending |
-| 5 L2 | pending |
-| 6 L3 | pending |
-| 7 Sovereign | pending |
+| 3 New L1 backends | SAML 2.0 + SCIM (3.8) done (wave 1); the rest run through the server bridge, hardened in wave 3 |
+| 4 Billing | 4.1 core, ledger tables, pilot hard stop, invoice PDF done (wave 1); wiring into the console in wave 3 |
+| 5 L2 | Seal v6 + verifier + CLI (5.1/5.6 library), TSA + Merkle batches (5.2), KMS (5.3) done (wave 1); levels/upgrade/packs wiring in wave 3 |
+| 6 L3 | Shamir ceremony + soft HSM + successors (6.4) done (wave 1); autonomy/counterparties/disclosure wiring in wave 3 |
+| 7 Sovereign | egress gate, egress log, update bundles, signed statements done (wave 1); console wiring in wave 3 |
 | 8 Cutover and e2e | pending |
 
 At the start of execution this plan is committed into the repo as `plans/console-app.md`, and the Progress table is kept current.

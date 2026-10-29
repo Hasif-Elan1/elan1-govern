@@ -84,7 +84,7 @@ export function DecisionForm({ approval, route, mode, selfApproval, onCancel, on
           return;
         }
         if (sessionOld) markReauth();
-        if (stepUp) markStepUp(user.id, approval.id);
+        if (stepUp) markStepUp(orgId, approval.id, user.id);
       }
       const extra: DecideExtra = payloadDigest ? { payloadDigest } : {};
       const res = submit ? await submit(approve, text.trim(), extra) : await decide(orgId, approval.id, approve, user.id, text.trim(), channel, extra);

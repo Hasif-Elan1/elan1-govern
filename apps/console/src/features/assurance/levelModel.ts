@@ -3,7 +3,6 @@
  * Wizard progress is kept in the organisation's own chain (level.upgrade_* admin receipts), so it is
  * shared by everyone in the organisation, survives a reload and is itself evidence.
  */
-import { db } from '@/api';
 import type { CapabilityId, LevelId, Receipt } from '@/types';
 import { LEVELS, levelRank } from '@/lib/levels';
 import { personFor, userById, userName } from '@/mock/users';
@@ -186,10 +185,7 @@ export function lastUpgrade(receipts: Receipt[]): Receipt | undefined {
   return undefined;
 }
 
-/** Record a wizard step as an admin receipt in the organisation's chain. */
-export function recordStep(orgId: string, userId: string, action: 'level.upgrade_started' | 'level.upgrade_stage' | 'level.upgrade_seconded' | 'level.upgrade_cancelled', details: Record<string, string | number | boolean>) {
-  return db.logAdmin(orgId, userId, action, details);
-}
+/* A wizard step is recorded by the operation consoleOps.recordUpgradeStep (features/console/ops.ts). */
 
 /** The five key holders and the three who attend a ceremony (the same people the platform records). */
 export function keyHolders(orgId: string) {

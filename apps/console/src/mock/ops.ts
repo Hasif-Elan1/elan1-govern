@@ -174,9 +174,15 @@ function ext(orgId: string): OpsExt {
 const LIFT_SEED = 1;
 const liftSeedQueued = new Set<string>();
 
-/** Make sure the organisation's operations state (and its seeded history) exists. Safe to call often. */
+/**
+ * Make sure the organisation's operations state (and its seeded history) exists. Safe to call often: it writes only
+ * the first time (the seed is the domain's own, nothing comes from the caller), and then tells the screens so the
+ * write is saved (and, in live mode, made on the server too).
+ */
 export function ensureOps(orgId: string) {
+  const fresh = !(getDB(orgId) as X).opsExt;
   ext(orgId);
+  if (fresh) touch(orgId, 'ops');
 }
 
 const levelOf = (orgId: string): LevelId => levelOfOrg(getDB(orgId).org);
@@ -309,10 +315,10 @@ export function breakGlassList(orgId: string): BreakGlass[] {
 }
 
 /** The active emergency-access grant for a person, if any (it lets them sign in with a password while SSO is enforced). */
-export function breakGlassActiveFor(orgId: string, userId?: string): BreakGlass | undefined {
-  if (!userId) return undefined;
+export function breakGlassActiveFor(orgId: string, forUser?: string): BreakGlass | undefined {
+  if (!forUser) return undefined;
   const now = Date.now();
-  const b = ext(orgId).breakGlass.find((g) => g.forUser === userId && g.status === 'active' && (!g.expiresAt || ms(g.expiresAt) > now));
+  const b = ext(orgId).breakGlass.find((g) => g.forUser === forUser && g.status === 'active' && (!g.expiresAt || ms(g.expiresAt) > now));
   return b ? clone(b) : undefined;
 }
 
@@ -656,7 +662,9 @@ export function startWriteDrill(orgId: string, userId: string): WriteFailure {
 
 /* ══ Approver telemetry and rubber-stamp sampling ════════════ */
 
+/** The signed-in person opened an approval's full record (telemetry: did they read it before deciding?). Any member. */
 export function noteApprovalOpened(orgId: string, approvalId: string, userId: string) {
+  if (!memberRole(orgId, userId)) return;
   const d = getDB(orgId);
   const a = d.approvals.find((x) => x.id === approvalId);
   if (!a || a.status !== 'pending') return;
@@ -664,19 +672,30 @@ export function noteApprovalOpened(orgId: string, approvalId: string, userId: st
   const list = (x.opened[approvalId] ??= []);
   if (list.some((e) => e.userId === userId)) return;
   list.push({ userId, at: iso(Date.now()) });
-  persist(orgId);
+  touch(orgId, 'approval_opened');
+}
+
+/** The organisation an approval-link token belongs to (its slug is the token's second part), if any. */
+export function approvalLinkOrg(token: string): string | undefined {
+  return ORGS.find((o) => o.slug === token.split('.')[1])?.id;
 }
 
 /**
  * The approval-link page (/approve/:token) shows the approval's full record — the call, the rule, the reason it was
- * held — so opening a link counts as opening the record, for the person the link was sent to.
+ * held — so opening a link counts as opening the record, for the person the link was sent to. Holding the
+ * single-use token is the proof (it is never in another browser's copy of the organisation); `userId` is whoever
+ * has the page open, signed in or not, and is not what is recorded.
  */
-export function noteApprovalLinkOpened(token: string) {
-  const org = ORGS.find((o) => o.slug === token.split('.')[1]);
-  if (!org) return;
-  const t = (getDB(org.id).platform.links ?? []).find((x) => x.token === token);
+export function noteApprovalLinkOpened(orgId: string, token: string, _userId?: string) {
+  if (approvalLinkOrg(token) !== orgId) return;
+  const t = (getDB(orgId).platform.links ?? []).find((x) => x.token === token);
   if (!t || t.usedAt) return;
-  noteApprovalOpened(org.id, t.approvalId, t.issuedTo);
+  const a = getDB(orgId).approvals.find((x) => x.id === t.approvalId);
+  if (!a || a.status !== 'pending') return;
+  const list = (ext(orgId).opened[t.approvalId] ??= []);
+  if (list.some((e) => e.userId === t.issuedTo)) return;
+  list.push({ userId: t.issuedTo, at: iso(Date.now()) });
+  touch(orgId, 'approval_opened');
 }
 
 const DECIDED: Approval['status'][] = ['approved', 'rejected', 'approved_run_failed'];
@@ -737,11 +756,11 @@ export function approverTelemetry(orgId: string, days = 90): ApproverStats[] {
 }
 
 /** Decided approvals of one approver, newest first, with the facts the telemetry uses. */
-export function approverDecisions(orgId: string, userId: string, days = 90) {
+export function approverDecisions(orgId: string, approverId: string, days = 90) {
   const d = getDB(orgId);
   const since = Date.now() - days * D;
   return d.approvals
-    .filter((a) => a.decidedBy === userId && a.decidedAt && DECIDED.includes(a.status) && ms(a.decidedAt) >= since)
+    .filter((a) => a.decidedBy === approverId && a.decidedAt && DECIDED.includes(a.status) && ms(a.decidedAt) >= since)
     .sort((a, b) => b.decidedAt!.localeCompare(a.decidedAt!))
     .map((a) => ({ approval: clone(a), minutes: Math.round(((ms(a.decidedAt!) - ms(a.createdAt)) / M) * 10) / 10, opened: openedBeforeDeciding(orgId, a) }));
 }

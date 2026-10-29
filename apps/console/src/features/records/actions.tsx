@@ -7,11 +7,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock3, ExternalLink, EyeOff, ShieldCheck, XCircle } from 'lucide-react';
 import type { Counterparty, DisclosurePackage, ErasureRequest, LevelId } from '@/types';
-import { api, db } from '@/api';
+import { api } from '@/api';
 import { useNow } from '@/hooks/useQuery';
 import { useOrgId, useUser } from '@/store/session';
-import { canonical, sha256Hex, signText } from '@/lib/crypto';
-import { DISCLOSABLE_FIELDS, FIELD_LABELS, commitFields, disclosureMessage, fieldValuesOf, verifyDisclosure, type DisclosableField, type DisclosureCheck } from '@/lib/disclosure';
+import { canonical, sha256Hex } from '@/lib/crypto';
+import { DISCLOSABLE_FIELDS, FIELD_LABELS, verifyDisclosure, type DisclosableField, type DisclosureCheck } from '@/lib/disclosure';
 import { LEVEL_INFO, atLeast } from '@/lib/levels';
 import { countdown, date, dateTime, n, plural } from '@/lib/format';
 import { userName } from '@/mock/users';
@@ -25,6 +25,7 @@ import type { ErasurePlan } from '@/mock/records';
 import { ErasurePlanView } from '@/features/erasure/plan';
 import { FirstIssueWarning, useFirstIssue } from '@/features/counterparties/shared';
 import { PlanUpsell, SmartLink } from '@/shell/access';
+import * as consoleOps from '@/features/console/ops';
 
 const compact = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -147,7 +148,7 @@ export async function exportRecordEvidence(orgId: string, userId: string, entry:
   };
   const text = JSON.stringify(bundle, null, 2);
   downloadText(`record-${entry.ref.type}-${entry.ref.id.replace(/[^\w.-]+/g, '_')}-${org.slug}.json`, text);
-  db.logAdmin(orgId, userId, 'record.evidence_exported', { record: entry.ref.key, receipts: receipts.length, seals: seals.length, proofs: proofs.length, digest: sha256Hex(canonical(bundle)).slice(0, 16) });
+  await consoleOps.recordEvidenceExported(orgId, { record: entry.ref.key, receipts: receipts.length, seals: seals.length, proofs: proofs.length, digest: sha256Hex(canonical(bundle)).slice(0, 16) }, userId);
   return { receipts: receipts.length, seals: seals.length, proofs: proofs.length };
 }
 
@@ -185,19 +186,13 @@ export function ShareDialog({ open, onClose, entry, level, defaultAudience }: { 
         setResult({ pkg, check: verifyDisclosure(pkg), portal: `${window.location.origin}/counterparty/${pkg.token}` });
         toast.ok('Disclosure created', `Revealing ${pkg.revealed.length} of ${pkg.committed.length} committed fields. The receipt is on the chain.`);
       } else {
-        // L2: commit all 11 fields with fresh salts, reveal the chosen ones, sign the digest list with the organisation's key
-        const d = db.getDB(orgId);
-        const key = d.keys[d.keys.length - 1].key;
+        // L2: every field committed with fresh salts, the chosen ones revealed, signed with the organisation's key
+        // (on the server, which holds it), then handed over as a file
         const decision = ev.receipts[0];
-        const values = fieldValuesOf(decision, ev.approvalReceipt);
-        const { committed, salts } = commitFields(values);
-        const now = Date.now();
-        const base = { id: `dp_file_${now.toString(36)}`, orgId, issuerName: d.org.name, seq: decision.seq, receiptHash: decision.hash, createdAt: new Date(now).toISOString(), createdBy: user.id, audience: audience.trim() || 'ar-org:unspecified', token: '', expiresAt: new Date(now + Number(days) * 864e5).toISOString(), committed, revealed: fields.slice().sort().map((f) => ({ name: f, salt: salts[f], value: values[f] })), kid: key.kid, publicKey: key.publicKeyHex, sig: '', status: 'active' as const, views: 0 };
-        const pkg: DisclosurePackage = { ...base, sig: signText(disclosureMessage(base), key) };
+        const { pkg } = await consoleOps.signRedactedFile(orgId, { seq: decision.seq, approvalSeq: ev.approvalReceipt?.seq, fields, audience, days: Number(days), record: entry.ref.key }, user.id);
         const check = verifyDisclosure(pkg);
-        const file = `disclosure-${d.org.slug}-${decision.seq}.json`;
+        const file = `disclosure-${api.org(orgId).slug}-${decision.seq}.json`;
         downloadText(file, JSON.stringify({ format: 'elan1.disclosure.v1', package: pkg, verify: 'For each revealed field, SHA-256 over canonical([salt, name, value]) must appear in committed; the Ed25519 signature over SHA-256(canonical({iss, seq, receipt_hash, aud, exp, digests})) must verify with publicKey, which you compare with a fingerprint obtained from the issuer.' }, null, 2));
-        db.logAdmin(orgId, user.id, 'disclosure.exported', { seq: decision.seq, revealed: pkg.revealed.length, committed: pkg.committed.length, audience: pkg.audience, record: entry.ref.key });
         setResult({ pkg, check, file });
         toast.ok('Redacted file saved', `Revealing ${pkg.revealed.length} of ${pkg.committed.length} committed fields.`);
       }

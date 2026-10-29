@@ -151,8 +151,13 @@ interface KeysExt {
   publications: FingerprintPublication[];
   requests: EvidenceRequest[];
   refusals: KeyChangeRefusal[];
-  /** seeded open requests still to be written to the chain (done on the first asynchronous read) */
+  /** seeded open requests still to be written to the chain (done by keysApi.settle, never during a render) */
   pendingSeedRequests?: boolean;
+  /**
+   * The exact files each fulfilled request sent (one JSON per part), by request id, so the auditor collects the
+   * export that was recorded and billed. Kept on the organisation's record, so the server holds them durably.
+   */
+  sent?: Record<string, string[]>;
 }
 
 type ExtDB = OrgDB & { keysExt?: KeysExt };
@@ -294,7 +299,7 @@ function seedKeyHistory(d: OrgDB, x: KeysExt) {
   }
 }
 
-/** Write the seeded open request to the chain (asynchronous reads only — never during a render). */
+/** Write the seeded open request to the chain (keysApi.settle — never during a render). */
 function settleSeeds(orgId: string) {
   const x = ext(orgId);
   if (!x.pendingSeedRequests) return;
@@ -302,7 +307,7 @@ function settleSeeds(orgId: string) {
   const d = db.getDB(orgId);
   const rs = d.receipts;
   const level = levelOfOrg(d.org);
-  if (!rs.length || !d.members.some((m) => m.userId === 'u_kavita' && m.status === 'active')) { db.persist(orgId); return; }
+  if (!rs.length || !d.members.some((m) => m.userId === 'u_kavita' && m.status === 'active')) { db.touch(orgId, 'key'); return; }
   const from = rs.find((r) => new Date(r.ts).getTime() >= Date.now() - 30 * D) ?? rs[0];
   const to = rs[rs.length - 1];
   const r = db.append(d, { kind: 'admin', actor: 'u_kavita', action: 'evidence.requested', details: { request: 'evr_seed_open', from_seq: from.seq, to_seq: to.seq, format: atLeast(level, 'l2') ? 'elan1.evidence.bundle.v1' : 'auditor-pack/1', purpose: 'Quarterly review: the last 30 days of governed actions' } });
@@ -310,6 +315,7 @@ function settleSeeds(orgId: string) {
     id: 'evr_seed_open', requestedBy: 'u_kavita', requestedAt: r.ts, seq: r.seq, purpose: 'Quarterly review: the last 30 days of governed actions',
     fromSeq: from.seq, toSeq: to.seq, fromDate: from.ts, toDate: to.ts, format: atLeast(level, 'l2') ? 'elan1.evidence.bundle.v1' : 'auditor-pack/1', dueBy: iso(Date.now() + 5 * D), status: 'open',
   });
+  db.touch(orgId, 'key');
 }
 
 /* ── Guards ────────────────────────────────────────────────────────────── */
@@ -362,6 +368,10 @@ export function keyChangeBlock(orgId: string, step?: KeyChangeStep | boolean): s
 export function assertKeyChangeAllowed(orgId: string, userId: string, what: string, step?: KeyChangeStep | boolean) {
   const why = keyChangeBlock(orgId, step);
   if (!why) return;
+  // only an owner or admin's attempt is recorded: anyone else could not make the change anyway (and must not be
+  // able to write refusal receipts with words of their choosing)
+  const role = db.memberRole(orgId, userId);
+  if (role !== 'owner' && role !== 'admin') throw new Error(why);
   const inc = openChainIncident(orgId);
   const comp = inc ? undefined : openCompromise(orgId);
   const bound = inc || comp ? undefined : ext(orgId).bound;
@@ -899,30 +909,28 @@ function requestEvidence(orgId: string, userId: string, input: { purpose: string
 
 /**
  * The exact files a fulfilled request sent (one per part), kept with the request so the auditor collects the export
- * that was recorded and billed — the same parts, manifests (with export_checks), digests and creator. Held in memory
- * and in this browser's storage (reset with the demo data), never rebuilt from the range.
+ * that was recorded and billed — the same parts, manifests (with export_checks), digests and creator. Kept on the
+ * organisation's record (keysExt.sent), never rebuilt from the range.
  */
-const sentFiles = new Map<string, string[]>();
-const sentKey = (orgId: string, id: string) => `eg:evidence:sent:${orgId}:${id}`;
+const legacySentKey = (orgId: string, id: string) => `eg:evidence:sent:${orgId}:${id}`;
 
 function keepSent(orgId: string, id: string, jsons: string[]) {
-  sentFiles.set(`${orgId}:${id}`, jsons);
-  try {
-    // drop files kept for requests this organisation no longer has (state regenerated), then keep these
-    const ids = new Set(ext(orgId).requests.map((q) => q.id));
-    const prefix = `eg:evidence:sent:${orgId}:`;
-    Object.keys(localStorage).filter((k) => k.startsWith(prefix) && !ids.has(k.slice(prefix.length))).forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(sentKey(orgId, id), JSON.stringify(jsons));
-  } catch { /* storage full or unavailable: the files stay in memory for this session */ }
+  const x = ext(orgId);
+  // drop files kept for requests this organisation no longer has (state regenerated), then keep these
+  const ids = new Set(x.requests.map((q) => q.id));
+  x.sent = Object.fromEntries(Object.entries(x.sent ?? {}).filter(([k]) => ids.has(k)));
+  x.sent[id] = [...jsons];
+  try { localStorage.removeItem(legacySentKey(orgId, id)); } catch { /* storage unavailable */ }
 }
 
 function sentOf(orgId: string, id: string): string[] | undefined {
-  const hit = sentFiles.get(`${orgId}:${id}`);
-  if (hit) return hit;
+  const hit = ext(orgId).sent?.[id];
+  if (hit?.length) return hit;
+  // a browser that kept the files in its own storage before they moved onto the organisation's record
   try {
-    const raw = localStorage.getItem(sentKey(orgId, id));
-    const x = raw ? (JSON.parse(raw) as unknown) : undefined;
-    if (Array.isArray(x) && x.length && x.every((s) => typeof s === 'string')) { sentFiles.set(`${orgId}:${id}`, x as string[]); return x as string[]; }
+    const raw = localStorage.getItem(legacySentKey(orgId, id));
+    const v = raw ? (JSON.parse(raw) as unknown) : undefined;
+    if (Array.isArray(v) && v.length && v.every((y) => typeof y === 'string')) return v as string[];
   } catch { /* unreadable: treated as not held */ }
   return undefined;
 }
@@ -1049,6 +1057,7 @@ function withdrawKmsRotation(orgId: string, userId: string) {
  * is bound, so a failed rotation never leaves an approval behind with nothing approved.
  */
 function approveKmsRotation(orgId: string, userId: string) {
+  requireOwnerOrAdmin(orgId, userId, 'Approving a KMS rotation');
   const d = db.getDB(orgId);
   const pending = pendingRotationRequest(d);
   if (!pending) throw new Error('There is no rotation request waiting.');
@@ -1142,7 +1151,14 @@ export function publicFingerprint(orgRef: string) {
 /* ── API (async, like the rest of the mock API) ────────────────────────── */
 
 export const keysApi = {
-  async state(orgId: string) { await wait(60, 160); settleSwitch(orgId); return stateOf(orgId); },
+  /** What the Keys screen shows. A read: call settle first so a successor whose overlap has ended has switched. */
+  async state(orgId: string) { await wait(60, 160); return stateOf(orgId); },
+  /**
+   * The writes that come due on their own (idempotent; the caller supplies nothing, so any member may run it): a
+   * planned successor whose overlap has ended switches signing (the system's receipt), and the seeded auditor
+   * request is written to the chain once. Changes, and tells the screens, only when something was due.
+   */
+  settle(orgId: string) { settleSwitch(orgId); settleSeeds(orgId); },
   async setContact(orgId: string, userId: string, contact: Omit<KeyContact, 'setBy' | 'setAt' | 'seq'>) { await wait(200, 400); setContact(orgId, userId, contact); return stateOf(orgId); },
   async declareCompromise(orgId: string, userId: string, input: { reason: string; suspectedSince?: string; discrepancyId?: string }) { await wait(400, 800); return declareCompromise(orgId, userId, input); },
   async sendNotice(orgId: string, userId: string, id: string, cc?: string) { await wait(300, 600); return sendNotice(orgId, userId, id, cc); },
@@ -1159,9 +1175,9 @@ export const keysApi = {
   async requestKmsRotation(orgId: string, userId: string, reason: string, alias?: string) { await wait(200, 400); return requestKmsRotation(orgId, userId, reason, alias); },
   async approveKmsRotation(orgId: string, userId: string) { await wait(900, 1400); return clone(approveKmsRotation(orgId, userId)); },
   async withdrawKmsRotation(orgId: string, userId: string) { await wait(150, 300); return withdrawKmsRotation(orgId, userId); },
+  /** The auditor's requests (a read: call settle first so the seeded open request is on the chain). */
   async evidenceRequests(orgId: string) {
     await wait(60, 160);
-    settleSeeds(orgId);
     const d = db.getDB(orgId);
     const first = d.receipts[0]?.seq ?? 0;
     const head = d.receipts[d.receipts.length - 1]?.seq ?? 0;

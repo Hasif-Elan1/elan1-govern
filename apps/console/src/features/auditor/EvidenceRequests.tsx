@@ -42,7 +42,7 @@ export function EvidenceRequestsPanel({ mode, compact }: { mode: 'auditor' | 'or
   const user = useUser();
   const role = useMemberRole();
   const canFulfil = role === 'owner' || role === 'admin';
-  const { data: list, loading, error, refetch } = useQuery((o) => keysApi.evidenceRequests(o), [], { kinds: ['key', 'open'] });
+  const { data: list, loading, error, refetch } = useQuery((o) => { keysApi.settle(o); return keysApi.evidenceRequests(o); }, [], { kinds: ['key', 'open'] });
   const [ask, setAsk] = useState(false);
   const [decline, setDecline] = useState<EvidenceRequest>();
   const [busy, setBusy] = useState<string>();

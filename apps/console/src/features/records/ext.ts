@@ -6,7 +6,6 @@
  */
 import type { PackId } from '@/types';
 import { db } from '@/api';
-import { userById } from '@/mock/users';
 
 export interface AiSystemExtra {
   residency: string;
@@ -38,14 +37,16 @@ export function doorState(orgId: string): RecordsDoorState {
 
 /** Record a change: a signed admin receipt (which also saves the organisation). */
 export function recordChange(orgId: string, userId: string, action: string, details: Record<string, string | number | boolean>, agent?: string) {
-  return db.logAdmin(orgId, userId, action, details, agent);
+  const r = db.logAdmin(orgId, userId, action, details, agent);
+  db.touch(orgId, 'receipt');
+  return r;
 }
 
 export const pause = (min = 120, max = 320) => new Promise((r) => setTimeout(r, min + Math.random() * (max - min)));
 export const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
-/** Owners and admins of the organisation only. */
+/** Owners and admins of the organisation only (their member record decides: suspended or removed people cannot). */
 export function requireManager(orgId: string, userId: string) {
-  const u = userById(userId);
-  if (!u || !u.orgIds.includes(orgId) || (u.role !== 'owner' && u.role !== 'admin')) throw new Error('Owners and admins can do this; your role cannot.');
+  const role = db.memberRole(orgId, userId);
+  if (role !== 'owner' && role !== 'admin') throw new Error('Owners and admins can do this; your role cannot.');
 }

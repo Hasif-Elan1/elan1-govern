@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn';
 import { Avatar, Badge, Banner, Button, CopyButton, Dialog, Field, Input, Meter, PageHeader, Panel, Skeleton, StatusChip, toast } from '@/components/ui';
 import { PreferencesSection } from '@/features/settings/sections/Preferences';
 import { orgApi } from '@/features/settings/orgApi';
+import * as consoleOps from '@/features/console/ops';
 import { createdOrg, pushMail, totpAt, totpStep } from '@/features/auth/registry';
 import { DemoOutbox } from '@/features/auth/Outbox';
 import { QrCode } from './qr';
@@ -256,14 +257,15 @@ function ApproveInChat({ orgId, userId, phone, slackLinked, isMember }: { orgId:
   const setSlack = async (link: boolean) => {
     setLinking(true);
     await new Promise((r) => setTimeout(r, 500));
-    const m = db.getDB(orgId).members.find((x) => x.userId === userId);
-    if (!m) { setLinking(false); toast.bad('You are not a member of this organisation'); return; }
-    m.slackLinked = link;
-    const r = db.logAdmin(orgId, userId, link ? 'channel.slack_linked' : 'channel.slack_unlinked', { workspace: slack?.workspace ?? '' });
-    db.touch(orgId, 'member');
-    setLinking(false);
-    setSlackOpen(false);
-    toast.ok(link ? 'Slack linked' : 'Slack unlinked', `${link ? `Held actions for your groups now reach you in ${slack?.workspace}.` : 'You no longer get held actions in Slack.'} ${note(r.seq)}`);
+    try {
+      const r = await consoleOps.setSlackLinked(orgId, link, userId);
+      setSlackOpen(false);
+      toast.ok(link ? 'Slack linked' : 'Slack unlinked', `${link ? `Held actions for your groups now reach you in ${slack?.workspace}.` : 'You no longer get held actions in Slack.'} ${note(r.seq)}`);
+    } catch (e) {
+      toast.bad(link ? 'Slack was not linked' : 'Slack was not unlinked', (e as Error).message);
+    } finally {
+      setLinking(false);
+    }
   };
 
   return (

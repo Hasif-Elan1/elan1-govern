@@ -216,7 +216,7 @@ function ownerOf(d: OrgDB) {
  * who did not ask stands in for it, and the receipt names that person (marked as the desk's stand-in), never a
  * reviewer who did not act. On Sovereign the customer's owner or admin decides under their own name.
  */
-export function reviewerFor(orgId: string, requestedBy: string, userId?: string): { mode: 'elan1' | 'customer'; actor: string; canAct: boolean; whyNot?: string; standIn?: boolean } {
+export function reviewerFor(orgId: string, requester: string, userId?: string): { mode: 'elan1' | 'customer'; actor: string; canAct: boolean; whyNot?: string; standIn?: boolean } {
   const d = getDB(orgId);
   const sovereign = isSovereign(d);
   const mode = sovereign ? 'customer' as const : 'elan1' as const;
@@ -224,7 +224,7 @@ export function reviewerFor(orgId: string, requestedBy: string, userId?: string)
   if (role !== 'owner' && role !== 'admin') {
     return { mode, actor: userId ?? '', canAct: false, whyNot: sovereign ? 'On a Sovereign installation an owner or admin of your organisation reviews.' : 'Elan1’s production reviewers decide. In this demo an owner or admin who did not ask stands in for them; your role cannot.' };
   }
-  if (userId === requestedBy) return { mode, actor: userId, canAct: false, whyNot: sovereign ? 'You asked for this; a different owner or admin reviews it.' : 'You asked for this, so you cannot review it. A different owner or admin stands in for the Elan1 desk in this demo.' };
+  if (userId === requester) return { mode, actor: userId, canAct: false, whyNot: sovereign ? 'You asked for this; a different owner or admin reviews it.' : 'You asked for this, so you cannot review it. A different owner or admin stands in for the Elan1 desk in this demo.' };
   return { mode, actor: userId!, canAct: true, standIn: !sovereign };
 }
 
@@ -773,11 +773,17 @@ async function reviewPromotion(orgId: string, id: string, approve: boolean, note
 
 /* ── Onboarding refusals ───────────────────────────────────── */
 
-/** Record that set-up refused an applicant category. Returns the receipt. */
+/**
+ * Record that set-up refused an applicant category. Returns the receipt. Any active member of the organisation
+ * (the person setting it up); the receipt's words come from the refusal list, never from the caller.
+ */
 export function recordApplicantRefusal(orgId: string, userId: string, category: ApplicantCategory, where: 'onboarding' | 'sandbox') {
+  if (!memberRole(orgId, userId)) throw new Error('Recording a refused applicant — you hold no active role in this organisation.');
   const ref = refusalFor(category);
   if (!ref) return undefined;
-  return logAdmin(orgId, userId, 'onboarding.applicant_refused', { category: ref.id, where });
+  const r = logAdmin(orgId, userId, 'onboarding.applicant_refused', { category: ref.id, where: where === 'sandbox' ? 'sandbox' : 'onboarding' });
+  touch(orgId, 'devpath');
+  return r;
 }
 
 /* ── Seed: each demo organisation shows the path ───────────── */

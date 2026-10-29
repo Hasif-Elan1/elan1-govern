@@ -9,6 +9,7 @@
 import { Link } from 'react-router-dom';
 import { CalendarClock, FileDown, OctagonX, Play, ScanSearch } from 'lucide-react';
 import { api, db } from '@/api';
+import * as consoleOps from '@/features/console/ops';
 import { useMutation, useQuery } from '@/hooks/useQuery';
 import { useCan, useOrgId, useOrgLevel, useUser } from '@/store/session';
 import { atLeast } from '@/lib/levels';
@@ -72,14 +73,16 @@ export function IntegrityRunsPanel() {
     } catch (e) { toast.bad('The check could not run', (e as Error).message); }
   };
 
-  const downloadReport = () => {
+  const downloadReport = async () => {
     if (!data || !user) return;
     const d = db.getDB(orgId);
     const pdf = continuityPdf(d, data, user.name);
     downloadBlob(`continuity-report-${d.org.slug}-${new Date().toISOString().slice(0, 10)}-DRAFT.pdf`, pdfBlob(pdf));
-    const r = db.logAdmin(orgId, user.id, 'evidence.continuity_report', { runs: data.runs.length, covered_from: data.coveredFrom ?? 0, covered_to: data.coveredTo ?? 0, gaps: data.gaps.length, failures: data.failures.length, unchecked: data.unchecked?.count ?? 0 });
-    refetch();
-    toast.ok('Continuity report downloaded', `Marked “Draft — needs legal review”. The download is ${seqLabel(r.seq)}.`);
+    try {
+      const r = await consoleOps.recordContinuityReport(orgId, user.id);
+      refetch();
+      toast.ok('Continuity report downloaded', `Marked “Draft — needs legal review”. The download is ${seqLabel(r.seq)}.`);
+    } catch (e) { toast.bad('Continuity report downloaded, not recorded', (e as Error).message); }
   };
 
   const cols: Column<IntegrityRun>[] = [
