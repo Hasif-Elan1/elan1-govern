@@ -1,17 +1,23 @@
-import { defineProject, mergeConfig } from "vitest/config";
-import web from "./vitest.config";
+import { fileURLToPath } from "node:url";
+import { defineProject } from "vitest/config";
+import { testEnv } from "../../test-env";
 
 // The console's tests (test/console*.test.ts) share the four demo organisations and their real chains, so they run
-// one file at a time, after the web app's other tests.
-export default mergeConfig(
-  web,
-  defineProject({
-    test: {
-      name: "web-console",
-      include: ["test/console*.test.ts"],
-      exclude: [],
-      fileParallelism: false,
-      sequence: { groupOrder: 2 },
+// one file at a time, after the web app's other tests. (Written out rather than merged with vitest.config.ts:
+// mergeConfig concatenates include and exclude, which kept the web project's exclusion of these very files.)
+export default defineProject({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "server-only": fileURLToPath(new URL("./test/server-only.ts", import.meta.url)),
     },
-  }),
-);
+  },
+  test: {
+    name: "web-console",
+    include: ["test/console*.test.ts"],
+    env: testEnv(),
+    globalSetup: ["test/build-console.ts"],
+    fileParallelism: false,
+    sequence: { groupOrder: 2 },
+  },
+});

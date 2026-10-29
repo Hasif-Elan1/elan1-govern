@@ -81,24 +81,99 @@ export async function setSlackLinked(orgId: string, link: boolean, userId: strin
 
 /* ── Invitations ──────────────────────────────────────────── */
 
+const ROLES: readonly Role[] = ['owner', 'admin', 'approver', 'viewer', 'auditor'];
+const DAY = 864e5;
+
 /**
- * After an invitation was accepted (orgApi.acceptInvite marks it used): the person it named holds an active
- * membership with the invited role. Only the invitation's own person, and only once it is used.
+ * An invitation the server issued (apps/web/src/server/console-invites.ts): it emails the single-use link and
+ * keeps only its SHA-256, and so does this record, listed under Pending invitations with member.invited. Owners
+ * and admins; only an owner invites an owner. A newer invitation to the same address replaces the pending one,
+ * whose link stops working.
+ */
+export async function recordInvitation(orgId: string, input: { email: string; role: Role; tokenHash: string; expiresAt: string }, userId: string) {
+  requireRole(orgId, userId, MANAGERS, 'Inviting people');
+  const role = input?.role;
+  if (!ROLES.includes(role)) throw new Error('Choose a role for the invitation.');
+  if (role === 'owner') requireRole(orgId, userId, ['owner'], 'Inviting an owner');
+  const email = text(input.email, 'The email address', 320).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) throw new Error('The email address is not valid.');
+  if (typeof input.tokenHash !== 'string' || !/^[0-9a-f]{64}$/.test(input.tokenHash)) throw new Error('The invitation link is missing.');
+  const now = Date.now();
+  const expires = Date.parse(text(input.expiresAt, 'The expiry', 40));
+  if (!Number.isFinite(expires) || expires <= now || expires > now + 31 * DAY) throw new Error('The expiry is not valid.');
+  const d = db.getDB(orgId);
+  const s = orgState(orgId);
+  if (s.invites.some((i) => i.tokenHash === input.tokenHash)) throw new Error('This invitation is already recorded.');
+  const r = db.logAdmin(orgId, userId, 'member.invited', { email, role });
+  // the pending invitation to the same address, if any, is replaced: its person record is reused
+  const pending = s.invites.filter((i) => i.email === email && !i.usedAt && !i.revokedAt && !i.replacedBy);
+  pending.forEach((i) => { i.replacedBy = `seq:${r.seq}`; });
+  let m = d.members.find((x) => x.status === 'invited' && pending.some((i) => i.userId === x.userId));
+  if (m) {
+    m.role = role;
+    m.invitedAt = new Date(now).toISOString();
+  } else {
+    m = { userId: `u_inv_${input.tokenHash.slice(0, 12)}`, role, status: 'invited', invitedAt: new Date(now).toISOString(), invitedEmail: email } as db.OrgDB['members'][number];
+    d.members.push(m);
+  }
+  s.invites.push({ token: '', tokenHash: input.tokenHash, userId: m.userId, email, role, invitedBy: userId, invitedAt: new Date(now).toISOString(), expiresAt: new Date(expires).toISOString(), seq: r.seq });
+  db.touch(orgId, 'member');
+  return { seq: r.seq, memberId: m.userId };
+}
+
+/**
+ * Join through an invitation: whoever holds its single-use link becomes an active member with the invited role
+ * (taking the place of the pending entry), and member.joined is written naming them. The link is the proof: the
+ * server checks it, and the address it was sent to, against its own invitation before running this. Once used, an
+ * invitation stays with the person who used it: running this again as them changes nothing, anyone else is refused.
+ * A member suspended here stays suspended; one already active keeps their role.
  */
 export async function ensureInvitedMembership(orgId: string, token: string, userId: string) {
   if (db.isFresh(orgId)) return { changed: false }; // a sign-up organisation keeps its people in the registry
-  const t = orgState(orgId).invites.find((i) => i.token === token);
-  if (!t || t.userId !== userId) throw new Error('This invitation is not yours.');
-  if (!t.usedAt) throw new Error('Accept the invitation first.');
+  const secret = text(token, 'The invitation link');
+  const hash = sha256Hex(secret);
+  const t = orgState(orgId).invites.find((i) => (i.tokenHash ? i.tokenHash === hash : !!i.token && i.token === secret));
+  if (!t) throw new Error('This invitation is not on this organisation’s record.');
+  if (t.usedAt) {
+    // the demonstration's own acceptance (orgApi.acceptInvite) already made its person a member
+    if ((t.acceptedBy ?? t.userId) === userId) return { changed: false };
+    throw new Error('This invitation was already used.');
+  }
   if (t.revokedAt) throw new Error('This invitation was withdrawn.');
+  if (t.replacedBy) throw new Error('A newer invitation replaced this one.');
+  if (Date.parse(t.expiresAt) < Date.now()) throw new Error('This invitation has expired.');
   const d = db.getDB(orgId);
-  const m = d.members.find((x) => x.userId === userId);
-  if (m) {
-    if (m.status === 'active') return { changed: false };
-    m.status = 'active';
-  } else d.members.push({ userId, role: t.role, status: 'active', lastActiveAt: new Date().toISOString() });
+  const mine = d.members.find((x) => x.userId === userId);
+  if (mine?.status === 'suspended') throw new Error('Your access to this organisation is suspended. An owner or admin there can reinstate you.');
+  const now = new Date().toISOString();
+  if (t.userId !== userId) {
+    const i = d.members.findIndex((x) => x.userId === t.userId && x.status === 'invited');
+    if (i >= 0) d.members.splice(i, 1);
+  }
+  if (!mine) d.members.push({ userId, role: t.role, status: 'active', lastActiveAt: now });
+  else if (mine.status !== 'active') Object.assign(mine, { role: t.role, status: 'active', lastActiveAt: now });
+  Object.assign(t, { usedAt: now, acceptedBy: userId, userId });
+  const r = db.logAdmin(orgId, userId, 'member.joined', { email: t.email, role: mine?.status === 'active' ? mine.role : t.role });
   db.touch(orgId, 'member');
-  return { changed: true };
+  return { changed: true, seq: r.seq };
+}
+
+/* ── Sign-out ─────────────────────────────────────────────── */
+
+/**
+ * The person signed out on the server (DELETE /api/auth/session): their session record here (ses_<user>_<signed-in
+ * time>, listed under Sessions) ends. The sign-out's receipt, auth.signed_out, is the server's own; `seq` names it.
+ * Only your own record; one that already ended (lifetime, suspension, reset, another device) is left as it is.
+ */
+export async function endSignedOutSession(orgId: string, input: { session: string; reason?: string; seq?: number }, userId: string) {
+  const id = text(input?.session, 'The session', 120);
+  const s = orgState(orgId);
+  const x = s.sessions.find((y) => y.id === id && y.userId === userId);
+  if (!x || x.endedAt) return { ended: false };
+  Object.assign(x, { endedAt: new Date().toISOString(), endedBy: userId, endReason: input.reason ? text(input.reason, 'The reason', 120) : 'Signed out' });
+  if (input.seq !== undefined) x.seq = count(input.seq, 'The receipt');
+  db.touch(orgId, 'session');
+  return { ended: true };
 }
 
 /* ── Set-up (onboarding) ──────────────────────────────────── */
