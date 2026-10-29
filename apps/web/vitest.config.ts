@@ -12,6 +12,9 @@ export default defineProject({
   test: {
     name: "web",
     include: ["test/**/*.test.ts"],
+    // the console's own tests write to the demo organisations' real chains: they run one file at a time in their
+    // own project (vitest.console.config.ts)
+    exclude: ["test/console*.test.ts"],
     env: testEnv(),
     globalSetup: ["test/build-console.ts"],
     // after the gate's and the packages' tests: the console tests seed the console's demo organisations and write

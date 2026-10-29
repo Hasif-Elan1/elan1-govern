@@ -1,6 +1,7 @@
 import { consoleState, prisma } from "@gate/db";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetConsoleOrg, startGate } from "./console-gate";
 
 // Operations screens used to run only in the browser (in-place writes, hidden op modules, state kept in
 // localStorage), now run through the real RPC door: the built domain, Postgres, the route's CSRF and validation.
@@ -16,6 +17,8 @@ vi.mock("../src/server/session", () => ({
   currentCtx: async () => "no-org",
 }));
 
+// receipts are written by the real gate service, which these tests run in-process (see console-gate.ts)
+const gateService = await startGate();
 const rpcRoute = await import("../src/app/api/console/rpc/route");
 const consoleDomain = await import("../src/server/console-domain");
 const { resetRateLimits } = await import("../src/server/ratelimit");
@@ -56,9 +59,12 @@ async function reloaded(): Promise<Doc> {
 
 beforeAll(async () => {
   await consoleDomain.forgetConsoleMemory();
-  await prisma.$executeRaw`DELETE FROM "ConsoleState" WHERE "orgId" = ${ORG}`;
+  await resetConsoleOrg(ORG);
 });
-afterAll(() => prisma.$disconnect());
+afterAll(async () => {
+  await gateService.close();
+  await prisma.$disconnect();
+});
 beforeEach(() => {
   resetRateLimits();
   state.userId = ADMIN;
