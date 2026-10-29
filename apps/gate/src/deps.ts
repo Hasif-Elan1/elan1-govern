@@ -2,7 +2,9 @@ import { connectorFor, type Connector, type ConnectorKind, type ConnectorMode, t
 import { forOrg, prisma as defaultPrisma, recordHealthAlert, type Db } from "@gate/db";
 import type { FastifyBaseLogger } from "fastify";
 import type { GateEnv } from "./env";
-import { activeKey, envKeyProvider, type KeyProvider } from "./keys";
+import { activePublicKey, envKeyProvider, type KeyProvider } from "./keys";
+import { AwsKmsKeyProvider, kmsClient, type KmsSender } from "./kms";
+import { SoftHsmKeyProvider } from "./soft-hsm";
 import { createMailer, type Mailer } from "./mailer";
 
 /** Where background work is queued. pg-boss in the running service; a no-op until jobs start. */
@@ -15,8 +17,10 @@ export const noQueue: JobQueue = { send: async () => undefined };
 export interface Deps {
   env: GateEnv;
   db: Db;
-  /** Wraps and unwraps org signing keys (env master key today; a KMS later). */
+  /** Wraps (or holds) new org signing keys: KEY_PROVIDER (env master key, AWS KMS or the software HSM). */
   keys: KeyProvider;
+  /** Other providers whose rows may still exist, so rows wrapped by each can be used side by side. `env` is always available. */
+  keyProviders?: readonly KeyProvider[];
   queue: JobQueue;
   mailer: Mailer;
   live: LiveConfig;
@@ -31,7 +35,22 @@ export interface Deps {
   behaviourInline?: (deps: Deps, orgId: string, receipts: readonly import("@gate/core").Receipt[]) => Promise<unknown>;
 }
 
+/**
+ * The key providers this environment can use: the env master key and the software HSM always, AWS
+ * KMS when a key id and region are set (`kms` overrides the client, for tests). `active` is
+ * KEY_PROVIDER, the one new keys go to.
+ */
+export function keyProvidersFromEnv(env: GateEnv, db: Db, kms?: KmsSender): { active: KeyProvider; all: KeyProvider[] } {
+  const all: KeyProvider[] = [envKeyProvider(env.GATE_MASTER_KEY), new SoftHsmKeyProvider(env.GATE_MASTER_KEY, db)];
+  if (env.AWS_KMS_KEY_ID && env.AWS_REGION) all.push(new AwsKmsKeyProvider({ keyId: env.AWS_KMS_KEY_ID, client: kms ?? kmsClient(env.AWS_REGION) }));
+  const active = all.find((p) => p.name === env.KEY_PROVIDER);
+  if (!active) throw new Error(`KEY_PROVIDER=${env.KEY_PROVIDER} is not configured`);
+  return { active, all };
+}
+
 export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partial<Deps> = {}): Deps {
+  const db = overrides.db ?? defaultPrisma;
+  const providers = keyProvidersFromEnv(env, db);
   const live: LiveConfig = {
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
     ...(env.ZOHO_CLIENT_ID && env.ZOHO_CLIENT_SECRET
@@ -40,26 +59,28 @@ export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partia
   };
   return {
     env,
-    db: defaultPrisma,
+    db,
     mailer: createMailer(env),
     live,
     log,
     connector: (kind, mode) => connectorFor(kind, mode, live),
     alerts: [],
     background: new Set(),
-    keys: envKeyProvider(env.GATE_MASTER_KEY),
+    keys: providers.active,
+    keyProviders: providers.all,
     queue: noQueue,
     ...overrides,
   };
 }
 
 /**
- * The org's active Ed25519 key, unwrapped by the KeyProvider. Never leaves this process.
- * Chain writes take the key under the chain lock instead (see `signer` in keys.ts).
+ * The org's active key id and public key, and the org's name. The private key is not touched:
+ * chain writes sign under the chain lock (see `signer` in keys.ts), and the few in-process signers
+ * that need the private key ask `activeKey` for it.
  */
-export async function orgKey(deps: Deps, orgId: string): Promise<{ kid: string; privateKeyPem: string; publicKeyPem: string; name: string }> {
+export async function orgKey(deps: Deps, orgId: string): Promise<{ kid: string; publicKeyPem: string; name: string }> {
   const org = await forOrg(orgId, deps.db).org.findFirstOrThrow({ select: { name: true } });
-  return { ...(await activeKey(deps, orgId)), name: org.name };
+  return { ...(await activePublicKey(deps, orgId)), name: org.name };
 }
 
 /** Record that Elan1 Govern could not do its job. Never throws. */

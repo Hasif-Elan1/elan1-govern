@@ -16,3 +16,4 @@ export * from "./replay";
 export * from "./chat";
 export * from "./suggest";
 export * from "./behaviour";
+export * as shamir from "./shamir";
