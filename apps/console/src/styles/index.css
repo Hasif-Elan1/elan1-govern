@@ -1,0 +1,120 @@
+@import '@fontsource/schibsted-grotesk/500.css';
+@import '@fontsource/schibsted-grotesk/600.css';
+@import '@fontsource/schibsted-grotesk/700.css';
+@import '@fontsource/ibm-plex-sans/300.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Colour roles (RGB triplets so Tailwind alpha works).
+  Clay is the one accent per surface and never means status.
+  Functional colours (verdigris, amber, crimson, cobalt) always travel with an icon and a label.
+  -fg variants are the accessible text steps measured against the ground they sit on.
+*/
+:root {
+  --canvas: 251 250 247;      /* paper */
+  --surface: 255 255 253;     /* paper lifted one step for panels */
+  --sunken: 242 237 230;      /* bone */
+  --line: 228 222 213;        /* decorative hairline */
+  --line-strong: 143 135 123; /* control borders, 3.4:1 */
+  --fg: 10 19 32;             /* ink */
+  --muted: 74 85 97;          /* graphite, 7.3:1 */
+  --subtle: 110 129 153;      /* ink-400, captions only at 12px+ */
+  --inverse: 10 19 32;
+  --inverse-fg: 251 250 247;
+  --accent: 185 96 63;        /* clay — marks, rules, disc */
+  --accent-fg: 138 66 41;     /* kiln — accent text, 7.0:1 */
+  --ok: 46 125 107;           /* verdigris */
+  --ok-fg: 36 104 89;
+  --ok-bg: 229 241 237;
+  --held: 201 154 46;         /* amber — icon and edge only */
+  --held-fg: 125 95 23;       /* amber text, 5.7:1 */
+  --held-bg: 249 241 220;
+  --bad: 155 44 59;           /* crimson */
+  --bad-fg: 155 44 59;
+  --bad-bg: 248 230 232;
+  --info: 47 111 179;         /* cobalt */
+  --info-fg: 38 92 150;
+  --info-bg: 230 239 249;
+  --nav: 10 19 32;            /* the sidebar is an ink field */
+  --nav-fg: 251 250 247;
+  --nav-muted: 163 177 194;
+  --nav-hover: 22 36 58;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --canvas: 8 15 26;
+  --surface: 13 23 38;
+  --sunken: 6 11 18;
+  --line: 30 48 72;           /* slate */
+  --line-strong: 110 129 153;
+  --fg: 241 238 232;
+  --muted: 167 176 188;
+  --subtle: 128 143 163;
+  --inverse: 251 250 247;
+  --inverse-fg: 10 19 32;
+  --accent: 217 138 107;
+  --accent-fg: 223 140 100;   /* ember — accent text on ink, 7.2:1 */
+  --ok: 108 195 174;
+  --ok-fg: 108 195 174;
+  --ok-bg: 16 46 42;
+  --held: 224 186 92;
+  --held-fg: 224 186 92;
+  --held-bg: 50 40 14;
+  --bad: 232 144 158;
+  --bad-fg: 232 144 158;
+  --bad-bg: 56 20 28;
+  --info: 141 184 234;
+  --info-fg: 141 184 234;
+  --info-bg: 18 36 60;
+  --nav: 6 11 18;
+  --nav-fg: 241 238 232;
+  --nav-muted: 128 143 163;
+  --nav-hover: 22 36 58;
+  color-scheme: dark;
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
+  body {
+    @apply bg-canvas text-fg font-sans text-base antialiased;
+    font-feature-settings: 'kern' 1;
+  }
+  h1, h2, h3, h4 { @apply font-display text-fg; letter-spacing: -0.015em; }
+  ::selection { background: rgb(var(--accent) / 0.22); }
+  :focus-visible { outline: 2px solid rgb(var(--fg)); outline-offset: 2px; }
+  [data-theme='dark'] :focus-visible { outline-color: rgb(var(--fg)); }
+  table { font-variant-numeric: tabular-nums; }
+  code, kbd, pre, samp { @apply font-mono; }
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--line-strong) / 0.5) transparent; }
+}
+
+@layer components {
+  .label { @apply text-label uppercase text-muted; }
+  .num { font-variant-numeric: tabular-nums; }
+  .hairline { @apply border-line; }
+  .link { @apply text-accent-fg underline decoration-1 underline-offset-2 hover:decoration-2; }
+  .skeleton {
+    background: linear-gradient(90deg, rgb(var(--sunken)) 0, rgb(var(--line) / 0.6) 40%, rgb(var(--sunken)) 80%);
+    background-size: 800px 100%;
+    @apply animate-shimmer;
+  }
+  .scroll-area { overflow: auto; overscroll-behavior: contain; }
+  .prose-doc h2 { @apply text-2xl font-semibold mt-10 mb-3; }
+  .prose-doc h3 { @apply text-lg font-semibold mt-6 mb-2; }
+  .prose-doc p { @apply text-md text-fg/90 leading-7 mb-4 max-w-[72ch]; }
+  .prose-doc ul { @apply list-[square] pl-5 mb-4 space-y-1 text-md max-w-[72ch]; }
+  .prose-doc li::marker { color: rgb(var(--accent)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}

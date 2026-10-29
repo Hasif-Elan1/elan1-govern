@@ -10,6 +10,7 @@
     "setup": "node scripts/setup.mjs",
     "secrets": "node scripts/secrets.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:console": "pnpm --filter @gate/console dev",
     "build": "pnpm -r build",
     "demo": "pnpm --filter @gate/gate demo",
     "lint": "eslint . --max-warnings 0",
@@ -47,7 +48,8 @@
     "overrides": {
       "postcss@<8.5.18": "^8.5.18",
       "deepmerge-ts@<8": "^8.0.0",
-      "rollup": "4.64.9"
+      "rollup": "4.64.9",
+      "c12>chokidar": "4.0.1"
     }
   }
 }

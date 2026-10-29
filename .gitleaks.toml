@@ -9,4 +9,5 @@ paths = ['''^\.env\.example$''']
 # Made-up Slack/WhatsApp credentials in test files of one commit, since replaced (SECURITY.md, "Accepted findings").
 commits = ['''d7ae6b1ab0095ba98a9d474d475db049f297016a''']
 regexTarget = "line"
-regexes = ['''key fingerprint: [0-9a-f]{16}''', '''signing keys: [0-9a-f]{16}''']
+# key_spec names an AWS KMS key type (a public constant), not a key.
+regexes = ['''key fingerprint: [0-9a-f]{16}''', '''signing keys: [0-9a-f]{16}''', '''key_spec: ?['"]ECC_NIST_EDWARDS25519['"]''']

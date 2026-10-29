@@ -7,7 +7,15 @@
     "noEmit": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./src/*"] }
+    // The console (React 18) and this app (React 19) share one install; pin React's types to this app's own copy so
+    // libraries that only peer-depend on @types/react (radix) don't pick up the other version.
+    "paths": {
+      "@/*": ["./src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"]
+    }
   },
   "include": ["next-env.d.ts", "src", "test", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]

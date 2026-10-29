@@ -1,0 +1,26 @@
+{
+  "name": "Elan1 Govern",
+  "short_name": "Govern",
+  "description": "Decides before an AI agent's tool call runs, makes a named person approve the risky ones, and keeps a tamper-evident record of every decision.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A1320",
+  "theme_color": "#0A1320",
+  "lang": "en-GB",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "security"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Approvals", "short_name": "Approvals", "url": "/approvals", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Verify a receipt", "short_name": "Verify", "url": "/verify", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Status", "short_name": "Status", "url": "/status", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
