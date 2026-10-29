@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { hexSecret, loadEnv, registerExampleSecrets } from "@gate/db/env";
+import { hexSecret, isExampleSecret, loadEnv, registerExampleSecrets } from "@gate/db/env";
 import { z } from "zod";
 
-const SECRET_NAMES = ["GATE_MASTER_KEY", "INTERNAL_API_SECRET", "APPROVAL_LINK_SECRET"] as const;
+const SECRET_NAMES = ["GATE_MASTER_KEY", "INTERNAL_API_SECRET", "APPROVAL_LINK_SECRET", "DEMO_CONSOLE_PASSWORD"] as const;
 
 /** The value of NAME= in a dotenv file, without regular expressions. */
 function exampleValue(text: string, name: string): string {
@@ -43,8 +43,13 @@ export const GateEnvSchema = z.object({
   SLACK_API_URL: z.string().url().default("https://slack.com/api"),
   /** WhatsApp Cloud API (Meta Graph API) base URL, with its version. Only graph.facebook.com in production. */
   WHATSAPP_API_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
+  /** The one password every console demo account gets from `pnpm db:seed`. Optional; without it the console's orgs are not seeded. */
+  DEMO_CONSOLE_PASSWORD: z.string().min(12, "DEMO_CONSOLE_PASSWORD must be at least 12 characters").max(200).optional(),
 }).superRefine((e, ctx) => {
   if (e.APP_ENV !== "production") return;
+  if (e.DEMO_CONSOLE_PASSWORD && isExampleSecret(e.DEMO_CONSOLE_PASSWORD)) {
+    ctx.addIssue({ code: "custom", path: ["DEMO_CONSOLE_PASSWORD"], message: "DEMO_CONSOLE_PASSWORD is the example value from .env.example; set a real secret in production" });
+  }
   for (const [name, host] of [["SLACK_API_URL", "slack.com"], ["WHATSAPP_API_URL", "graph.facebook.com"]] as const) {
     const u = new URL(e[name]);
     if (u.protocol !== "https:" || u.hostname !== host) ctx.addIssue({ code: "custom", path: [name], message: `must be an https://${host}/ URL in production` });

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = [/^\/login/, /^\/signup/, /^\/invite\//, /^\/approve\//, /^\/api\//, /^\/_next\//, /^\/favicon/, /^\/icon/, /^\/robots\.txt$/];
+const PUBLIC = [/^\/login/, /^\/signup/, /^\/forgot/, /^\/reset\//, /^\/invite\//, /^\/approve\//, /^\/api\//, /^\/_next\//, /^\/favicon/, /^\/icon/, /^\/robots\.txt$/];
 
 function b64(bytes: Uint8Array) {
   let s = "";

@@ -47,6 +47,10 @@ model User {
   createdAt    DateTime     @default(now())
   memberships  Membership[]
   sessions     Session[]
+  // identity: the console's profile line and "last signed in"
+  title          String          @default("")
+  lastSignInAt   DateTime?
+  passwordResets PasswordReset[]
 }
 
 model Session {
@@ -69,6 +73,8 @@ model Membership {
   org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
   role      Role
   createdAt DateTime @default(now())
+  // identity: a suspended member keeps the row (role and history) but holds no role until reinstated
+  status    MembershipStatus @default(active)
 
   @@unique([userId, orgId])
   @@index([orgId])
@@ -91,6 +97,8 @@ model Org {
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
+  // identity: assurance level l1 | l2 | l3 | sovereign. Every change of level is a receipt (org.level_set).
+  level         String       @default("l1")
 }
 
 // ---- Tenant-scoped (every row has orgId; access only through forOrg()) ----
@@ -587,4 +595,24 @@ model Incident {
   resumedCount   Int?
 
   @@index([orgId, status])
+}
+
+// ── identity ──
+
+enum MembershipStatus {
+  active
+  suspended
+}
+
+// A single-use password reset link. Only the token's hash is stored; it expires after 30 minutes.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }

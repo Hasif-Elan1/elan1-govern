@@ -137,6 +137,12 @@ describe("receipt views", () => {
     expect(r("settings.updated")).toBe("Changed organisation settings");
     expect(r("user.2fa_enabled")).toMatch(/on two-step/);
     expect(r("user.2fa_disabled")).toMatch(/off two-step/);
+    expect(r("member.suspended", { member_id: "u_nb_deepak" })).toBe("Suspended a member");
+    expect(r("auth.password_reset")).toBe("Reset their password with an emailed link");
+    expect(r("auth.sign_in_refused", { reason: "suspended" })).toBe("Sign-in refused: access suspended");
+    expect(r("auth.sign_in_refused")).toBe("Sign-in refused");
+    expect(r("org.level_set", { level: "l2" })).toBe("Set the assurance level to L2");
+    expect(r("org.level_set", { level: "sovereign" })).toBe("Set the assurance level to Sovereign");
     expect(r("evidence.exported", { kind: "framework-report", framework: "hipaa" })).toBe("Downloaded the HIPAA framework report");
     expect(r("org.industry_set", { industry: "healthcare" })).toBe("Set the industry to healthcare");
     expect(r("framework.enabled", { framework: "gdpr" })).toBe("Turned on GDPR");

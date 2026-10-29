@@ -74,6 +74,14 @@ export function adminTitle(r: Receipt): string {
       return "Turned on two-step sign-in";
     case "user.2fa_disabled":
       return "Turned off two-step sign-in";
+    case "member.suspended":
+      return "Suspended a member";
+    case "auth.password_reset":
+      return "Reset their password with an emailed link";
+    case "auth.sign_in_refused":
+      return d.reason === "suspended" ? "Sign-in refused: access suspended" : "Sign-in refused";
+    case "org.level_set":
+      return `Set the assurance level to ${String(d.level ?? "?").toUpperCase().replace("SOVEREIGN", "Sovereign")}`;
     case "system.created":
       return `Added ${String(d.system ?? "an AI system")} to the inventory`;
     case "system.updated":

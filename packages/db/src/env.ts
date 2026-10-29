@@ -23,6 +23,11 @@ export function registerExampleSecrets(values: string[]) {
   for (const v of values) EXAMPLE_SECRET_FINGERPRINTS.add(fp(v));
 }
 
+/** Is this one of the dev-only sample values from .env.example (registered with registerExampleSecrets)? */
+export function isExampleSecret(value: string): boolean {
+  return EXAMPLE_SECRET_FINGERPRINTS.has(fp(value));
+}
+
 /** Parse env against a schema or exit with a readable message. Secret values are never printed. */
 export function loadEnv<T extends z.ZodType>(schema: T, source: NodeJS.ProcessEnv = process.env): z.infer<T> {
   const parsed = schema.safeParse(source);

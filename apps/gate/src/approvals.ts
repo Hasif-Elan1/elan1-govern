@@ -139,7 +139,7 @@ export async function resolveApproval(
     await expireApproval(deps, orgId, approvalId);
     return { ok: false, code: "expired", message: "This approval expired, so the action was refused." };
   }
-  const member = await db.membership.findFirst({ where: { userId: input.userId } });
+  const member = await db.membership.findFirst({ where: { userId: input.userId, status: "active" } });
   if (!member || !APPROVER_ROLES.has(member.role) || !approval.approvers.includes(email)) {
     return { ok: false, code: "not_approver", message: "You are not one of the approvers for this rule." };
   }

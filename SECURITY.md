@@ -35,6 +35,7 @@ Secrets are split so no single component holds everything:
 | `INTERNAL_API_SECRET` | Elan1 Govern and web | HMAC on internal calls and OAuth `state` |
 | `APPROVAL_LINK_SECRET` | Elan1 Govern and web | HMAC on emailed approval links |
 | `WEB_ENC_KEY` | Web only | AES-256-GCM encryption of TOTP secrets |
+| `DEMO_CONSOLE_PASSWORD` | The seed; the web app's dev-only demo-accounts route | The shared password of the console's seeded demo accounts. Optional; the `.env.example` value is refused in production |
 
 The web app **cannot sign receipts or rulebooks**. Only Elan1 Govern can.
 
@@ -75,6 +76,10 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | | Threat | Mitigation | Tested in |
 |---|---|---|---|
 | **S** | Password guessing | argon2id; lockout after 5 failures with doubling back-off (max 1 h); 10 attempts per account per 15 min; constant-time path for unknown emails; optional TOTP | `web/server.test.ts` "locks the account…"; `e2e/security.spec.ts` "login is rate limited per account" |
+| **S** | Taking over an account through "forgot password" | The emailed link carries a 256-bit random token, stored only as SHA-256, valid 30 minutes, claimed atomically so it works once; a new request replaces any unused link; setting the password (argon2id, same strength rule) ends every other session of that person and clears the lockout, but leaves two-step sign-in on; each org the person belongs to gets an `auth.password_reset` receipt; no link for organisations that require SSO | `web/identity.test.ts` "resetting the password" |
+| **I** | "Forgot password" reveals which emails have accounts | Same status and body for known and unknown emails; the email is sent without waiting so timing differs little; the per-email limit (3 per 15 min) stops sending silently instead of answering differently; per-IP limit 5/min | `web/identity.test.ts` "answers an unknown email exactly like a known one", "limits requests per email…" |
+| **E** | A suspended member keeps acting in that org | A suspended membership keeps its row but holds no role: it is left out of the session's orgs, the org switcher, approver and notice lists, and owner counts; someone suspended everywhere cannot sign in, and each refusal is an `auth.sign_in_refused` receipt | `web/identity.test.ts` "a suspended membership grants no role", "signing in while suspended" |
+| **I** | Demo credentials or codes exposed by a deployment | `GET /api/dev/demo-accounts` (demo password and current TOTP codes of the seeded console demo accounts only) answers 404 when `APP_ENV=production`; the sample `DEMO_CONSOLE_PASSWORD` from `.env.example` stops the gate service starting in production; TOTP secrets are generated per install, never committed | `web/identity.test.ts` "does not exist in production"; `gate/env.test.ts` "refuses the sample console demo password…" |
 | **S** | Session theft | 256-bit token in an `HttpOnly; Secure; SameSite=Lax` cookie, stored hashed; 7-day expiry; new token on every sign-in | `e2e/security.spec.ts` "session cookie is httpOnly and secure" |
 | **T** | CSRF | Session-bound token in `x-csrf-token` (double-submit cookie when signed out) **and** same-origin check on every write | `e2e/security.spec.ts` "CSRF…" |
 | **T** | SQL injection | Prisma parameterised queries only; no raw SQL with user input | `e2e/security.spec.ts` "SQL injection and XSS payloads…" |

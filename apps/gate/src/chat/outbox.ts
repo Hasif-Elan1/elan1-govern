@@ -33,7 +33,7 @@ export async function notifyChat(deps: Deps, orgId: string, approvalId: string):
     if (ch.kind === "slack") rows.push({ channelId: ch.id, approvalId, kind: "slack.post" });
     if (ch.kind === "whatsapp" && approval.approvers.length) {
       const users = await deps.db.user.findMany({ where: { email: { in: approval.approvers } }, select: { id: true } });
-      const members = await db.membership.findMany({ where: { userId: { in: users.map((u) => u.id) }, role: { in: [...APPROVER_ROLES] } }, select: { userId: true } });
+      const members = await db.membership.findMany({ where: { userId: { in: users.map((u) => u.id) }, role: { in: [...APPROVER_ROLES] }, status: "active" }, select: { userId: true } });
       const numbers = await db.chatNumber.findMany({ where: { userId: { in: members.map((m) => m.userId) }, verifiedAt: { not: null } }, select: { userId: true } });
       for (const n of numbers) rows.push({ channelId: ch.id, approvalId, kind: "whatsapp.send", recipientUserId: n.userId });
     }

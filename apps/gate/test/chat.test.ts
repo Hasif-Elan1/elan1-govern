@@ -616,7 +616,7 @@ describe("pieces", () => {
     await expect(chatFetch({ ...ctx.deps, env: { ...ctx.deps.env, SLACK_API_URL: "http://127.0.0.1:1/api" } }, "slack", "auth.test", { method: "POST" })).rejects.toThrow(/could not reach Slack/);
   });
   it("production only accepts slack.com and graph.facebook.com", () => {
-    const prod = { ...process.env, APP_ENV: "production", GATE_MASTER_KEY: randomBytes(32).toString("hex"), INTERNAL_API_SECRET: randomBytes(32).toString("hex"), APPROVAL_LINK_SECRET: randomBytes(32).toString("hex") };
+    const prod = { ...process.env, APP_ENV: "production", GATE_MASTER_KEY: randomBytes(32).toString("hex"), INTERNAL_API_SECRET: randomBytes(32).toString("hex"), APPROVAL_LINK_SECRET: randomBytes(32).toString("hex"), DEMO_CONSOLE_PASSWORD: "" };
     expect(() => readGateEnv({ ...prod, SLACK_API_URL: "http://127.0.0.1/api" })).toThrow(/SLACK_API_URL: must be an https:\/\/slack.com/);
     expect(() => readGateEnv({ ...prod, WHATSAPP_API_URL: "https://graph.evil.com/v21.0" })).toThrow(/WHATSAPP_API_URL/);
     expect(readGateEnv({ ...prod, SLACK_API_URL: "", WHATSAPP_API_URL: "" }).SLACK_API_URL).toBe("https://slack.com/api");

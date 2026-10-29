@@ -51,6 +51,8 @@ export const WEB_EVENTS = [
   "org.industry_set",
   "framework.enabled",
   "framework.disabled",
+  "auth.password_reset",
+  "auth.sign_in_refused",
 ] as const;
 
 const schemas = {

@@ -23,10 +23,11 @@ export async function adminEvent(deps: Deps, orgId: string, actor: string, actio
   return record(deps, orgId, { kind: "admin", actor, action, details, ...extra });
 }
 
-export async function createOrg(deps: Deps, input: { name: string; ownerUserId: string; ownerEmail: string }) {
+/** `id` is for the seed only (the console's fixed demo org ids); the internal API never passes one. */
+export async function createOrg(deps: Deps, input: { id?: string; name: string; ownerUserId: string; ownerEmail: string }) {
   const keys = generateKeyPair();
   // Encrypt under an AAD bound to the org id, so the row id is needed before the key.
-  const org = await createOrgRow({ name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
+  const org = await createOrgRow({ id: input.id, name: input.name, publicKey: keys.publicKeyPem, privateKeyEnc: "pending", notifyEmail: input.ownerEmail }, deps.db);
   await forOrg(org.id, deps.db).org.update({ where: { id: org.id }, data: { privateKeyEnc: encrypt(deps.env.GATE_MASTER_KEY, keys.privateKeyPem, legacyKeyAad(org.id)) } });
   await addFirstKey(deps, org.id, keys);
   await addMembership({ orgId: org.id, userId: input.ownerUserId, role: "owner" }, deps.db);
@@ -166,7 +167,7 @@ export async function setUpDemoAgent(deps: Deps, orgId: string, user: { id: stri
     apiKey = (await rotateKey(deps, orgId, agent.id, user.email)).apiKey as string;
   }
   if (!agent.activeRulebookId) {
-    const approvers = (await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } })).map((m) => m.user.email);
+    const approvers = (await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] }, status: "active" }, include: { user: { select: { email: true } } } })).map((m) => m.user.email);
     const res = await publishRulebook(deps, orgId, agent.id, demoRulebookYaml(user.email, approvers), user.email);
     if (!res.ok) throw new Error(res.errors.join("; "));
   }

@@ -11,7 +11,7 @@ async function target(orgId: string, userId: string | undefined) {
 }
 
 async function ownersLeft(orgId: string) {
-  return forOrg(orgId).membership.count({ where: { role: "owner" } });
+  return forOrg(orgId).membership.count({ where: { role: "owner", status: "active" } });
 }
 
 const Body = z.object({ role: z.enum(ROLES) }).strict();

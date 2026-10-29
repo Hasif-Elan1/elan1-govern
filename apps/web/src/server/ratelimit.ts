@@ -27,6 +27,8 @@ export const LIMITS = {
   approvals: { max: 30, windowMs: 60_000 },
   mutation: { max: 120, windowMs: 60_000 },
   replay: { max: 10, windowMs: 60_000 },
+  forgot: { max: 5, windowMs: 60_000 },
+  reset: { max: 10, windowMs: 60_000 },
 } as const;
 
 /** Raise per-IP limits for test runs from one machine (never in production). Per-account limits are not scaled. */

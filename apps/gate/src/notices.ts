@@ -21,7 +21,7 @@ ${opts.body.map((p) => `<tr><td style="padding:12px 28px 0;font-size:14px;color:
 
 /** Emails of the org's owners and admins. */
 export async function ownersAndAdmins(deps: Deps, orgId: string): Promise<string[]> {
-  const rows = await forOrg(orgId, deps.db).membership.findMany({ where: { role: { in: ["owner", "admin"] } }, include: { user: { select: { email: true } } } });
+  const rows = await forOrg(orgId, deps.db).membership.findMany({ where: { role: { in: ["owner", "admin"] }, status: "active" }, include: { user: { select: { email: true } } } });
   return [...new Set(rows.map((m) => m.user.email))];
 }
 

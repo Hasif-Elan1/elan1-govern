@@ -40,7 +40,7 @@ export const POST = route({ auth: "org", permission: "agents:manage", body: Body
   const starter = mergeStarterRules(packFor(org.industry), suggestRules(answers, tier), answers, tier);
   const rules = body.keepRules ? starter.rules.filter((r) => body.keepRules!.includes(r.id)) : starter.rules;
 
-  const members = await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] } }, include: { user: { select: { email: true } } } });
+  const members = await db.membership.findMany({ where: { role: { in: ["owner", "admin", "approver"] }, status: "active" }, include: { user: { select: { email: true } } } });
   const people = [...new Set([body.ownerEmail, ...members.map((m) => m.user.email)])];
 
   let slug = slugify(body.name);

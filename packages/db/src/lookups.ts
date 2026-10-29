@@ -13,9 +13,14 @@ export function findInviteByTokenHash(tokenHash: string, client: PrismaClient = 
   return client.invite.findFirst({ where: { tokenHash, acceptedAt: null, expiresAt: { gt: new Date() } } });
 }
 
-/** The orgs a signed-in user belongs to (for the client switcher). */
+/** The orgs a signed-in user is an active member of (for the client switcher). Suspended memberships hold no role. */
 export function membershipsForUser(userId: string, client: PrismaClient = defaultClient) {
-  return client.membership.findMany({ where: { userId }, include: { org: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } });
+  return client.membership.findMany({ where: { userId, status: "active" }, include: { org: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } });
+}
+
+/** Every membership a user holds, suspended ones included, with each org's level (GET /api/me reports them all). */
+export function allMembershipsForUser(userId: string, client: PrismaClient = defaultClient) {
+  return client.membership.findMany({ where: { userId }, include: { org: { select: { id: true, name: true, level: true } } }, orderBy: { createdAt: "asc" } });
 }
 
 /** Background jobs (expiry sweeper, hourly checkpoints) walk every org. */
@@ -32,7 +37,8 @@ export function dueWebhookDeliveries(now: Date, client: PrismaClient = defaultCl
   return client.webhookDelivery.findMany({ where: { status: "pending", nextAttemptAt: { lte: now } }, select: { id: true, orgId: true }, orderBy: { nextAttemptAt: "asc" }, take });
 }
 
-export function createOrgRow(data: { name: string; publicKey: string; privateKeyEnc: string; notifyEmail?: string }, client: PrismaClient = defaultClient) {
+/** `id` is only passed by the seed, which gives the console's demo organisations their fixed ids (org_demo …). */
+export function createOrgRow(data: { id?: string; name: string; publicKey: string; privateKeyEnc: string; notifyEmail?: string }, client: PrismaClient = defaultClient) {
   return client.org.create({ data });
 }
 
