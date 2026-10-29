@@ -69,8 +69,6 @@ export function makeDeps(env: GateEnv, log: FastifyBaseLogger, overrides: Partia
   const self: Deps = {
     env,
     db,
-    mailer: createMailer(env),
-    db: defaultPrisma,
     mailer: createMailer(env, egress),
     egress,
     live,

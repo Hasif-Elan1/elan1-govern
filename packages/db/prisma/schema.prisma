@@ -73,9 +73,9 @@ model Membership {
   org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
   role      Role
   createdAt DateTime @default(now())
+
   // identity: a suspended member keeps the row (role and history) but holds no role until reinstated
   status    MembershipStatus @default(active)
-
   @@unique([userId, orgId])
   @@index([orgId])
 }
@@ -94,13 +94,11 @@ model Org {
   regions       String[]     @default([]) // where the org operates: india | eu | us | uk | other
   replayStore   Boolean      @default(true) // keep 30 days of encrypted call arguments for "Test on past actions"
   behaviourSettings Json? // unusual-behaviour thresholds, merged over the defaults in @gate/core (behaviour.ts)
-  // ── tsa ── assurance level: l1 | l2 | l3 | sovereign; receipts are timestamped in Merkle batches from l2.
-  // (Another scope may add this column too; keep one copy on merge.)
-  level         String       @default("l1")
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
-  // identity: assurance level l1 | l2 | l3 | sovereign. Every change of level is a receipt (org.level_set).
+  // Assurance level l1 | l2 | l3 | sovereign. Every change of level is a receipt (org.level_set); from l2 receipts are
+  // timestamped in Merkle batches.
   level         String       @default("l1")
 }
 
@@ -601,7 +599,6 @@ model Incident {
 }
 
 // ── identity ──
-
 enum MembershipStatus {
   active
   suspended
@@ -618,8 +615,9 @@ model PasswordReset {
   createdAt DateTime  @default(now())
 
   @@index([userId])
-// ── custody ──
+}
 
+// ── custody ──
 // The software HSM's key store (apps/gate/src/soft-hsm.ts). Not tenant data: no org column, and
 // only the HSM module reads it. Each private key is AES-256-GCM encrypted under a key-encryption key
 // derived from GATE_MASTER_KEY, with an AAD binding the handle, org and key id, so a row moved to
@@ -675,8 +673,9 @@ model KeySuccessor {
 
   @@unique([orgId, kid])
   @@index([orgId, activatedAt])
-// ── tsa ──
+}
 
+// ── tsa ──
 // A local RFC 3161 timestamp authority: its ECDSA P-256 key and self-signed certificate, one row per
 // authority id ("local-a", "local-b"). Platform data, not tenant data; the key is wrapped by the KeyProvider.
 model TsaKey {
@@ -702,9 +701,10 @@ model AnchorBatch {
   createdAt  DateTime @default(now())
 
   @@index([orgId, toSeq])
+}
+
 // ── saml ──
 // SAML 2.0 single sign-on and SCIM 2.0 provisioning (DECISIONS.md, SAML and SCIM).
-
 // One SAML identity provider per org. The org's verified domains are the union of these and
 // the OIDC connection's, so one DNS TXT proof counts for both.
 model SamlConnection {
@@ -765,8 +765,9 @@ model ScimUser {
 
   @@unique([orgId, userId])
   @@unique([orgId, userName])
-// ── sovereign ──
+}
 
+// ── sovereign ──
 // One organisation's additions to the deployment's egress allow-list (GATE_PROFILE=sovereign).
 // Exact internal hosts only: no wildcards, no public names (see packages/db/src/egress.ts).
 model EgressRule {
@@ -824,12 +825,13 @@ model UpdateRecord {
   rollbackReason  String?
 
   @@index([status])
+}
+
 // ── billing ──
 // An internal ledger: meter, GST invoices, discounts, disputes and credit notes. No payment is collected.
 // Money is integer paise (BigInt), never a float; allowance is tenths of an action. The arithmetic is
 // @gate/core billing.ts. An issued or void invoice and every credit note are immutable: a trigger in the
 // billing_ledger migration refuses changes, so a correction is always a credit note.
-
 // One per organisation: the plan billed, the buyer printed on invoices, and the ₹0 pilot.
 model BillingAccount {
   id               String    @id @default(cuid())

@@ -1,7 +1,8 @@
-import { hashCanonical, KeyRing, omit, signText, type KeyInput } from "@gate/core";
-import { forOrg } from "@gate/db";
+import { hashCanonical, KeyRing, omit, type KeyInput } from "@gate/core";
+import { forOrg, signWithKey } from "@gate/db";
 import { adminEvent } from "./admin";
 import { orgKey, type Deps } from "./deps";
+import { activeChainKey } from "./keys";
 
 // Signed statements a sovereign deployment hands to Elan1 on media (nothing is sent): the usage
 // counts for a period, or where the chain stands. Signed with the organisation's own key, the
@@ -79,7 +80,10 @@ export async function signedStatement(deps: Deps, orgId: string, kind: Statement
   }
   const body: Omit<SignedStatement, "sig"> = { format: STATEMENT_FORMAT, kind, org: orgId, orgName: key.name, issuedAt: now.toISOString(), head, ...extra, kid: key.kid };
   const digest = hashCanonical(body);
-  const statement: SignedStatement = { ...body, sig: signText(key.privateKeyPem, digest) };
+  // Signed through the key's provider, so a key held inside an HSM signs without leaving it.
+  const chainKey = await activeChainKey(deps, orgId);
+  if (chainKey.kid !== key.kid) throw new Error("the signing key changed while the statement was being made; try again");
+  const statement: SignedStatement = { ...body, sig: await signWithKey(chainKey, digest) };
   // Written after signing, so the statement names the chain as it stood when it was made.
   await adminEvent(deps, orgId, opts.actor ?? SYSTEM_ACTOR, "statement.signed", { kind, digest: digest.slice(7, 23), head_seq: head?.seq ?? 0, ...(extra.period ? { from: extra.period.from, to: extra.period.to } : {}) });
   return statement;

@@ -167,6 +167,11 @@ export async function activePublicKey(deps: Deps, orgId: string): Promise<{ kid:
   return { kid: row.kid, publicKeyPem: row.publicKey };
 }
 
+/** The org's current key as a signer, for signatures made outside a chain write (signed statements). */
+export async function activeChainKey(deps: Deps, orgId: string): Promise<ChainKey> {
+  return chainKeyFor(deps, orgId, await activeRow(orgId, forOrg(orgId, deps.db) as unknown as KeyReader));
+}
+
 /** A key source for chain writes: resolved under the chain lock, so a rotation is never raced. */
 export function signer(deps: Deps, orgId: string): KeySource {
   return async (tx) => chainKeyFor(deps, orgId, await activeRow(orgId, tx));

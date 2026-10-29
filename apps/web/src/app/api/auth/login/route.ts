@@ -34,7 +34,6 @@ export const POST = route({ auth: "public", body: Body, limit: { name: "login", 
     const names = ms.map((m) => m.org.name).join(", ");
     throw new HttpError(403, `Your access to ${names} is suspended, so you cannot sign in. Your role and history are kept. Ask an owner or admin there to reinstate you.`, { suspended: true });
   }
-  await startSession(r.userId);
   if (saml.kind === "break_glass") await recordBreakGlass(saml.orgId, body.email);
   await startSession(r.userId, saml.kind === "break_glass" ? saml.orgId : undefined);
   return { next: safeNext(body.next) };

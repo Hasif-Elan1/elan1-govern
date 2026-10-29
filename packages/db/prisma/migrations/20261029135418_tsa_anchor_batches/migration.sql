@@ -1,5 +1,4 @@
--- AlterTable
-ALTER TABLE "Org" ADD COLUMN     "level" TEXT NOT NULL DEFAULT 'l1';
+-- Org.level is added by the identity migration (20261029135319).
 
 -- CreateTable
 CREATE TABLE "TsaKey" (
