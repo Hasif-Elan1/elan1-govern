@@ -104,15 +104,16 @@ export function MaintenanceNotice({ now }: { now: number }) {
   const user = useUser();
   const orgId = useOrgId();
   const level = useOrgLevel();
-  useSyncExternalStore(subscribeMaintenance, () => `${activeMaintenance()?.id ?? ''}:${nextMaintenance()?.from ?? ''}`);
+  useSyncExternalStore(subscribeMaintenance, () => `${activeMaintenance(orgId)?.id ?? ''}:${nextMaintenance(orgId)?.from ?? ''}`);
   // Elan1's hosted maintenance windows never reach a Sovereign deployment: it runs on the bank's own cluster and
   // applies its own update bundles (Agents › Deployment), and Elan1's public status page does not list it
   if (level === 'sovereign' || isSovereign(orgId)) return null;
-  const next = nextMaintenance(now);
+  const next = nextMaintenance(orgId, now);
   if (!next || new Date(next.from).getTime() - now > 7 * DAY) return null;
   const start = () => {
     try {
-      const w = startMaintenanceNow({ userId: user?.id, orgId });
+      if (!user) throw new Error('Sign in as an owner to start a maintenance window early.');
+      const w = startMaintenanceNow(orgId, user.id);
       toast.info('Maintenance window started', `The console closes for everyone while it is open. Agents keep being governed.${w.startedBy?.seq !== undefined ? ` Recorded as receipt #${w.startedBy.seq}.` : ''}`);
       nav(`/maintenance?next=${encodeURIComponent(window.location.pathname)}`);
     } catch (e) {

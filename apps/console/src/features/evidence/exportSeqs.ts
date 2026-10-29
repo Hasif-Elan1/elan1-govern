@@ -1,30 +1,16 @@
 /**
- * Which `evidence.exported` receipt records each export. New exports remember the seq the moment they are
- * written (kept per organisation in this browser); older and seeded exports are matched to the receipt
- * written by the same person closest in time. An export whose range ends before the chain window this
+ * Which `evidence.exported` receipt records each export. An export records its receipt's seq on itself when it is
+ * written (mock/evidence.ts, `seq` on the export in the organisation's record); older and seeded exports are
+ * matched to the receipt written by the same person closest in time, and the match is kept in memory only (it is
+ * worked out again from the chain after a reload). An export whose range ends before the chain window this
  * console holds has no receipt here, and says so.
  */
 import { db } from '@/api';
 
 export interface ExportRow { id: string; ts: string; by: string; firstSeq: number; lastSeq: number; receipts: number; checkpoints: number; sizeKb: number; format?: string; profileId?: string }
 
-const key = (orgId: string) => `eg:evidence:export-seq:${orgId}`;
-const memory = new Map<string, Record<string, number>>();
-
-function load(orgId: string): Record<string, number> {
-  let m = memory.get(orgId);
-  if (m) return m;
-  m = {};
-  try { const raw = localStorage.getItem(key(orgId)); if (raw) m = JSON.parse(raw) as Record<string, number>; } catch { /* storage unavailable */ }
-  memory.set(orgId, m);
-  return m;
-}
-
-export function rememberExportSeq(orgId: string, exportId: string, seq: number) {
-  const m = { ...load(orgId), [exportId]: seq };
-  memory.set(orgId, m);
-  try { localStorage.setItem(key(orgId), JSON.stringify(m)); } catch { /* fine */ }
-}
+/** Matches worked out from the chain, per organisation (a cache: never saved). */
+const matched = new Map<string, Record<string, number>>();
 
 /** The evidence.exported receipt a person wrote at or after `sinceIso` (newest match). */
 export function findExportReceipt(orgId: string, userId: string, sinceIso: string): number | undefined {
@@ -42,7 +28,8 @@ export type ExportSeq = { seq: number } | { beforeWindow: true } | { missing: tr
 
 export function exportReceiptSeq(orgId: string, row: ExportRow): ExportSeq {
   const d = db.getDB(orgId);
-  const remembered = load(orgId)[row.id];
+  const own = d.exports.find((e) => e.id === row.id)?.seq;
+  const remembered = own ?? matched.get(orgId)?.[row.id];
   if (remembered !== undefined && d.receipts.some((r) => r.seq === remembered && r.action === 'evidence.exported')) return { seq: remembered };
   const t = new Date(row.ts).getTime();
   const first = d.receipts[0];
@@ -54,7 +41,7 @@ export function exportReceiptSeq(orgId: string, row: ExportRow): ExportSeq {
     const diff = Math.abs(new Date(r.ts).getTime() - t);
     if (diff < bestDiff) { bestDiff = diff; best = r.seq; }
   }
-  if (best !== undefined) { rememberExportSeq(orgId, row.id, best); return { seq: best }; }
+  if (best !== undefined) { matched.set(orgId, { ...matched.get(orgId), [row.id]: best }); return { seq: best }; }
   // a range that ends before the first receipt held here was exported from records outside this window
   if (first && row.lastSeq < first.seq) return { beforeWindow: true };
   return { missing: true };

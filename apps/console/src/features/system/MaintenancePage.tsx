@@ -8,7 +8,7 @@ import { Banner, Button, Disc, toast } from '@/components/ui';
 import { safeNext } from '@/features/auth/safeNext';
 import { StatusFrame } from './StatusFrame';
 import { activeMaintenance, canRunMaintenanceDemo, endMaintenance, nextMaintenance, subscribeMaintenance, type MaintenanceWindow } from '@/mock/opsMaintenance';
-import { useOrgId, useOrgLevel, useUser } from '@/store/session';
+import { useOrgId, useOrgLevel, useSession, useUser } from '@/store/session';
 import { atLeast } from '@/lib/levels';
 import { userName } from '@/mock/users';
 
@@ -20,6 +20,9 @@ function maintenanceOf(v: StatusView) {
   const affected = v.components.filter((c) => c.status === 'maintenance').map((c) => c.name);
   return { inMaintenance: consoleC?.status === 'maintenance', status: consoleC?.status ?? 'operational', last, affected };
 }
+
+/** The organisation open now (read when the timer fires, not when the effect was set up). */
+const orgIdNow = () => useSession.getState().orgId;
 
 /** Planned maintenance: the console is down, the guard is not. "Check again" re-reads the status and returns to the console when it is back. */
 export default function MaintenancePage() {
@@ -52,18 +55,18 @@ export default function MaintenancePage() {
 
   useEffect(() => { document.title = 'Maintenance · Elan1 Govern'; void check(true); }, []);
   // the planned window itself: when it ends, re-read the status
-  const [win, setWin] = useState<MaintenanceWindow | undefined>(() => activeMaintenance() ?? nextMaintenance());
+  const [win, setWin] = useState<MaintenanceWindow | undefined>(() => activeMaintenance(orgIdNow()) ?? nextMaintenance(orgIdNow()));
   useEffect(() => {
-    const read = () => { setWin(activeMaintenance() ?? nextMaintenance()); void check(true); };
+    const read = () => { setWin(activeMaintenance(orgIdNow()) ?? nextMaintenance(orgIdNow())); void check(true); };
     const off = subscribeMaintenance(read);
-    const t = window.setInterval(() => { if (!activeMaintenance()) read(); }, 15_000);
+    const t = window.setInterval(() => { if (!activeMaintenance(orgIdNow())) read(); }, 15_000);
     return () => { off(); window.clearInterval(t); };
   }, []);
   const open = !!win && !win.endedAt && new Date(win.from).getTime() <= Date.now() && new Date(win.to).getTime() > Date.now();
   // ending a demonstration window early: a signed-in owner only, recorded on their organisation's chain
   const user = useUser();
   const orgId = useOrgId();
-  const canEnd = canRunMaintenanceDemo({ userId: user?.id, orgId });
+  const canEnd = canRunMaintenanceDemo(orgId, user?.id);
   // the wording follows the signed-in organisation's level: L1 publishes and seals, L2 and above sign; Sovereign
   // approvers have no chat buttons. Signed out, the page speaks neutrally.
   const level = useOrgLevel();
@@ -71,7 +74,8 @@ export default function MaintenancePage() {
   const sovereign = !!user && level === 'sovereign';
   const endNow = () => {
     try {
-      const w = endMaintenance({ userId: user?.id, orgId });
+      if (!user) throw new Error('Sign in as an owner to end the demonstration window.');
+      const w = endMaintenance(orgId, user.id);
       toast.ok('Maintenance window ended', `The console is available again.${w?.endedBy?.seq !== undefined ? ` Recorded as receipt #${w.endedBy.seq}.` : ''}`);
       void check();
     } catch (e) {

@@ -291,7 +291,7 @@ function decisionDetails(orgId: string, a: Approval, approve: boolean, userId: s
   if (approve && sameActorBlocks(orgId, a, userId)) throw new Error('You own the agent that proposed this, so you cannot also approve it. Send it to another approver.');
   const step = approve ? stepUpReason(orgId, a) : undefined;
   if (step) {
-    if (!hasStepUp(userId, a.id)) throw new Error(`Enter your password again to approve this. ${step}`);
+    if (!hasStepUp(orgId, a.id, userId)) throw new Error(`Enter your password again to approve this. ${step}`);
     out.step_up = 'password';
   }
   if (who.delegateFor) out.delegated_from = who.delegateFor;

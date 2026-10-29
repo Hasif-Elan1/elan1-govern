@@ -16,6 +16,7 @@ import type { Approval, LevelId, Receipt } from '@/types';
 import { append, approvalHooks, allowedApprovers, decideApproval, getDB, memberRole, touch, type OrgDB } from './db';
 import { DEMO_ACCOUNTS, approverGroupsFor, personFor, userById, userName } from './users';
 import { can } from '@/lib/permissions';
+import { requirePermission } from './guard';
 import { atLeast, levelOfOrg } from '@/lib/levels';
 
 const H = 3_600_000;
@@ -81,6 +82,8 @@ interface ApprovalsExt {
   seeded?: boolean;
   /** the delegation to a demo sign-in account, and one call decided under it (added after `seeded`; optional) */
   seededDelegate?: boolean;
+  /** fresh step-ups: person → approval → when their password was checked (added 29 Oct 2026; optional) */
+  stepUps?: Record<string, Record<string, string>>;
 }
 
 type ExtDB = OrgDB & { approvalsExt?: ApprovalsExt };
@@ -331,7 +334,8 @@ export function reverseApproval(orgId: string, approvalId: string, userId: strin
   const r = reversibility(orgId, a);
   if (!r.can) throw new Error(r.why ?? 'This call cannot be reversed.');
   if (reason.trim().length < 10) throw new Error('Say why it is being reversed, in at least a sentence. The reason is recorded.');
-  const governed = route === 'mcp';
+  // run through the connector only when the agent really is on the governed (MCP) route: its record decides, not the caller
+  const governed = (d.agents.find((g) => g.slug === a.agentSlug)?.route ?? route) === 'mcp';
   const ref = governed ? `${a.connector.split(' ')[0].toLowerCase()}:rev-${Math.floor(Math.random() * 900000 + 100000)}` : undefined;
   const rec = append(d, {
     kind: 'admin', actor: userId, action: 'approval.reversed', agent: a.agentSlug, tool: a.tool, ref_seq: a.resultSeq,
@@ -358,6 +362,7 @@ function requireAdmin(orgId: string, userId: string, what: string) {
 
 export function setSameActorMode(orgId: string, mode: SameActorMode, userId: string): Receipt {
   requireAdmin(orgId, userId, 'The same-person setting protects every approval.');
+  if (mode !== 'flag' && mode !== 'forbid') throw new Error('Choose flag or forbid.');
   const x = approvalsExt(orgId);
   const from = x.sameActor;
   x.sameActor = mode;
@@ -383,8 +388,11 @@ export function stepUpPolicy(orgId: string): StepUpPolicy {
 export function setStepUpPolicy(orgId: string, patch: Partial<StepUpPolicy>, userId: string): Receipt {
   requireAdmin(orgId, userId, 'Step-up protects high-value and irreversible approvals.');
   const x = approvalsExt(orgId);
-  if (patch.above !== undefined && !(patch.above >= 10000)) throw new Error('Choose an amount of at least ₹10,000.');
-  Object.assign(x.stepUp, patch);
+  if (patch.above !== undefined && !(typeof patch.above === 'number' && patch.above >= 10000)) throw new Error('Choose an amount of at least ₹10,000.');
+  if (patch.irreversible !== undefined && typeof patch.irreversible !== 'boolean') throw new Error('Say whether irreversible calls ask for the password again.');
+  // only the two settings, whatever else the caller sent
+  if (patch.above !== undefined) x.stepUp.above = patch.above;
+  if (patch.irreversible !== undefined) x.stepUp.irreversible = patch.irreversible;
   const r = append(getDB(orgId), { kind: 'admin', actor: userId, action: 'approval.step_up_policy', details: { above: x.stepUp.above, irreversible: x.stepUp.irreversible } });
   touch(orgId, 'approval');
   return clone(r);
@@ -398,17 +406,32 @@ export function stepUpReason(orgId: string, a: Pick<Approval, 'tool' | 'args' | 
   return undefined;
 }
 
-/** Fresh step-ups: person and approval → when the password was checked (memory only; a reload asks again). */
-const stepUps = new Map<string, number>();
+/**
+ * Fresh step-ups, on the organisation's record: person → approval → when the password was checked. One lasts five
+ * minutes; expired ones are dropped whenever another is marked. The screen marks it right after the password check
+ * (work.reauth); a step-up is only ever marked for the person acting, on an approval of this organisation that
+ * they may decide.
+ */
 const STEP_UP_MS = 5 * 60_000;
 
-export function markStepUp(userId: string, approvalId: string) {
-  stepUps.set(`${userId}:${approvalId}`, Date.now());
+export function markStepUp(orgId: string, approvalId: string, userId: string) {
+  requirePermission(orgId, userId, 'approvals.decide', 'Confirming your password for an approval', { anyTime: true });
+  const a = getDB(orgId).approvals.find((x) => x.id === approvalId);
+  if (!a) throw new Error('This approval does not exist in this organisation.');
+  const x = approvalsExt(orgId);
+  const now = Date.now();
+  const all = (x.stepUps ??= {});
+  for (const [u, m] of Object.entries(all)) {
+    for (const [id, at] of Object.entries(m)) if (now - new Date(at).getTime() >= STEP_UP_MS) delete m[id];
+    if (!Object.keys(m).length) delete all[u];
+  }
+  (all[userId] ??= {})[approvalId] = iso(now);
+  touch(orgId, 'approval');
 }
 
-export function hasStepUp(userId: string, approvalId: string): boolean {
-  const t = stepUps.get(`${userId}:${approvalId}`);
-  return !!t && Date.now() - t < STEP_UP_MS;
+export function hasStepUp(orgId: string, approvalId: string, userId: string): boolean {
+  const at = approvalsExt(orgId).stepUps?.[userId]?.[approvalId];
+  return !!at && Date.now() - new Date(at).getTime() < STEP_UP_MS;
 }
 
 /* ── Delegation ───────────────────────────────────────────── */
@@ -533,8 +556,16 @@ export function ruleDraftOf(orgId: string, approvalId: string) {
 }
 
 export function recordRuleDraft(orgId: string, approvalId: string, userId: string, info: { rulebook: string; version: number; rule: string }, agent?: string): Receipt {
+  requirePermission(orgId, userId, 'rulebooks.edit', 'Drafting a rule from an approval');
+  const d = getDB(orgId);
+  const a = d.approvals.find((x) => x.id === approvalId);
+  if (!a) throw new Error('This approval does not exist in this organisation.');
+  // the draft it names must exist: the rulebook of the approval's agent, at that draft version
+  const rb = d.rulebooks.find((b) => b.slug === info.rulebook);
+  if (!rb || !rb.versions.some((v) => v.version === info.version && v.status === 'draft')) throw new Error('There is no such draft to record.');
+  if (agent !== undefined && agent !== a.agentSlug) throw new Error('The approval belongs to another agent.');
   const x = approvalsExt(orgId);
-  const r = append(getDB(orgId), { kind: 'admin', actor: userId, action: 'approval.rule_drafted', agent, details: { approval: approvalId, rulebook: info.rulebook, draft_version: info.version, rule: info.rule } });
+  const r = append(d, { kind: 'admin', actor: userId, action: 'approval.rule_drafted', agent, details: { approval: approvalId, rulebook: info.rulebook, draft_version: info.version, rule: info.rule } });
   x.ruleDrafts[approvalId] = { by: userId, at: r.ts, ...info, seq: r.seq };
   touch(orgId, 'rulebook');
   return clone(r);

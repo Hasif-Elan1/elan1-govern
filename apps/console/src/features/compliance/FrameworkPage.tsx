@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Download, MapPin, Unlink, X, Eraser, Clock3, PackageCheck } from 'lucide-react';
-import { api, db } from '@/api';
+import { api } from '@/api';
+import * as consoleOps from '@/features/console/ops';
 import { useMutation, useNow, useQuery } from '@/hooks/useQuery';
 import { useCan, useOrgId, useOrgLevel, useUser } from '@/store/session';
 import type { Framework, Requirement } from '@/types';
@@ -107,8 +108,7 @@ export default function FrameworkPage() {
       'requirement,title,mapped_controls,status,evidence_count,latest_receipt',
       ...rows.map((r) => [r.id, r.title, r.controlIds.join(' '), REQ_STATUS_LABEL[r.status], r.evidence, r.example ?? ''].map(esc).join(','))];
     download(`${f.id}-coverage-DRAFT-${new Date().toISOString().slice(0, 10)}.csv`, lines.join('\n'), 'text/csv');
-    const r = db.logAdmin(orgId, user.id, 'compliance.report_exported', { format: 'csv', framework: f.short });
-    toast.ok(`${f.short} coverage downloaded`, `Marked “Draft — needs legal review” inside the file. Receipt #${r.seq}.`);
+    void consoleOps.recordComplianceExport(orgId, { format: 'csv', frameworkId: f.id }, user.id).then((r) => toast.ok(`${f.short} coverage downloaded`, `Marked “Draft — needs legal review” inside the file. Receipt #${r.seq}.`), (e: Error) => toast.bad(`${f.short} coverage downloaded, not recorded`, e.message));
   };
 
   const exportPdf = () => {
@@ -118,8 +118,7 @@ export default function FrameworkPage() {
       framework: { name: f.name, short: f.short, officialRef: f.officialRef, jurisdiction: f.jurisdiction }, covered: cov.covered, total: cov.total,
       rows: rows.map((r) => ({ id: r.id, title: r.title, controls: r.controlIds, status: REQ_STATUS_LABEL[r.status], evidence: r.evidence, example: r.example })),
     }));
-    const r = db.logAdmin(orgId, user.id, 'compliance.report_exported', { format: 'pdf', framework: f.short });
-    toast.ok(`${f.short} coverage downloaded as PDF`, `Marked “Draft — needs legal review” on every page. Receipt #${r.seq}.`);
+    void consoleOps.recordComplianceExport(orgId, { format: 'pdf', frameworkId: f.id }, user.id).then((r) => toast.ok(`${f.short} coverage downloaded as PDF`, `Marked “Draft — needs legal review” on every page. Receipt #${r.seq}.`), (e: Error) => toast.bad(`${f.short} coverage downloaded, not recorded`, e.message));
   };
 
   const cols: Column<Row>[] = [

@@ -1,6 +1,6 @@
 import { api, db } from '@/api';
 import { useQuery } from '@/hooks/useQuery';
-import { allowlist, ensurePackConnectors, syncCatalogue } from './ops';
+import { allowlist, ensureConnectorCatalogue } from './ops';
 
 /**
  * Where connectors run for this organisation: level, deployment (hosted or Sovereign), residency domain,
@@ -30,7 +30,6 @@ export function useConnectorEnv() {
 
 /** Load connectors, adding any installed pack's connector first and keeping the tool catalogue in step. */
 export async function loadConnectors(orgId: string) {
-  ensurePackConnectors(orgId);
-  syncCatalogue(orgId);
+  ensureConnectorCatalogue(orgId);
   return api.connectors(orgId);
 }

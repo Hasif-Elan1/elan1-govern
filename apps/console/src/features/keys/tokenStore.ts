@@ -119,6 +119,7 @@ export async function listTokens(orgId: string) {
  */
 export async function issueToken(orgId: string, input: { cls: TokenClass; label: string; expiresDays?: number }, userId: string) {
   await wait();
+  if (!TOKEN_CLASSES[input.cls]) throw new Error('There is no such token class.');
   requireOwnerOrAdmin(orgId, userId, `Issuing a ${TOKEN_CLASSES[input.cls].label.toLowerCase()}`);
   const label = input.label.trim();
   if (label.length < 3) throw new Error('Give the token a label of at least 3 characters: where it is used.');

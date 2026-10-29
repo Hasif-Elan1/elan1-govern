@@ -7,7 +7,7 @@ import type { AiSystem, Lifecycle } from '@/types';
 import { db } from '@/api';
 import { doorState, pause, clone, recordChange, type AiSystemExtra } from '@/features/records/ext';
 import { variantOf } from '@/features/assessments/templates';
-import { LIFECYCLE_META, LIFECYCLE_ORDER } from './governance';
+import { LIFECYCLE_LABEL, LIFECYCLE_ORDER } from './lifecycle';
 
 /** Owners and admins of the organisation only (their member record decides: suspended or removed people cannot). */
 function requireManager(orgId: string, userId: string) {
@@ -30,9 +30,14 @@ export function extraOf(orgId: string, id: string): AiSystemExtra | undefined {
   return doorState(orgId).aiExtra[id];
 }
 
-/** Store residency and personal-data details for a system without a receipt of its own (used right after a registration receipt). */
-export function setExtraQuietly(orgId: string, id: string, extra: Omit<AiSystemExtra, 'updatedAt'>) {
-  doorState(orgId).aiExtra[id] = { ...extra, updatedAt: new Date().toISOString() };
+/**
+ * Store residency and personal-data details for a system without a receipt of its own (used right after a
+ * registration receipt). Owners and admins, as for registering it.
+ */
+export function setExtraQuietly(orgId: string, id: string, extra: Omit<AiSystemExtra, 'updatedAt'>, userId: string) {
+  requireManager(orgId, userId);
+  if (!db.getDB(orgId).aiSystems.some((x) => x.id === id)) throw new Error('No such AI system.');
+  doorState(orgId).aiExtra[id] = { residency: String(extra.residency ?? ''), personalData: !!extra.personalData, principals: Array.isArray(extra.principals) ? extra.principals.map(String) : [], updatedAt: new Date().toISOString() };
   db.touch(orgId, 'inventory');
 }
 
@@ -68,7 +73,7 @@ export function nextStage(stage: Lifecycle): Lifecycle | undefined {
 
 /** Why a move is not allowed yet, or undefined. Approved and Live need an approved assessment. */
 export function lifecycleBlock(to: Lifecycle, hasApprovedAssessment: boolean): string | undefined {
-  if ((to === 'approved' || to === 'live') && !hasApprovedAssessment) return `${LIFECYCLE_META[to].label} needs an assessment a different person has approved.`;
+  if ((to === 'approved' || to === 'live') && !hasApprovedAssessment) return `${LIFECYCLE_LABEL[to]} needs an assessment a different person has approved.`;
   return undefined;
 }
 
@@ -83,7 +88,7 @@ export async function setLifecycle(orgId: string, id: string, to: Lifecycle, rea
   if (!s) throw new Error('No such AI system.');
   if (s.lifecycle === 'retired') throw new Error('This system is retired. Register it again to bring it back.');
   if (to !== 'retired' && LIFECYCLE_ORDER.indexOf(to) <= LIFECYCLE_ORDER.indexOf(s.lifecycle)) throw new Error('A lifecycle moves forward, one stage at a time; retire it instead.');
-  if (to !== 'retired' && to !== nextStage(s.lifecycle)) throw new Error(`The next stage is ${LIFECYCLE_META[nextStage(s.lifecycle)!].label}.`);
+  if (to !== 'retired' && to !== nextStage(s.lifecycle)) throw new Error(`The next stage is ${LIFECYCLE_LABEL[nextStage(s.lifecycle)!]}.`);
   const block = lifecycleBlock(to, hasApprovedRiskAssessment(orgId, id));
   if (block) throw new Error(block);
   if (to === 'retired' && reason.trim().length < 4) throw new Error('Say why it is retired.');

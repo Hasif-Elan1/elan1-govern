@@ -3,6 +3,7 @@ import type { IndustryPack, LevelId, PackId, Region, Role } from '@/types';
 import { db } from '@/api';
 import { ORGS } from '@/mock/users';
 import { createdOrg, registryOnboarding, saveRegistryOnboarding } from '@/features/auth/registry';
+import * as consoleOps from '@/features/console/ops';
 
 /**
  * Set-up progress, kept per organisation with the organisation itself (so another device or another admin of
@@ -78,12 +79,15 @@ export const HOSTED_IDPS = ['Okta', 'Microsoft Entra ID', 'Google Workspace', 'K
 export const SOVEREIGN_IDPS = ['Keycloak', 'Active Directory Federation Services', 'Other internal SAML provider'];
 export const idpsFor = (level: LevelId) => (level === 'sovereign' ? SOVEREIGN_IDPS : HOSTED_IDPS);
 
-/** Save it with the organisation; another device or admin of the same organisation opens the same step. */
-export function saveOnboarding(orgId: string, s: OnboardingState, userId?: string) {
-  const v = { ...s, updatedAt: new Date().toISOString(), updatedBy: userId };
-  if (createdOrg(orgId)) { saveRegistryOnboarding(orgId, v); return; }
-  (db.getDB(orgId) as WithOnboarding).onboarding = v;
-  db.touch(orgId, 'onboarding');
+/**
+ * Save it with the organisation; another device or admin of the same organisation opens the same step. The save is
+ * the operation consoleOps.saveOnboarding (owners and admins); a refused or failed autosave leaves the screen as it
+ * is, and the next change saves again.
+ */
+export function saveOnboarding(orgId: string, s: OnboardingState, userId?: string): Promise<unknown> {
+  if (createdOrg(orgId)) { saveRegistryOnboarding(orgId, { ...s, updatedAt: new Date().toISOString(), updatedBy: userId }); return Promise.resolve(); }
+  if (!userId) return Promise.resolve();
+  return consoleOps.saveOnboarding(orgId, s, userId).catch(() => undefined);
 }
 
 export function useOnboardingState(orgId: string, userId?: string) {

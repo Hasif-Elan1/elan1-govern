@@ -103,7 +103,7 @@ export async function dueDates(orgId: string, level: LevelId, horizonDays = 45):
   }
   // Elan1's hosted maintenance: a Sovereign deployment runs its own updates and is never in Elan1's windows
   // (mock/tenantNotices.ts sends it no maintenance either)
-  const mw = level === 'sovereign' || isSovereign(orgId) ? undefined : nextMaintenance();
+  const mw = level === 'sovereign' || isSovereign(orgId) ? undefined : nextMaintenance(orgId);
   if (mw && inWindow(mw.from)) out.push({ id: `mw_${mw.id}`, kind: 'maintenance', title: `Planned maintenance: ${mw.title}`, detail: mw.note, at: mw.from, to: '/status' });
 
   return out.sort((a, b) => a.at.localeCompare(b.at));

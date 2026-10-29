@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, FileJson, FileSpreadsheet, Info, MapPin, PackageCheck, PackagePlus, CircleCheck, CircleX, Hourglass } from 'lucide-react';
-import { api, db } from '@/api';
+import { api } from '@/api';
+import * as consoleOps from '@/features/console/ops';
 import { useQuery, useMutation } from '@/hooks/useQuery';
 import { useCan, useOrgId, useOrgLevel, useUser } from '@/store/session';
 import type { Framework, PackId } from '@/types';
@@ -91,8 +92,9 @@ export default function CompliancePage() {
     if (kind === 'json') download(`compliance-report-DRAFT-${stamp}.json`, JSON.stringify(report, null, 2), 'application/json');
     else if (kind === 'pdf') downloadPdf(`compliance-report-DRAFT-${stamp}.pdf`, complianceReportPdf(report));
     else download(`compliance-report-DRAFT-${stamp}.csv`, reportCsv(report), 'text/csv');
-    const r = db.logAdmin(orgId, user.id, 'compliance.report_exported', { format: kind, frameworks: enabled.length, level });
-    toast.ok('Compliance report downloaded', `Marked “Draft — needs legal review” inside the file. The export is receipt #${r.seq}.`);
+    void consoleOps.recordComplianceExport(orgId, { format: kind }, user.id).then(
+      (r) => toast.ok('Compliance report downloaded', `Marked “Draft — needs legal review” inside the file. The export is receipt #${r.seq}.`),
+      (e: Error) => toast.bad('Compliance report downloaded, not recorded', e.message));
   };
 
   const controlCols: Column<LiveControl>[] = [

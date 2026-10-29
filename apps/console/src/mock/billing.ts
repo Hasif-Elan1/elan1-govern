@@ -15,7 +15,7 @@
 import type { LevelId, Receipt } from '@/types';
 import { LIST_PRICE, listPriceFactor } from '@/lib/pricing';
 import { levelOfOrg } from '@/lib/levels';
-import { append, getDB, logAdmin, memberRole, type OrgDB } from './db';
+import { append, getDB, logAdmin, memberRole, touch, type OrgDB } from './db';
 import { isPlatformRefusal } from '@/lib/platformRefusal';
 import { packById } from '@/lib/packs';
 import { buildInvoices, chainMeter, type BillingContext } from '@/features/billing/chainMeter';
@@ -77,6 +77,12 @@ function requireStaff(staffId: string, roles: Elan1Role[], what: string): Elan1P
   if (!p) throw new Error(`Only elan1 can ${what}. A customer’s own people cannot.`);
   if (!roles.includes(p.role)) throw new Error(`An elan1 ${ELAN1_ROLE_LABEL[p.role]} cannot ${what}.`);
   return p;
+}
+
+/** After a change: tell the screens (and save the organisation), and hand back its receipt. */
+function saved<T>(orgId: string, r: T): T {
+  touch(orgId, 'billing');
+  return r;
 }
 
 /* ── Discounts ────────────────────────────────────────────── */
@@ -176,20 +182,22 @@ export function checkDiscount(input: { pct: number; from: string; until: string;
 /**
  * elan1's side: offer a discount. The person's authority comes from elan1's own staff list, never from a choice the
  * customer makes: a lead is held to 20% for 12 months; a founder may go further. Written into the customer's chain.
+ * `by` is who is acting: the server's operation door fills it in with the signed-in user, who is never elan1 staff,
+ * so no member can write elan1's side through it (the seed and the demo desk below call it here with staff ids).
  */
-export function offerDiscount(orgId: string, staffId: string, input: { pct: number; from: string; until: string; reference: string; request?: number; validDays?: number; at?: string; seeded?: number; recordedBy?: string }) {
+export function offerDiscount(orgId: string, by: string, input: { pct: number; from: string; until: string; reference: string; request?: number; validDays?: number; at?: string; seeded?: number; recordedBy?: string }) {
   // the billing desk answers a request within a lead's cap, as a lead would; only a founder goes beyond it
-  const p = requireStaff(staffId, ['lead', 'founder', 'billing'], 'offer a discount');
+  const p = requireStaff(by, ['lead', 'founder', 'billing'], 'offer a discount');
   const err = checkDiscount({ ...input, agreedBy: p.role === 'founder' ? 'founder' : 'lead' });
   if (err) throw new Error(err);
   const d = getDB(orgId);
   const at = input.at ?? new Date().toISOString();
-  return append(d, { kind: 'admin', actor: p.id, action: 'billing.discount_offered', details: {
+  return saved(orgId, append(d, { kind: 'admin', actor: p.id, action: 'billing.discount_offered', details: {
     pct: input.pct, from: input.from, until: input.until, reference: input.reference || '—', offered_by: p.name, offered_by_role: p.role,
     valid_until: dayOfT(new Date(at).getTime() + (input.validDays ?? 30) * D), applies_to: 'governed actions beyond the allowance',
     ...(input.request !== undefined ? { request: input.request } : {}), ...(input.at ? { at: input.at } : {}), ...(input.seeded ? { billing_seed: input.seeded } : {}),
     ...(input.recordedBy ? { recorded_by: input.recordedBy, demo_desk: true } : {}),
-  } });
+  } }));
 }
 
 /** The owner accepts an offer elan1 made. It applies from the later of its start and today. */
@@ -203,14 +211,14 @@ export function acceptDiscount(orgId: string, userId: string, offerSeq: number) 
   const from = o.from > today ? o.from : today;
   const open = discountsOf(d).filter((x) => discountState(x) !== 'ended');
   if (open.some((x) => !(o.until < x.from || from > x.until))) throw new Error('Another discount covers some of these dates. End it first.');
-  return logAdmin(orgId, userId, 'billing.discount_accepted', { offer: offerSeq, pct: o.pct, until: o.until, offered_by: o.agreedName });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.discount_accepted', { offer: offerSeq, pct: o.pct, until: o.until, offered_by: o.agreedName }));
 }
 
 export function declineDiscount(orgId: string, userId: string, offerSeq: number, reason: string) {
   requireOwner(orgId, userId, 'decline a discount');
   const o = offersOf(getDB(orgId)).find((x) => x.seq === offerSeq);
   if (!o || o.status !== 'offered') throw new Error('There is no open offer to decline.');
-  return logAdmin(orgId, userId, 'billing.discount_declined', { offer: offerSeq, reason: reason.trim() || 'Declined' });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.discount_declined', { offer: offerSeq, reason: reason.trim() || 'Declined' }));
 }
 
 /** An owner may end an accepted discount early (it only ever raises what the customer pays). */
@@ -219,7 +227,7 @@ export function endDiscount(orgId: string, userId: string, seq: number, reason: 
   const ds = discountsOf(getDB(orgId)).find((x) => x.seq === seq);
   if (!ds) throw new Error('No such discount.');
   if (discountState(ds) === 'ended') throw new Error('This discount has already ended.');
-  return logAdmin(orgId, userId, 'billing.discount_ended', { discount: seq, reason: reason.trim() || 'Ended early' });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.discount_ended', { discount: seq, reason: reason.trim() || 'Ended early' }));
 }
 
 export interface DiscountRequest { seq: number; pct: number; months: number; reason: string; by: string; at: string; status: 'with_elan1' | 'offered' | 'withdrawn' | 'declined'; offerSeq?: number; closedSeq?: number; lead: Elan1Person; needs: 'lead' | 'founder'; declinedReason?: string; declinedBy?: string }
@@ -245,14 +253,14 @@ export function requestDiscount(orgId: string, userId: string, input: { pct: num
   const d = getDB(orgId);
   if (discountRequestsOf(d).some((q) => q.status === 'with_elan1')) throw new Error('A request is already with elan1. Withdraw it first to ask again.');
   const lead = accountLeadOf(orgId);
-  return logAdmin(orgId, userId, 'billing.discount_requested', { pct: input.pct, months: input.months, reason: input.reason.trim(), to: lead.name, needs: input.pct > DISCOUNT_CAP.leadPct || input.months > DISCOUNT_CAP.leadMonths ? 'founder' : 'lead' });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.discount_requested', { pct: input.pct, months: input.months, reason: input.reason.trim(), to: lead.name, needs: input.pct > DISCOUNT_CAP.leadPct || input.months > DISCOUNT_CAP.leadMonths ? 'founder' : 'lead' }));
 }
 
 export function withdrawDiscountRequest(orgId: string, userId: string, requestSeq: number) {
   requireOwner(orgId, userId, 'withdraw a discount request');
   const q = discountRequestsOf(getDB(orgId)).find((x) => x.seq === requestSeq);
   if (!q || q.status !== 'with_elan1') throw new Error('There is no open request to withdraw.');
-  return logAdmin(orgId, userId, 'billing.discount_request_withdrawn', { request: requestSeq });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.discount_request_withdrawn', { request: requestSeq }));
 }
 
 /* ── Dispute settlements ──────────────────────────────────── */
@@ -297,8 +305,9 @@ export function disputedLineAmount(d: OrgDB, invoice: string, line: string): num
   return l ? Math.round(l.amount * 100) / 100 : undefined;
 }
 
-export function settleDispute(orgId: string, staffId: string, input: { dispute: number; invoice: string; line: string; outcome: SettlementOutcome; credit: number; note: string; approvedBy?: string; seeded?: number; recordedBy?: string }) {
-  const p = requireStaff(staffId, ['billing', 'founder'], 'decide a dispute');
+/** `by`: who is acting, elan1 staff only (see offerDiscount: the server fills it in with the signed-in user). */
+export function settleDispute(orgId: string, by: string, input: { dispute: number; invoice: string; line: string; outcome: SettlementOutcome; credit: number; note: string; approvedBy?: string; seeded?: number; recordedBy?: string }) {
+  const p = requireStaff(by, ['billing', 'founder'], 'decide a dispute');
   const d = getDB(orgId);
   const opened = d.receipts.find((r) => r.seq === input.dispute && r.action === 'billing.dispute_opened');
   if (!opened) throw new Error('No such dispute.');
@@ -322,12 +331,12 @@ export function settleDispute(orgId: string, staffId: string, input: { dispute: 
     if (!f || f.role !== 'founder') throw new Error(`A credit above ₹${SETTLEMENT_FOUNDER_ABOVE.toLocaleString('en-IN')} needs a founder’s approval as well.`);
     approvedBy = f.id;
   }
-  return append(d, { kind: 'admin', actor: p.id, action: 'billing.dispute_settled', details: {
+  return saved(orgId, append(d, { kind: 'admin', actor: p.id, action: 'billing.dispute_settled', details: {
     dispute: input.dispute, invoice, line: lineId, outcome: input.outcome, credit_amount: credit, ...(lineAmount !== undefined ? { line_amount: lineAmount } : {}),
     ...(credit > 0 ? { credit_note: creditNoteNumber(invoice, input.dispute) } : {}),
     note: input.note.trim(), decided_by: p.name, decided_by_role: p.role, ...(approvedBy ? { approved_by: approvedBy } : {}), ...(input.seeded ? { billing_seed: input.seeded } : {}),
     ...(input.recordedBy ? { recorded_by: input.recordedBy, demo_desk: true } : {}),
-  } });
+  } }));
 }
 
 /* ── Disputes: opened and withdrawn by an owner ───────────── */
@@ -351,7 +360,7 @@ export function openDispute(orgId: string, userId: string, input: { invoice: str
   if (input.fromSeq !== undefined && input.toSeq !== undefined && !(Number.isInteger(input.fromSeq) && Number.isInteger(input.toSeq) && input.fromSeq <= input.toSeq)) throw new Error('Name a range of receipts, the first no later than the last.');
   const d = getDB(orgId);
   if (openDisputesOf(d).some((x) => x.invoice === input.invoice && x.line === input.line)) throw new Error('This line is already held in dispute.');
-  return logAdmin(orgId, userId, 'billing.dispute_opened', { invoice: input.invoice, line: input.line, reason, ...(input.fromSeq !== undefined && input.toSeq !== undefined ? { from_seq: input.fromSeq, to_seq: input.toSeq } : {}) });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.dispute_opened', { invoice: input.invoice, line: input.line, reason, ...(input.fromSeq !== undefined && input.toSeq !== undefined ? { from_seq: input.fromSeq, to_seq: input.toSeq } : {}) }));
 }
 
 /** An owner withdraws an open dispute: the line is payable again. */
@@ -359,7 +368,7 @@ export function withdrawDispute(orgId: string, userId: string, disputeSeq: numbe
   requireOwner(orgId, userId, 'withdraw a dispute');
   const q = openDisputesOf(getDB(orgId)).find((x) => x.seq === disputeSeq);
   if (!q) throw new Error('There is no open dispute to withdraw. elan1 may already have decided it.');
-  return logAdmin(orgId, userId, 'billing.dispute_withdrawn', { dispute: disputeSeq, invoice: q.invoice, line: q.line });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.dispute_withdrawn', { dispute: disputeSeq, invoice: q.invoice, line: q.line }));
 }
 
 /* ── Demo: elan1's billing desk ───────────────────────────────
@@ -370,42 +379,42 @@ export function withdrawDispute(orgId: string, userId: string, disputeSeq: numbe
 
 export const DESK_DEFAULT = BILLING_DESK;
 
-export function deskSettleDispute(orgId: string, ownerId: string, input: { dispute: number; outcome: SettlementOutcome; credit: number; note: string; decidedBy?: string; approvedBy?: string }) {
-  requireOwner(orgId, ownerId, 'record elan1’s decision on a dispute');
+export function deskSettleDispute(orgId: string, userId: string, input: { dispute: number; outcome: SettlementOutcome; credit: number; note: string; decidedBy?: string; approvedBy?: string }) {
+  requireOwner(orgId, userId, 'record elan1’s decision on a dispute');
   const q = openDisputesOf(getDB(orgId)).find((x) => x.seq === input.dispute);
   if (!q) throw new Error('There is no open dispute with that number.');
   // the line's amount is read from the invoice in settleDispute; nothing the screen sends sets or raises it
-  return settleDispute(orgId, input.decidedBy ?? DESK_DEFAULT, { dispute: q.seq, invoice: q.invoice, line: q.line, outcome: input.outcome, credit: input.credit, note: input.note, approvedBy: input.approvedBy, recordedBy: ownerId });
+  return settleDispute(orgId, input.decidedBy ?? DESK_DEFAULT, { dispute: q.seq, invoice: q.invoice, line: q.line, outcome: input.outcome, credit: input.credit, note: input.note, approvedBy: input.approvedBy, recordedBy: userId });
 }
 
-export function deskDecideDiscountRequest(orgId: string, ownerId: string, input: { request: number; grant: boolean; pct?: number; from?: string; until?: string; reason?: string; decidedBy?: string }) {
-  requireOwner(orgId, ownerId, 'record elan1’s decision on a discount request');
+export function deskDecideDiscountRequest(orgId: string, userId: string, input: { request: number; grant: boolean; pct?: number; from?: string; until?: string; reason?: string; decidedBy?: string }) {
+  requireOwner(orgId, userId, 'record elan1’s decision on a discount request');
   const d = getDB(orgId);
   const q = discountRequestsOf(d).find((x) => x.seq === input.request);
   if (!q || q.status !== 'with_elan1') throw new Error('There is no open discount request with that number.');
   const staff = input.decidedBy ?? DESK_DEFAULT;
   if (input.grant) {
     // granted: elan1 answers with an offer on the requested terms (or its own); an owner then accepts it under Discounts
-    return offerDiscount(orgId, staff, { pct: Number(input.pct), from: String(input.from ?? ''), until: String(input.until ?? ''), reference: `REQ-${q.seq}`, request: q.seq, recordedBy: ownerId });
+    return offerDiscount(orgId, staff, { pct: Number(input.pct), from: String(input.from ?? ''), until: String(input.until ?? ''), reference: `REQ-${q.seq}`, request: q.seq, recordedBy: userId });
   }
   const p = requireStaff(staff, ['lead', 'founder', 'billing'], 'decline a discount request');
   const reason = (input.reason ?? '').trim();
   if (reason.length < 10) throw new Error('Give elan1’s reason in at least 10 characters.');
-  return append(d, { kind: 'admin', actor: p.id, action: 'billing.discount_request_declined', details: { request: q.seq, reason, decided_by: p.name, decided_by_role: p.role, recorded_by: ownerId, demo_desk: true } });
+  return saved(orgId, append(d, { kind: 'admin', actor: p.id, action: 'billing.discount_request_declined', details: { request: q.seq, reason, decided_by: p.name, decided_by_role: p.role, recorded_by: userId, demo_desk: true } }));
 }
 
-export function deskDecideReopen(orgId: string, ownerId: string, input: { approve: boolean; note: string; decidedBy?: string }) {
-  requireOwner(orgId, ownerId, 'record elan1’s decision on a request to reopen');
+export function deskDecideReopen(orgId: string, userId: string, input: { approve: boolean; note: string; decidedBy?: string }) {
+  requireOwner(orgId, userId, 'record elan1’s decision on a request to reopen');
   const d = getDB(orgId);
   const p0 = pilotOf(d);
   if (!p0 || p0.status !== 'closed' || !p0.reopenRequestedSeq) throw new Error('There is no open request to reopen this organisation.');
   const p = requireStaff(input.decidedBy ?? DESK_DEFAULT, ['lead', 'founder', 'billing'], 'decide a request to reopen');
   const note = input.note.trim();
   if (note.length < 10) throw new Error('Give elan1’s reason in at least 10 characters.');
-  const r = append(d, { kind: 'admin', actor: p.id, action: 'billing.reopen_decided', details: { request: p0.reopenRequestedSeq, outcome: input.approve ? 'approved' : 'declined', note, decided_by: p.name, decided_by_role: p.role, recorded_by: ownerId, demo_desk: true } });
+  const r = append(d, { kind: 'admin', actor: p.id, action: 'billing.reopen_decided', details: { request: p0.reopenRequestedSeq, outcome: input.approve ? 'approved' : 'declined', note, decided_by: p.name, decided_by_role: p.role, recorded_by: userId, demo_desk: true } });
   // approved: a new order on the paid Guarded plan, billed from today; writes resume
   if (input.approve) append(d, { kind: 'admin', actor: p.id, action: 'billing.pilot_converted', details: { plan: 'l1', via: 'reopen', used: p0.used, cap: p0.cap, refused_at_stop: p0.refusedAtStop, billed_from: new Date().toISOString(), reopen_decision: r.seq } });
-  return r;
+  return saved(orgId, r);
 }
 
 /* ── Reconciliation runs per period ───────────────────────── */
@@ -449,10 +458,11 @@ function chainCount(d: OrgDB, period: string) {
 export function rerunReconciliation(orgId: string, userId: string, period: string) {
   const role = memberRole(orgId, userId);
   if (role !== 'owner' && role !== 'admin') throw new Error('Owners and admins run the reconciliation.');
+  if (typeof period !== 'string' || !/^\d{4}-\d{2}$/.test(period)) throw new Error('Name a month to reconcile (YYYY-MM).');
   const d = getDB(orgId);
   const c = chainCount(d, period);
   const prev = latestRuns(d).get(period);
-  return logAdmin(orgId, userId, 'billing.reconciliation_run', { period, meter_events: c.decisions, chain_decisions: c.decisions, meter_units: c.units, chain_units: c.units, matched: true, note: prev && !prev.matched ? `Meter rebuilt from the chain: ${c.decisions - prev.meterEvents} missing meter events replayed` : 'Meter and chain agree' });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.reconciliation_run', { period, meter_events: c.decisions, chain_decisions: c.decisions, meter_units: c.units, chain_units: c.units, matched: true, note: prev && !prev.matched ? `Meter rebuilt from the chain: ${c.decisions - prev.meterEvents} missing meter events replayed` : 'Meter and chain agree' }));
 }
 
 /* ── Pilot ────────────────────────────────────────────────── */
@@ -487,12 +497,25 @@ export interface PilotState {
   refusedAtStop: number;
 }
 
-const stopKey = (orgId: string) => `eg:data:billing-pilot-stopped:${orgId}`;
-function stoppedCalls(orgId: string): number {
-  try { return Number(localStorage.getItem(stopKey(orgId)) ?? 0) || 0; } catch { return 0; }
+/**
+ * Calls refused at the pilot's stop write no record, so they are counted on the organisation's record
+ * (`billingPilot.refusedAtStop`). Browsers kept the count in localStorage before 29 Oct 2026: that count is taken
+ * over the first time it is read.
+ */
+type WithPilot = OrgDB & { billingPilot?: { refusedAtStop: number } };
+const legacyStopKey = (orgId: string) => `eg:data:billing-pilot-stopped:${orgId}`;
+function stoppedCalls(d: OrgDB): number {
+  const x = d as WithPilot;
+  if (x.billingPilot) return x.billingPilot.refusedAtStop;
+  try { return Number(localStorage.getItem(legacyStopKey(d.org.id)) ?? 0) || 0; } catch { return 0; }
 }
-function bumpStoppedCalls(orgId: string) {
-  try { localStorage.setItem(stopKey(orgId), String(stoppedCalls(orgId) + 1)); } catch { /* fine */ }
+function bumpStoppedCalls(d: OrgDB) {
+  (d as WithPilot).billingPilot = { refusedAtStop: stoppedCalls(d) + 1 };
+  try { localStorage.removeItem(legacyStopKey(d.org.id)); } catch { /* fine */ }
+}
+function resetStoppedCalls(d: OrgDB) {
+  (d as WithPilot).billingPilot = { refusedAtStop: 0 };
+  try { localStorage.removeItem(legacyStopKey(d.org.id)); } catch { /* fine */ }
 }
 
 /** The pilot's start record, cached by how far the chain was read (append asks on every write). */
@@ -551,7 +574,7 @@ export function pilotOf(d: OrgDB, now = Date.now()): PilotState | undefined {
     closedSeq: closed?.seq, closedAt: closed ? atOf(closed) : status === 'closed' && readOnlyUntilT !== undefined ? new Date(readOnlyUntilT).toISOString() : undefined,
     reopenRequestedSeq: reopen?.seq,
     ...(reopenDecided && reopenDecided.details?.outcome === 'declined' ? { reopenDeclined: { seq: reopenDecided.seq, note: String(reopenDecided.details?.note ?? ''), by: elan1Person(reopenDecided.actor)?.name ?? 'elan1' } } : {}),
-    refusedAtStop: converted && converted.details?.refused_at_stop !== undefined ? Number(converted.details.refused_at_stop) : closed && closed.details?.refused_at_stop !== undefined ? Math.max(Number(closed.details.refused_at_stop), stoppedCalls(d.org.id)) : stoppedCalls(d.org.id),
+    refusedAtStop: converted && converted.details?.refused_at_stop !== undefined ? Number(converted.details.refused_at_stop) : closed && closed.details?.refused_at_stop !== undefined ? Math.max(Number(closed.details.refused_at_stop), stoppedCalls(d)) : stoppedCalls(d),
   };
 }
 
@@ -566,7 +589,7 @@ export function startPilot(orgId: string, userId: string) {
   if (!d.fresh) throw new Error('The pilot is for a new organisation that has not been billed yet.');
   if (levelOfOrg(d.org) !== 'l1') throw new Error('The pilot covers Guarded only.');
   const now = Date.now();
-  return logAdmin(orgId, userId, 'billing.pilot_started', { starts: new Date(now).toISOString(), ends: new Date(now + PILOT.days * D).toISOString(), cap: PILOT.cap, list_plan: PILOT.listPlan, list_floor: 180000, list_rate: 1.6 });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.pilot_started', { starts: new Date(now).toISOString(), ends: new Date(now + PILOT.days * D).toISOString(), cap: PILOT.cap, list_plan: PILOT.listPlan, list_floor: 180000, list_rate: 1.6 }));
 }
 
 /** An owner ends the pilot before its limit: the same hard stop as reaching it. */
@@ -575,7 +598,7 @@ export function endPilotNow(orgId: string, userId: string, reason: string) {
   const d = getDB(orgId);
   const p = pilotOf(d);
   if (!p || p.status !== 'active') throw new Error('There is no running pilot to end.');
-  return append(d, { kind: 'admin', actor: userId, action: 'billing.pilot_stopped', details: { why: `ended early by an owner${reason.trim() ? `: ${reason.trim()}` : ''}`, used: p.used, cap: p.cap, code: PILOT.code, read_only_days: PILOT.readOnlyDays } });
+  return saved(orgId, append(d, { kind: 'admin', actor: userId, action: 'billing.pilot_stopped', details: { why: `ended early by an owner${reason.trim() ? `: ${reason.trim()}` : ''}`, used: p.used, cap: p.cap, code: PILOT.code, read_only_days: PILOT.readOnlyDays } }));
 }
 
 /** Leave the pilot for the paid plan at the level in force (Guarded): billing starts from today, the floor pro rata. Lifts a stop. */
@@ -586,9 +609,9 @@ export function convertPilot(orgId: string, userId: string) {
   if (!p) throw new Error('This organisation is not on a pilot.');
   if (p.status === 'converted') throw new Error('The pilot has already moved to the paid plan.');
   if (p.status === 'closed') throw new Error('The organisation is closed: its 30 read-only days have passed. Ask elan1 to reopen it.');
-  const refused = stoppedCalls(orgId);
-  try { localStorage.removeItem(stopKey(orgId)); } catch { /* fine */ }
-  return logAdmin(orgId, userId, 'billing.pilot_converted', { plan: levelOfOrg(d.org), via: 'owner', used: p.used, cap: p.cap, refused_at_stop: refused, billed_from: new Date().toISOString() });
+  const refused = stoppedCalls(d);
+  resetStoppedCalls(d);
+  return saved(orgId, logAdmin(orgId, userId, 'billing.pilot_converted', { plan: levelOfOrg(d.org), via: 'owner', used: p.used, cap: p.cap, refused_at_stop: refused, billed_from: new Date().toISOString() }));
 }
 
 /** After closure: ask elan1 to reopen the organisation on a paid plan (a new order). */
@@ -597,7 +620,7 @@ export function requestReopen(orgId: string, userId: string) {
   const p = pilotOf(getDB(orgId));
   if (!p || p.status !== 'closed') throw new Error('Only a closed organisation is reopened.');
   if (p.reopenRequestedSeq) throw new Error('A request to reopen is already with elan1.');
-  return logAdmin(orgId, userId, 'billing.reopen_requested', { plan: 'l1', to: accountLeadOf(orgId).name });
+  return saved(orgId, logAdmin(orgId, userId, 'billing.reopen_requested', { plan: 'l1', to: accountLeadOf(orgId).name }));
 }
 
 /**
@@ -618,17 +641,30 @@ export function endPilotOnUpgrade(d: OrgDB, userId: string, to: LevelId) {
   return append(d, { kind: 'admin', actor: userId, action: 'billing.pilot_converted', details: { plan: to, via: 'upgrade', used: p.used, cap: p.cap, billed_from: new Date().toISOString() } });
 }
 
-/** Record the stop and the closure once they are due (on open, and before a refused call). */
-export function sweepPilot(d: OrgDB) {
+/** Record the stop and the closure once they are due (on open, and before a refused call). True when it wrote. */
+function sweepPilotIn(d: OrgDB): boolean {
   const p = pilotOf(d);
-  if (!p || p.status === 'active' || p.status === 'converted') return;
+  if (!p || p.status === 'active' || p.status === 'converted') return false;
+  const before = d.receipts.length;
   if (!p.stoppedSeq) {
     append(d, { kind: 'admin', actor: 'system', action: 'billing.pilot_stopped', details: { why: p.stoppedWhy ?? `${PILOT.days} days ended`, used: p.used, cap: p.cap, code: PILOT.code, read_only_days: PILOT.readOnlyDays, ...(p.stoppedAt ? { at: p.stoppedAt } : {}) } });
   }
   const q = pilotOf(d);
   if (q?.status === 'closed' && !q.closedSeq) {
-    append(d, { kind: 'admin', actor: 'system', action: 'billing.pilot_closed', details: { stopped: q.stoppedSeq ?? 0, read_only_days: PILOT.readOnlyDays, refused_at_stop: stoppedCalls(d.org.id), ...(q.closedAt ? { at: q.closedAt } : {}) } });
+    append(d, { kind: 'admin', actor: 'system', action: 'billing.pilot_closed', details: { stopped: q.stoppedSeq ?? 0, read_only_days: PILOT.readOnlyDays, refused_at_stop: stoppedCalls(d), ...(q.closedAt ? { at: q.closedAt } : {}) } });
   }
+  return d.receipts.length !== before;
+}
+
+/**
+ * Record the pilot's stop and closure once they are due, as an operation: what it writes follows from the chain and
+ * the clock alone, so any member's screen may ask for it, and it writes (and tells the screens) only when something
+ * was due. Reading the meter calls it first.
+ */
+export function sweepPilot(orgId: string): boolean {
+  const changed = sweepPilotIn(getDB(orgId));
+  if (changed) touch(orgId, 'billing');
+  return changed;
 }
 
 /**
@@ -642,8 +678,8 @@ export function pilotGate(d: OrgDB, environment?: 'sandbox'): Receipt | undefine
   if (!pilotStart(d)) return undefined;
   const p = pilotOf(d);
   if (!p || !pilotPaused(p)) return undefined;
-  sweepPilot(d);
-  bumpStoppedCalls(d.org.id);
+  sweepPilotIn(d);
+  bumpStoppedCalls(d);
   const head = d.receipts[d.receipts.length - 1];
   const closed = p.status === 'closed';
   // not appended: POLICY.TENANT_STOPPED is the one refusal with no record
@@ -692,7 +728,7 @@ const seededV = (d: OrgDB, v: number) => d.receipts.some((r) => String(r.action 
  */
 export function ensureBillingSeed(d: OrgDB) {
   if (!d.receipts.length) return;
-  sweepPilot(d);
+  sweepPilotIn(d);
   const now = Date.now();
   const thisMonth = monthOfT(now);
   const [y, m] = thisMonth.split('-').map(Number);

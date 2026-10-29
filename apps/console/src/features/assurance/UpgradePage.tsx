@@ -17,7 +17,8 @@ import {
   Banner, Button, Checkbox, CopyButton, Dialog, EmptyState, Field, Input, KeyValue, PageHeader, Panel, RadioCards, Select, Skeleton, StatusChip, toast,
 } from '@/components/ui';
 import { ExportPackDialog } from '@/features/evidence/ExportPackDialog';
-import { claimFor, currentRun, keyHolders, LEVEL_COPY, lastUpgrade, levelsAbove, recordStep, stagesFor, type StageDef, type StageId, type UpgradeRun } from './levelModel';
+import { claimFor, currentRun, keyHolders, LEVEL_COPY, lastUpgrade, levelsAbove, stagesFor, type StageDef, type StageId, type UpgradeRun } from './levelModel';
+import * as consoleOps from '@/features/console/ops';
 import { KeyBindStage } from './upgrade/KeyBindStage';
 import { NoticesPanel } from './upgrade/NoticesPanel';
 import { SignOnConfirm } from './upgrade/SignOnConfirm';
@@ -101,7 +102,7 @@ function ChooseView({ level, to, choices, setTo, canPrepare, owners, userId }: {
     if (!userId) return;
     setBusy(true);
     try {
-      recordStep(orgId, userId, 'level.upgrade_started', { from: level, to });
+      await consoleOps.recordUpgradeStep(orgId, 'level.upgrade_started', { from: level, to }, userId);
       toast.ok(`Upgrade to ${LEVEL_INFO[to].name} started`, 'Recorded in the chain. Anyone with owner or admin rights can continue it.');
     } catch (e) { toast.bad('The upgrade could not start', (e as Error).message); } finally { setBusy(false); }
   };
@@ -196,10 +197,10 @@ function Wizard({ run, level, orgName, slug, members, canPrepare, isOwner, owner
   const doneCount = stages.filter((s) => run.stages[s.id]).length;
   const allDone = doneCount === stages.length;
 
-  const complete = (stage: StageId, details: Record<string, string | number | boolean>) => {
+  const complete = async (stage: StageId, details: Record<string, string | number | boolean>) => {
     if (!user) return;
     try {
-      const r = recordStep(orgId, user.id, stage === 'second' ? 'level.upgrade_seconded' : 'level.upgrade_stage', { to: run.to, stage, ...details });
+      const r = await consoleOps.recordUpgradeStep(orgId, stage === 'second' ? 'level.upgrade_seconded' : 'level.upgrade_stage', { to: run.to, stage, ...details }, user.id);
       toast.ok(`${stages.find((s) => s.id === stage)?.title ?? 'Stage'} recorded`, `Receipt ${seqLabel(r.seq)}.`);
       const i = stages.findIndex((s) => s.id === stage);
       const nextOpen = stages.find((s, j) => j > i && !run.stages[s.id]);
@@ -207,11 +208,13 @@ function Wizard({ run, level, orgName, slug, members, canPrepare, isOwner, owner
     } catch (e) { toast.bad('Could not record the stage', (e as Error).message); }
   };
 
-  const cancel = () => {
+  const cancel = async () => {
     if (!user) return;
-    recordStep(orgId, user.id, 'level.upgrade_cancelled', { to: run.to, stages_done: doneCount });
-    toast.info('Upgrade cancelled', 'Recorded in the chain. Nothing about the organisation changed.');
-    setCancelOpen(false);
+    try {
+      await consoleOps.recordUpgradeStep(orgId, 'level.upgrade_cancelled', { to: run.to, stages_done: doneCount }, user.id);
+      toast.info('Upgrade cancelled', 'Recorded in the chain. Nothing about the organisation changed.');
+      setCancelOpen(false);
+    } catch (e) { toast.bad('The upgrade was not cancelled', (e as Error).message); }
   };
 
   const stage = stages.find((s) => s.id === active);
