@@ -13,6 +13,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { adminEvent } from "./admin";
 import { checkpoint } from "./chain";
 import { orgKey, raiseAlert, type Deps } from "./deps";
+import { activeKey } from "./keys";
 
 export interface Range {
   from: string; // YYYY-MM-DD, IST
@@ -45,11 +46,12 @@ async function rangeData(deps: Deps, orgId: string, r: Range) {
 }
 
 export async function exportBundle(deps: Deps, orgId: string, r: Range, actor: string): Promise<Uint8Array> {
-  const key = await orgKey(deps, orgId);
+  // The manifest is signed here with the private key, so a key held inside an HSM refuses (before anything is written).
+  const [{ name }, key] = await Promise.all([orgKey(deps, orgId), activeKey(deps, orgId)]);
   await adminEvent(deps, orgId, actor, "evidence.exported", { from: r.from, to: r.to, kind: "bundle" });
   await checkpoint(deps, orgId);
   const data = await rangeData(deps, orgId, r);
-  return buildBundle({ org: { id: orgId, name: key.name }, range: { from: r.from, to: r.to }, anchor: data.anchor, receipts: data.receipts, checkpoints: data.checkpoints, publicKeyPem: key.publicKeyPem, privateKeyPem: key.privateKeyPem, publicKeys: data.keys, generatedAt: new Date().toISOString() });
+  return buildBundle({ org: { id: orgId, name }, range: { from: r.from, to: r.to }, anchor: data.anchor, receipts: data.receipts, checkpoints: data.checkpoints, publicKeyPem: key.publicKeyPem, privateKeyPem: key.privateKeyPem, publicKeys: data.keys, generatedAt: new Date().toISOString() });
 }
 
 export async function exportPack(deps: Deps, orgId: string, r: Range, actor: string): Promise<Uint8Array> {

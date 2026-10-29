@@ -9,14 +9,13 @@ import {
   randomToken,
   rulebookHash,
   rulebookToYaml,
-  signRulebook,
   type ReceiptInput,
 } from "@gate/core";
 import { packById, starterRulebook } from "@gate/core/frameworks";
 import { addMembership, createOrgRow, forOrg, type RiskTier } from "@gate/db";
 import { chain, record } from "./chain";
 import type { Deps } from "./deps";
-import { addFirstKey, legacyKeyAad } from "./keys";
+import { addFirstKey, legacyKeyAad, signRulebookWith } from "./keys";
 import { registryFor } from "./registry";
 
 export async function adminEvent(deps: Deps, orgId: string, actor: string, action: string, details: Record<string, unknown> = {}, extra: Partial<ReceiptInput> = {}) {
@@ -96,7 +95,7 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
       const rb = { ...rest, version: (latest?.version ?? 0) + 1, agent: agent.slug };
       const problems = publishProblems(rb, agent.riskTier, registry);
       if (problems.length) return { ok: false as const, errors: problems };
-      const signed = signRulebook(rb, key.privateKeyPem);
+      const signed = await signRulebookWith(rb, key);
       const text = rulebookToYaml(signed);
       const hash = rulebookHash(signed);
       const row = await tx.rulebook.create({ data: { orgId, agentId, version: rb.version, yaml: text, hash, signedBy: actor } });

@@ -615,4 +615,61 @@ model PasswordReset {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+// ── custody ──
+
+// The software HSM's key store (apps/gate/src/soft-hsm.ts). Not tenant data: no org column, and
+// only the HSM module reads it. Each private key is AES-256-GCM encrypted under a key-encryption key
+// derived from GATE_MASTER_KEY, with an AAD binding the handle, org and key id, so a row moved to
+// another handle or asked for by another org does not decrypt. Signing happens inside the module.
+model HsmKey {
+  handle      String   @id // random; what OrgKey.privateKeyEnc holds for provider "soft-hsm"
+  label       String
+  publicKey   String
+  materialEnc String
+  createdAt   DateTime @default(now())
+}
+
+// A customer-held key ceremony: a new signing key whose backup key is split k-of-n among
+// custodians with Shamir. Only the encrypted backup is kept; the shares are shown once.
+model KeyCeremony {
+  id         String   @id @default(cuid())
+  orgId      String
+  kind       String   @default("generation")
+  kid        String // the key the ceremony made
+  threshold  Int // k: shares needed
+  shareCount Int // n: shares made
+  custodians Json // [{ name, role }] in share order; never the shares
+  shareSet   String // the Shamir split's set id, printed on every share
+  backupEnc  String // the private key under the split key (AES-256-GCM); useless without k shares
+  actor      String
+  seq        Int // the key.ceremony_completed receipt
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+// A successor signing key published ahead of signing (L2+): bound now, signing after a 30-day
+// overlap and a second owner or admin's confirmation. On activation it becomes an OrgKey row.
+model KeySuccessor {
+  id            String    @id @default(cuid())
+  orgId         String
+  kid           String
+  publicKey     String
+  privateKeyEnc String // as OrgKey: wrapped by its provider, or an HSM handle
+  provider      String
+  purpose       String // "planned" | "ceremony"
+  ceremonyId    String?
+  proposedBy    String
+  boundSeq      Int // the key.bound receipt
+  boundAt       DateTime
+  switchAt      DateTime // end of the overlap
+  confirmedBy   String?
+  confirmedSeq  Int?
+  activatedAt   DateTime?
+  activatedSeq  Int?
+  withdrawnAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([orgId, kid])
+  @@index([orgId, activatedAt])
 }

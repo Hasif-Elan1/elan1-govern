@@ -1,8 +1,9 @@
 import {
   GENESIS,
-  buildReceipt,
+  hashCanonical,
+  prepareReceipt,
+  signText,
   startOfDayIn,
-  signCheckpoint,
   type ChainHead,
   type Checkpoint,
   type Receipt,
@@ -16,10 +17,15 @@ export type ChainTx = Parameters<Parameters<ReturnType<typeof forOrg>["$transact
 type Tx = ChainTx;
 export type Append = (input: ReceiptInput) => Promise<Receipt>;
 
-/** A signing key: the private key, and its id (fingerprint) to stamp on what it signs. */
-export interface ChainKey {
-  kid?: string;
-  privateKeyPem: string;
+/**
+ * A signing key and its id (fingerprint) to stamp on what it signs. Either the private key itself,
+ * or a `sign` function for a key held inside a custody boundary (an HSM) that never hands it out.
+ */
+export type ChainKey = { kid?: string } & ({ privateKeyPem: string; sign?: undefined } | { sign: (text: string) => Promise<string>; privateKeyPem?: undefined });
+
+/** Signs `text` (a hash) with a chain key, wherever the key is held. */
+export async function signWithKey(key: ChainKey, text: string): Promise<string> {
+  return key.sign ? key.sign(text) : signText(key.privateKeyPem, text);
 }
 
 /**
@@ -60,7 +66,8 @@ export async function withChain<T>(
       const signer = await resolveKey(key, tx);
       let current = await head(tx);
       const append: Append = async (input) => {
-        const receipt = buildReceipt(input, { org: orgId, ts: new Date().toISOString(), head: current, kid: signer.kid }, signer.privateKeyPem);
+        const unsigned = prepareReceipt(input, { org: orgId, ts: new Date().toISOString(), head: current, kid: signer.kid });
+        const receipt: Receipt = { ...unsigned, sig: await signWithKey(signer, unsigned.hash) };
         const amount = receipt.args_summary?.amount_inr;
         await tx.receipt.create({
           data: {
@@ -98,7 +105,8 @@ export async function createCheckpoint(orgId: string, key: KeySource, client: Pr
     const [h, last] = await Promise.all([head(tx), tx.checkpoint.findFirst({ orderBy: { seq: "desc" } })]);
     if (h.seq === 0 || (last && last.seq === h.seq)) return null;
     const signer = await resolveKey(key, tx);
-    const cp = signCheckpoint({ org: orgId, seq: h.seq, hash: h.hash, ts: new Date().toISOString(), ...(signer.kid ? { kid: signer.kid } : {}) }, signer.privateKeyPem);
+    const unsigned = { org: orgId, seq: h.seq, hash: h.hash, ts: new Date().toISOString(), ...(signer.kid ? { kid: signer.kid } : {}) };
+    const cp: Checkpoint = { ...unsigned, sig: await signWithKey(signer, hashCanonical(unsigned)) }; // as signCheckpoint does
     await tx.checkpoint.create({ data: { orgId, seq: cp.seq, hash: cp.hash, ts: new Date(cp.ts), kid: cp.kid ?? null, sig: cp.sig } });
     return cp;
   });

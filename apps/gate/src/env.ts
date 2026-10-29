@@ -45,7 +45,15 @@ export const GateEnvSchema = z.object({
   WHATSAPP_API_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
   /** The one password every console demo account gets from `pnpm db:seed`. Optional; without it the console's orgs are not seeded. */
   DEMO_CONSOLE_PASSWORD: z.string().min(12, "DEMO_CONSOLE_PASSWORD must be at least 12 characters").max(200).optional(),
+  /** Who wraps (or holds) new org signing keys: the env master key, AWS KMS, or the software HSM. Rows keep the provider that wrapped them. */
+  KEY_PROVIDER: z.enum(["env", "aws-kms", "soft-hsm"]).default("env"),
+  /** The AWS KMS key (id, ARN or alias) for envelope encryption. Credentials come from the standard AWS chain. */
+  AWS_KMS_KEY_ID: z.string().optional(),
+  AWS_REGION: z.string().regex(/^[a-z]{2}(-[a-z]+)+-\d$/).optional(),
 }).superRefine((e, ctx) => {
+  if (e.KEY_PROVIDER === "aws-kms") {
+    for (const name of ["AWS_KMS_KEY_ID", "AWS_REGION"] as const) if (!e[name]) ctx.addIssue({ code: "custom", path: [name], message: "is required when KEY_PROVIDER=aws-kms" });
+  }
   if (e.APP_ENV !== "production") return;
   if (e.DEMO_CONSOLE_PASSWORD && isExampleSecret(e.DEMO_CONSOLE_PASSWORD)) {
     ctx.addIssue({ code: "custom", path: ["DEMO_CONSOLE_PASSWORD"], message: "DEMO_CONSOLE_PASSWORD is the example value from .env.example; set a real secret in production" });

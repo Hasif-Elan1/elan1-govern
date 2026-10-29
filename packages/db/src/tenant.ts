@@ -29,6 +29,9 @@ export const TENANT_MODELS = [
   "RuleSuggestion",
   "BehaviourAlert",
   "Incident",
+  // ── custody ──
+  "KeyCeremony",
+  "KeySuccessor",
 ] as const;
 
 const WHERE_OPS = new Set([

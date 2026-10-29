@@ -3,7 +3,7 @@ import { forOrg, orgPublicKeys, prisma } from "@gate/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createOrg } from "../src/admin";
 import { orgKey } from "../src/deps";
-import { envKeyProvider, legacyKeyAad, rotateSigningKey } from "../src/keys";
+import { activeKey, envKeyProvider, legacyKeyAad, rotateSigningKey } from "../src/keys";
 import { demoOrg, env, gateMeta, internal, makeApp, makeUser, tool } from "./helpers";
 
 let ctx: Awaited<ReturnType<typeof makeApp>>;
@@ -83,7 +83,7 @@ describe("signing keys", () => {
     const owner = await makeUser();
     const org = await createOrg(ctx.deps, { name: "Old Co", ownerUserId: owner.id, ownerEmail: owner.email });
     await forOrg(org.id).orgKey.deleteMany({});
-    const k = await orgKey(ctx.deps, org.id);
+    const k = await activeKey(ctx.deps, org.id);
     expect(k.kid).toBe(keyFingerprint(org.publicKey));
     const row = await forOrg(org.id).orgKey.findFirstOrThrow();
     // The copied row keeps the legacy ciphertext, bound to the org id only.
