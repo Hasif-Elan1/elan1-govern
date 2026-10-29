@@ -6,6 +6,8 @@ WORKDIR /app
 ENV CI=true
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY apps/web/package.json apps/web/
+# the web app runs the console's domain (apps/console/dist-server, built by the web build's prebuild)
+COPY apps/console/package.json apps/console/
 COPY apps/gate/package.json apps/gate/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/

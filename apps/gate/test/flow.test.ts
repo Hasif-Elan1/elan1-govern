@@ -359,7 +359,7 @@ describe("chain", () => {
     expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/nyc-ll144/report`, { actor: d.owner.email })).statusCode).toBe(200);
     expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/made-up/report`, { actor: d.owner.email })).statusCode).toBe(404);
     expect((await internal(ctx.app, "POST", `/internal/orgs/${d.org.id}/frameworks/BAD!/report`, { actor: d.owner.email })).statusCode).toBe(400);
-    const logged = await d.db.receipt.findMany({ where: { action: "evidence.exported" } });
+    const logged = await d.db.receipt.findMany({ where: { action: "evidence.exported" }, orderBy: { seq: "asc" } });
     expect(logged.map((r) => (r.body as { details?: { framework?: string } }).details?.framework).filter(Boolean)).toEqual(["hipaa", "nyc-ll144"]);
   });
 });

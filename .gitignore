@@ -2,6 +2,7 @@
 coverage
 .demo
 dist
+dist-server
 .DS_Store
 .env
 .env.local

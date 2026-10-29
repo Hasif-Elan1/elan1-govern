@@ -9,5 +9,5 @@ export default defineProject({
       "server-only": fileURLToPath(new URL("./test/server-only.ts", import.meta.url)),
     },
   },
-  test: { name: "web", include: ["test/**/*.test.ts"], env: testEnv() },
+  test: { name: "web", include: ["test/**/*.test.ts"], env: testEnv(), globalSetup: ["test/build-console.ts"] },
 });

@@ -588,3 +588,15 @@ model Incident {
 
   @@index([orgId, status])
 }
+
+// One console organisation's document: the approved console's domain state, run on the server
+// (apps/web/src/server/console-domain.ts). orgId is the console's own id (org_demo, org_northbank …).
+// No relation to Org yet: the console's demo organisations are seeded into Org in Phase 1.5.
+// `json`, not `jsonb`: the document is stored as written, so its key order (which the screens list in)
+// survives a reload; nothing queries inside it. version goes up by one with every save.
+model ConsoleState {
+  orgId     String   @id
+  doc       Json     @db.Json
+  version   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}

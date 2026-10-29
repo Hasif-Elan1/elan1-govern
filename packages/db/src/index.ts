@@ -5,4 +5,5 @@ export { orgPublicKeys } from "./keys";
 export * from "./lookups";
 export { evidenceCounts, enabledFrameworks, enableFrameworks, disableFramework } from "./compliance";
 export * from "@prisma/client";
+export { consoleState, ConsoleStateConflict, CONSOLE_CHANNEL, type ConsoleSql } from "./console-state";
 export { behaviourEvents, firstActivity, seenBefore, earlierAmounts, type EventRow } from "./behaviour";

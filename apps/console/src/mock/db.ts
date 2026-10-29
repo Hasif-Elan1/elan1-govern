@@ -727,8 +727,55 @@ const LEGACY_STATE_PREFIX = 'eg:state:v2:';
 const STATE_MAX_AGE = 12 * H;
 const saveTimers = new Map<string, number>();
 
+/** An organisation as it is saved: everything but the signing keys, which are rebuilt from their seeds. */
+export type SavedDoc = Omit<OrgDB, 'keys'> & { savedAt?: number; builtAt?: number };
+
+/**
+ * Where organisation documents live when not in this browser's storage. The server sets one: `load` hands back
+ * the organisation's last durable document (or nothing, to build it from the seed) and `save` is told, at once and
+ * with no timer, each time the organisation changed. The document `save` receives shares its objects with the
+ * live organisation, so serialise it before anything changes it again.
+ */
+export interface Persistence {
+  load(orgId: string): SavedDoc | undefined;
+  save(orgId: string, doc: SavedDoc): void;
+}
+let persistence: Persistence | undefined;
+
+/** Keep organisation documents somewhere other than localStorage (the server's store); undefined goes back to it. */
+export function setPersistence(p: Persistence | undefined) {
+  persistence = p;
+}
+
+/** The organisation as saveState writes it (without its keys), or undefined when it is not open. */
+export function exportDoc(orgId: string): SavedDoc | undefined {
+  const d = dbs.get(orgId);
+  if (!d) return undefined;
+  const { keys: _k, ...rest } = d;
+  return { ...rest, savedAt: Date.now() };
+}
+
+/** Replace the open organisation with a saved document (another process changed it, or an operation failed). */
+export function importDoc(orgId: string, doc: SavedDoc) {
+  const d = restore(orgId, doc as OrgDB & { savedAt: number; builtAt: number });
+  if (!d) throw new Error(`The saved document for ${orgId} is not a complete organisation.`);
+  if (d.org.id !== orgId) throw new Error(`The saved document for ${orgId} belongs to ${d.org.id}.`);
+  dbs.set(orgId, d);
+  syncOrgMeta(d.org);
+}
+
+/** Forget the open organisation, so the next getDB loads it again. */
+export function dropFromMemory(orgId: string) {
+  dbs.delete(orgId);
+  deferredOpen.delete(orgId);
+}
+
 function loadState(orgId: string): OrgDB | undefined {
   try {
+    if (persistence) {
+      const doc = persistence.load(orgId);
+      return doc ? restore(orgId, doc as OrgDB & { savedAt: number; builtAt: number }) : undefined;
+    }
     let raw = localStorage.getItem(STATE_PREFIX + orgId);
     if (!raw) {
       const legacy = localStorage.getItem(LEGACY_STATE_PREFIX + orgId);
@@ -736,29 +783,39 @@ function loadState(orgId: string): OrgDB | undefined {
       if (legacy && (JSON.parse(legacy) as { fresh?: boolean }).fresh) raw = legacy;
     }
     if (!raw) return undefined;
-    const saved = JSON.parse(raw) as OrgDB & { savedAt: number; builtAt: number };
-    // a sign-up organisation's records are its own work, never regenerated: no age limit for them
-    if (!saved.builtAt || (!saved.fresh && Date.now() - saved.builtAt > STATE_MAX_AGE) || !saved.keySeeds?.length || !saved.platform) return undefined;
-    saved.keys = saved.keySeeds.map((s) => ({ key: keyFromSeed(s.seed, s.kid), from: s.from }));
-    if (saved.fresh && saved.baseGroups) registerBaseGroups(orgId, saved.baseGroups);
-    redactLegacyErased(saved);
-    // keys saved before 28 Oct 2026 carry the old eg_ prefixes; agent keys are gk_ (production) and sk_sbx_ (sandbox)
-    for (const a of saved.agents ?? []) for (const k of a.keys ?? []) if (k.prefix.startsWith('eg_')) k.prefix = (k.environment === 'sandbox' ? 'sk_sbx_' : 'gk_') + k.prefix.replace(/^eg_(live_|test_)?/, '');
-    // demo state saved before 29 Oct 2026: the Finance and Procurement agents were owned by their own group's approver,
-    // which the same-person rule (from L2) left unable to decide that group's calls; the admin owns them now (mock/catalog.ts)
-    if (!saved.fresh) {
-      const who = (id: string) => PEOPLE_MAP[orgId]?.[id] ?? id;
-      const slugOf = (slug: string) => (orgId === 'org_demo' ? slug : rewriteText(orgId, slug));
-      const moved: Record<string, string> = { [slugOf('invoice-bot')]: who('u_venkat'), [slugOf('collections-agent')]: who('u_venkat'), [slugOf('vendor-onboarding')]: who('u_arjun') };
-      for (const a of saved.agents ?? []) if (moved[a.slug] && a.ownerId === moved[a.slug]) a.ownerId = who('u_rahul');
-    }
-    return saved;
+    return restore(orgId, JSON.parse(raw) as OrgDB & { savedAt: number; builtAt: number });
   } catch {
     return undefined;
   }
 }
 
+/** A saved document made live: keys rebuilt from their seeds, older saved shapes brought up to date. */
+function restore(orgId: string, saved: OrgDB & { savedAt: number; builtAt: number }): OrgDB | undefined {
+  // a sign-up organisation's records are its own work, never regenerated: no age limit for them; nor for the
+  // server's documents, which are durable (the age limit keeps a browser demo showing a fresh last 24 hours)
+  if (!saved.builtAt || (!saved.fresh && !persistence && Date.now() - saved.builtAt > STATE_MAX_AGE) || !saved.keySeeds?.length || !saved.platform) return undefined;
+  saved.keys = saved.keySeeds.map((s) => ({ key: keyFromSeed(s.seed, s.kid), from: s.from }));
+  if (saved.fresh && saved.baseGroups) registerBaseGroups(orgId, saved.baseGroups);
+  redactLegacyErased(saved);
+  // keys saved before 28 Oct 2026 carry the old eg_ prefixes; agent keys are gk_ (production) and sk_sbx_ (sandbox)
+  for (const a of saved.agents ?? []) for (const k of a.keys ?? []) if (k.prefix.startsWith('eg_')) k.prefix = (k.environment === 'sandbox' ? 'sk_sbx_' : 'gk_') + k.prefix.replace(/^eg_(live_|test_)?/, '');
+  // demo state saved before 29 Oct 2026: the Finance and Procurement agents were owned by their own group's approver,
+  // which the same-person rule (from L2) left unable to decide that group's calls; the admin owns them now (mock/catalog.ts)
+  if (!saved.fresh) {
+    const who = (id: string) => PEOPLE_MAP[orgId]?.[id] ?? id;
+    const slugOf = (slug: string) => (orgId === 'org_demo' ? slug : rewriteText(orgId, slug));
+    const moved: Record<string, string> = { [slugOf('invoice-bot')]: who('u_venkat'), [slugOf('collections-agent')]: who('u_venkat'), [slugOf('vendor-onboarding')]: who('u_arjun') };
+    for (const a of saved.agents ?? []) if (moved[a.slug] && a.ownerId === moved[a.slug]) a.ownerId = who('u_rahul');
+  }
+  return saved;
+}
+
 function saveState(orgId: string) {
+  if (persistence) {
+    const doc = exportDoc(orgId);
+    if (doc) persistence.save(orgId, doc);
+    return;
+  }
   window.clearTimeout(saveTimers.get(orgId));
   saveTimers.set(orgId, window.setTimeout(() => {
     const d = dbs.get(orgId);

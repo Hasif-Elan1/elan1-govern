@@ -78,6 +78,33 @@ Verified when: the seeded owner signs in on the new console against the real API
 - 1.4 SSE `/api/stream` with LISTEN/NOTIFY replaces `db.subscribe`. (M)
 - 1.5 Seed the four demo orgs at their levels, plus the auditor and portal users. (M)
 
+### Phase 1 design (refined at pickup, 29 Oct)
+A probe showed that the console's domain code (`src/api`, `src/mock`, `src/lib` and the `features/*/backend.ts`-style modules) runs under Node with small browser shims. All four demo orgs build in about 300 ms, each 0.5–1 MB of JSON, mostly receipts. So:
+- **Domain on the server (1.1).**
+  - `apps/console/src/server/entry.ts` exports the domain: `api`, `db`, `orgApi`, `work`, `agents`, `assessments`, `sovereign` and `deployment` backends.
+  - esbuild bundles it to `apps/console/dist-server/domain.mjs` (Node, with an in-memory `window`/`localStorage` shim), exported as `@gate/console/server`.
+  - `mock/db.ts` gains a persistence adapter (`setPersistence({ load, save })`). The browser keeps localStorage in mock mode; the server stores each org's document in Postgres (`ConsoleState { orgId, doc Json, version, updatedAt }`).
+  - Each operation runs under a per-org lock (an in-process mutex plus `pg_advisory_xact_lock`): load if the version changed, run, save, `NOTIFY console_events`.
+- **One RPC door (1.2).**
+  - `GET /api/console/state?org=` returns the org document. `POST /api/console/rpc { op, args }` runs a whitelisted operation. `GET /api/console/stream` is SSE.
+  - An op manifest is generated at build time with the TypeScript compiler API. It lists each exported operation and the positions of its `orgId` and actor parameters (`userId`, `by`, `actorId` …).
+  - The server **overwrites every actor argument with the session user** and refuses any `orgId` the user isn't an active member of. The domain's own permission checks then run as that user.
+  - All of it goes through `route()` (origin, CSRF, rate limit, session).
+- **Client live mode (1.3).**
+  - `VITE_DATA=live` wraps every operation as RPC. The `db` cache holds the last snapshot and re-fetches on SSE, so screens keep their synchronous reads unchanged.
+  - Writes screens make directly (`db.touch`, `db.logAdmin`, mutate-then-persist) are inventoried and turned into RPCs.
+- **1.3 refined after the write inventory.** Screens write in about 150 places across 45 files: about 64 direct `db.*` calls, about 20 in-place mutations, and about 67 calls to mutators in `@/mock/*`. Six UI files are hidden op modules: `connectors/ops.ts`, `keys/tokenStore.ts`, `inventory/ops.ts`, `packs/config.ts`, `records/ext.ts` and `auth/registry.ts`. So the client works like this:
+  - **Async ops are pure RPC.** The result comes from the server.
+  - **Sync mutators run locally and are also forwarded.** In live builds a Vite transform rewrites each exported function of a listed op module as `export function f(...a) { return __live.call('mod.f', f__impl, a) }`. Function declarations stay hoisted, which the mock's import cycles need. The outermost call that caused an `emit` locally is sent to the server, and the server re-runs it as the session user. When the server answers, the snapshot is re-synced; if the server refuses, local changes are discarded and the error is shown.
+  - **The server persists and notifies only when the document actually changed** (hash before and after). Idempotent writes made during reads (lazy seeds, `sweepPilot`) therefore don't loop.
+  - **In-place UI mutations become named ops** in op modules. That is the A1 list: YouPage Slack link, InvitePage, onboarding state and complete, compliance, records and evidence export logs, redaction, levelModel, session sign-out.
+  - **Domain localStorage moves into the document:** export seqs, auditor papers, the defect-report counter, the global maintenance window. So does module-level domain state such as the `stepUps` map.
+  - **Live mode stops** `startLive` (real traffic comes from the gate), the mock session timers, `resetDemo` and the demo outbox.
+- **Real identity (1.4–1.5).**
+  - Demo users, orgs and memberships are seeded into the real `User`/`Org`/`Membership` tables, with the console's ids (`u_ananya`, `org_demo` …) and argon2 passwords from `.env`.
+  - Sign-in uses `/api/auth/login`. `/api/me` feeds the session store. The directory (`mock/users`) is served from the database in the snapshot.
+- **Truth moves to real tables domain by domain in Phase 2**, receipts first (the real gate chain replaces the document's generated chain). This branch carries mixed sources only until Phase 8; the final build has no document-held receipts.
+
 ### Phase 2: Vertical slices on the existing backend
 Each slice:
 - adds read endpoints that wrap `apps/web/src/server/queries.ts`, `alerts.ts`, `inventory.ts` and `suggestions.ts`;
@@ -176,7 +203,7 @@ Verified when: the full journey list below passes in one `pnpm e2e` run on a fre
 ## Progress
 | Phase | Status |
 |---|---|
-| 0 Import | pending |
+| 0 Import | done: 372fe48, pushed |
 | 1 Seam | pending |
 | 2 Existing backend slices | pending |
 | 3 New L1 backends | pending |

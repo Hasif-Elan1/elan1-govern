@@ -45,6 +45,7 @@ describe("tenant isolation", () => {
     const raw = new RegExp(`\\b(?:prisma|deps\\.db|ctx\\.db)\\s*\\.\\s*(?:${models})\\b`);
     expect(raw.test("await prisma.receipt.findMany()")).toBe(true);
     expect(raw.test("await deps.db.approval.update()")).toBe(true);
+    expect(raw.test("await prisma.consoleState.findMany()")).toBe(true);
     expect(raw.test("await prisma.user.findFirst()")).toBe(false);
     expect(raw.test("await forOrg(id).receipt.findMany()")).toBe(false);
   });
