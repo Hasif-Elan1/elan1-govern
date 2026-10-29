@@ -26,6 +26,8 @@ export interface ChainConfig {
   seed: number;
   days: number;
   startSeq: number;
+  /** The hash the first receipt links to: the real chain's head on the server; otherwise a stand-in for the chain before the window. */
+  prevHash?: string;
   now: number;
   agents: (Agent & { scenarioKey: string })[];
   rulebooks: Rulebook[];
@@ -258,7 +260,7 @@ export function generateChain(cfg: ChainConfig): ChainResult {
 
   // seal
   const receipts: Receipt[] = [];
-  let prev = sha256Hex(`${cfg.orgId}:chain-before-window`);
+  let prev = cfg.prevHash ?? sha256Hex(`${cfg.orgId}:chain-before-window`);
   let seq = cfg.startSeq;
   for (const ev of evs) {
     // dependent receipts (approval → decision) are built after their parent has a seq

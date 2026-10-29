@@ -15,16 +15,27 @@
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
 
-/** Domain timers that have not fired yet, by id. */
-const pending = new Map<number, ReturnType<typeof realSetTimeout>>();
+/** Domain timers that have not fired yet, by id (null while timers are held: not scheduled yet). */
+const pending = new Map<number, ReturnType<typeof realSetTimeout> | null>();
+/** What a held timer runs once timers are released. */
+const heldRuns = new Map<number, () => void>();
+let holds = 0;
 let nextId = 1;
+
+function schedule(id: number, run: () => void) {
+  pending.set(id, realSetTimeout(() => {
+    pending.delete(id);
+    run();
+  }, 0));
+}
 
 function shimSetTimeout(fn: (...a: unknown[]) => void, _ms?: number, ...args: unknown[]): number {
   const id = nextId++;
-  pending.set(id, realSetTimeout(() => {
-    pending.delete(id);
-    fn(...args);
-  }, 0));
+  const run = () => fn(...args);
+  if (holds) {
+    pending.set(id, null);
+    heldRuns.set(id, run);
+  } else schedule(id, run);
   return id;
 }
 
@@ -33,6 +44,26 @@ function shimClearTimeout(id?: number) {
   const t = pending.get(id);
   if (t) realClearTimeout(t);
   pending.delete(id);
+  heldRuns.delete(id);
+}
+
+/**
+ * Hold every domain timer until the returned function is called: the server's own asynchronous work between
+ * opening an organisation and running an operation (bringing its document up to the real chain) must not have the
+ * domain's deferred writes (open-time seeds) run in the middle of it.
+ */
+export function holdTimers(): () => void {
+  holds++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--holds) return;
+    for (const [id, run] of [...heldRuns]) {
+      heldRuns.delete(id);
+      schedule(id, run);
+    }
+  };
 }
 
 function shimSetInterval(): number {
@@ -52,8 +83,9 @@ export async function settle(maxRounds = 500): Promise<boolean> {
 
 /** Cancel every domain timer that has not fired (after a failed operation, so nothing of it runs later). */
 export function cancelPending() {
-  for (const t of pending.values()) realClearTimeout(t);
+  for (const t of pending.values()) if (t) realClearTimeout(t);
   pending.clear();
+  heldRuns.clear();
 }
 
 /** An in-memory Storage. The server's durable state is the organisation document, never this. */

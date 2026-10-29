@@ -12,5 +12,7 @@ export type DeclarationHolds = [
   Holds<Fits<typeof real.db, declared.DomainDb>>,
   Holds<Fits<typeof real.settle, typeof declared.settle>>,
   Holds<Fits<typeof real.cancelPending, typeof declared.cancelPending>>,
+  Holds<Fits<typeof real.holdTimers, typeof declared.holdTimers>>,
   Holds<Fits<typeof real.api, typeof declared.api>>,
+  Holds<Fits<typeof real.chainVerifier, typeof declared.chainVerifier>>,
 ];

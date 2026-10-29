@@ -18,6 +18,7 @@ import { authenticateAgent } from "../auth";
 import { resetMockState } from "@gate/connectors";
 import { runDemoAgent } from "../demo/agent";
 import { checkpoint } from "../chain";
+import { ChainHeadInput, ChainMoved, ConsoleChainRefused, ConsoleHistoryInput, ConsoleReceiptInput, importConsoleHistory, writeConsoleReceipts } from "../console-chain";
 import type { Deps } from "../deps";
 import { exportBundle, exportFrameworkReport, exportPack } from "../evidence";
 import { rotateSigningKey } from "../keys";
@@ -108,7 +109,12 @@ const schemas = {
   autoPause: z.object({ autoPauseOnHigh: z.boolean(), actor }).strict(),
   alertSettings: z.object({ settings: z.record(z.string(), z.unknown()), actor }).strict(),
   stop: z.object({ actor, reason: z.string().trim().min(1).max(300).optional() }).strict(),
+  consoleReceipts: z.object({ base: ChainHeadInput, receipts: z.array(ConsoleReceiptInput).max(500), checkpoint: z.boolean().default(false) }).strict(),
+  consoleHistory: z.object({ base: ChainHeadInput, receipts: z.array(ConsoleHistoryInput).min(1).max(20_000) }).strict(),
 };
+
+/** The one-time history import carries a demo organisation's whole generated history (about 1 MB per 1,000 receipts). */
+const HISTORY_BODY_LIMIT = 24 * 1024 * 1024;
 
 export function registerInternal(app: FastifyInstance, deps: Deps) {
   app.register(async (internal) => {
@@ -189,6 +195,28 @@ export function registerInternal(app: FastifyInstance, deps: Deps) {
       parse(schemas.checkpoint, req.body);
       const cp = await checkpoint(deps, orgId);
       return { checkpoint: cp };
+    });
+
+    // ---- The console's receipts: written to the real chain after the head its document holds ----
+
+    const consoleChainError = (reply: FastifyReply, e: unknown) => {
+      if (e instanceof ChainMoved) return reply.code(409).send({ error: e.message, head: e.head });
+      if (e instanceof ConsoleChainRefused) return reply.code(422).send({ error: e.message });
+      throw e;
+    };
+
+    internal.post<P>("/internal/orgs/:org/console-receipts", async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.consoleReceipts, req.body);
+      return writeConsoleReceipts(deps, orgId, b).catch((e: unknown) => consoleChainError(reply, e));
+    });
+
+    internal.post<P>("/internal/orgs/:org/console-history", { bodyLimit: HISTORY_BODY_LIMIT }, async (req, reply) => {
+      const orgId = await org(req.params.org);
+      const b = parse(schemas.consoleHistory, req.body);
+      const r = await importConsoleHistory(deps, orgId, b).catch((e: unknown) => consoleChainError(reply, e));
+      if (r && "receipts" in r) deps.log.info({ orgId, receipts: r.receipts.length, marker: r.marker.seq }, "console history imported");
+      return r;
     });
 
     // ---- Signing keys ----

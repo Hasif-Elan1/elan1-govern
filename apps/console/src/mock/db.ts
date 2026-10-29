@@ -423,8 +423,12 @@ function buildOrg(spec: OrgSpec): OrgDB {
     noChat: spec.org.deployment === 'sovereign',
   };
 
+  // on the server the generated history continues the organisation's real chain, and is replaced by the real
+  // receipts it was written as (see ChainWriter); the browser's hourly cache is not used there
+  const base = chainWriter?.base(orgId);
+  if (base) Object.assign(cfg, { startSeq: base.seq + 1, prevHash: base.hash });
   let chain: ReturnType<typeof generateChain> | undefined;
-  if (isDemo) {
+  if (isDemo && !chainWriter) {
     try {
       const raw = localStorage.getItem(cacheKey(orgId));
       if (raw) chain = JSON.parse(raw);
@@ -441,6 +445,7 @@ function buildOrg(spec: OrgSpec): OrgDB {
       if (isDemo) localStorage.setItem(cacheKey(orgId), JSON.stringify(chain));
     } catch { /* quota or private mode — fine, regenerate next time */ }
   }
+  if (chainWriter) chain = { ...chain, receipts: chainWriter.history(orgId, chain.receipts) };
 
   const since7 = NOW0 - 7 * D;
   for (const a of agents) {
@@ -485,9 +490,12 @@ function buildOrg(spec: OrgSpec): OrgDB {
     { id: 'exp_1', ts: new Date(NOW0 - 7 * D).toISOString(), by: 'u_kavita', firstSeq: db.receipts[0].seq, lastSeq: db.receipts[Math.min(411, db.receipts.length - 1)].seq, receipts: Math.min(412, db.receipts.length), checkpoints: Math.min(160, db.checkpoints.length), sizeKb: level2 ? 912 : 486, format: level2 ? 'elan1.evidence.bundle.v1' : 'auditor-pack/1' },
     { id: 'exp_2', ts: new Date(NOW0 - 30 * D).toISOString(), by: PEOPLE_MAP[orgId]?.u_ananya ?? 'u_ananya', firstSeq: spec.startSeq - 591, lastSeq: spec.startSeq - 1, receipts: 591, checkpoints: 204, sizeKb: 702, format: 'auditor-pack/1' },
   ];
+  // a real chain has only its setup receipts before the generated history: the earlier export covers those
+  if (base) Object.assign(db.exports[1], { firstSeq: 1, lastSeq: base.seq, receipts: base.seq, checkpoints: 0, sizeKb: 2 });
   db.platform = seedPlatform(db);
   // invoices count the seeded packs and counterparty seats, so they are built once the platform state exists
   deriveBilling(db);
+  if (chainWriter) detachKeys(db);
   return db;
 }
 
@@ -693,6 +701,8 @@ function buildFreshOrg(rec: Org & { createdBy?: string }): OrgDB {
   // the starter rulebook, when set-up already drafted it (set-up writes it here too; this rebuilds it if the state was lost)
   const ob = registrySnapshot().onboarding?.[orgId] as OnboardingRecord | undefined;
   if (ob?.completedAt && ob.industry) starterFromOnboarding(db, ob.industry, ob.completedBy ?? ownerId, ob.completedAt);
+  // on the server the genesis above is a placeholder: the real chain's own org.created replaces it (ChainWriter)
+  if (chainWriter) detachKeys(db);
   return db;
 }
 
@@ -751,8 +761,14 @@ export function setPersistence(p: Persistence | undefined) {
 export function exportDoc(orgId: string): SavedDoc | undefined {
   const d = dbs.get(orgId);
   if (!d) return undefined;
-  const { keys: _k, ...rest } = d;
-  return { ...rest, savedAt: Date.now() };
+  return { ...withoutKeys(d), savedAt: Date.now() };
+}
+
+/** The organisation without its signing keys (copied, so the keys of a server document are never read). */
+function withoutKeys(d: OrgDB): Omit<OrgDB, 'keys'> {
+  const rest: Partial<OrgDB> = { ...d };
+  delete rest.keys;
+  return rest as Omit<OrgDB, 'keys'>;
 }
 
 /** Replace the open organisation with a saved document (another process changed it, or an operation failed). */
@@ -793,8 +809,9 @@ function loadState(orgId: string): OrgDB | undefined {
 function restore(orgId: string, saved: OrgDB & { savedAt: number; builtAt: number }): OrgDB | undefined {
   // a sign-up organisation's records are its own work, never regenerated: no age limit for them; nor for the
   // server's documents, which are durable (the age limit keeps a browser demo showing a fresh last 24 hours)
-  if (!saved.builtAt || (!saved.fresh && !persistence && Date.now() - saved.builtAt > STATE_MAX_AGE) || !saved.keySeeds?.length || !saved.platform) return undefined;
-  saved.keys = saved.keySeeds.map((s) => ({ key: keyFromSeed(s.seed, s.kid), from: s.from }));
+  if (!saved.builtAt || (!saved.fresh && !persistence && Date.now() - saved.builtAt > STATE_MAX_AGE) || (!saved.keySeeds?.length && !chainWriter) || !saved.platform) return undefined;
+  if (chainWriter) detachKeys(saved);
+  else saved.keys = saved.keySeeds.map((s) => ({ key: keyFromSeed(s.seed, s.kid), from: s.from }));
   if (saved.fresh && saved.baseGroups) registerBaseGroups(orgId, saved.baseGroups);
   redactLegacyErased(saved);
   // keys saved before 28 Oct 2026 carry the old eg_ prefixes; agent keys are gk_ (production) and sk_sbx_ (sandbox)
@@ -821,8 +838,7 @@ function saveState(orgId: string) {
     const d = dbs.get(orgId);
     if (!d) return;
     try {
-      const { keys: _k, ...rest } = d;
-      localStorage.setItem(STATE_PREFIX + orgId, JSON.stringify({ ...rest, savedAt: Date.now() }));
+      localStorage.setItem(STATE_PREFIX + orgId, JSON.stringify({ ...withoutKeys(d), savedAt: Date.now() }));
     } catch { /* storage full or unavailable — the session keeps working in memory */ }
   }, 400));
 }
@@ -948,6 +964,56 @@ function emit(orgId: string, kind: string) {
   listeners().forEach((l) => l(orgId, kind));
 }
 
+/* ── The real chain (server) ──────────────────────────────── */
+
+/**
+ * On the server every receipt is written by the organisation's real chain: Elan1 Govern holds the signing key, and
+ * nothing here signs. The server sets a writer. `append` then records each receipt as provisional (the next seq, a
+ * pending hash and signature) and hands it to the writer; before the server saves anything it writes the operation's
+ * receipts to the real chain in one call and puts the real receipts in their place (their seqs are the same: the
+ * document's head is the real head when the operation starts, and the chain lock refuses the write if it moved). On
+ * demand checkpoints are the real chain's too, and its hourly job signs the rest. A seeded organisation's generated
+ * history continues the real chain (`base`) and is replaced by the real receipts it was written as (`history`).
+ * The documents hold no signing keys: anything that would sign with the organisation's key here fails with NO_KEY.
+ * In the browser (the demo) no writer is set and everything runs as it always has.
+ */
+export interface ChainWriter {
+  /** The real chain head a seeded organisation's generated history continues (its first seq is one after it). */
+  base(orgId: string): { seq: number; hash: string };
+  /** The receipts of the real chain the generated history was written as, seq for seq. */
+  history(orgId: string, generated: Receipt[]): Receipt[];
+  /** A receipt an operation appended, provisional until the server writes it. */
+  receipt(orgId: string, r: Receipt): void;
+  /** A checkpoint an operation asked for, provisional until the real chain signs one. */
+  checkpoint(orgId: string, cp: Checkpoint): void;
+}
+let chainWriter: ChainWriter | undefined;
+/**
+ * What a provisional receipt's hash and signature (and a provisional checkpoint's) start with until the real
+ * chain's replace them: `pending:<seq>:<nonce>`, `pending:sig:<seq>:<nonce>`. The server's nonce makes them unique.
+ */
+export const PENDING = 'pending:';
+let pendingNonce = '0';
+
+/** Write receipts to a real chain through `w` (the server); undefined signs them here, as the demo does. */
+export function setChainWriter(w: ChainWriter | undefined, nonce = String(Date.now())) {
+  chainWriter = w;
+  pendingNonce = nonce;
+}
+
+export const NO_KEY = 'This action signs with the organisation’s own key, which only Elan1 Govern holds, and it is not connected to Elan1 Govern yet.';
+
+/** A server document holds no signing keys: reading them fails with NO_KEY (never enumerable, so never saved). */
+function detachKeys(d: OrgDB | SavedDoc) {
+  delete (d as Partial<OrgDB>).keySeeds;
+  for (const name of ['keys', 'keySeeds']) Object.defineProperty(d, name, { get() { throw new Error(NO_KEY); }, enumerable: false, configurable: true });
+}
+
+/** The key id a provisional receipt names: the real chain's active key (the server keeps signingKeys from it). */
+function activeKid(db: OrgDB, prev: Receipt) {
+  return db.signingKeys.find((k) => k.status === 'active')?.kid ?? prev.kid;
+}
+
 /* ── Appending receipts ───────────────────────────────────── */
 
 export function append(db: OrgDB, body: Omit<Receipt, 'seq' | 'prev_hash' | 'kid' | 'hash' | 'sig' | 'org' | 'ts'> & { ts?: string }): Receipt {
@@ -955,6 +1021,18 @@ export function append(db: OrgDB, body: Omit<Receipt, 'seq' | 'prev_hash' | 'kid
   const readOnly = pilotReadOnlyReason(db, body);
   if (readOnly) throw new Error(readOnly);
   const prev = db.receipts[db.receipts.length - 1];
+  if (chainWriter) {
+    // the server writes it to the organisation's real chain before saving, and puts the real receipt in its place
+    const kid = activeKid(db, prev);
+    const seq = prev.seq + 1;
+    const r = { ts: new Date().toISOString(), ...body, seq, org: db.org.id, prev_hash: prev.hash, kid, hash: `${PENDING}${seq}:${pendingNonce}`, sig: `${PENDING}sig:${seq}:${pendingNonce}` } as Receipt;
+    db.receipts.push(r);
+    const sk = db.signingKeys.find((k) => k.kid === kid);
+    if (sk) sk.receiptsSigned++;
+    chainWriter.receipt(db.org.id, r);
+    emit(db.org.id, 'receipt');
+    return r;
+  }
   const key = db.keys[db.keys.length - 1].key;
   const r = signReceipt({ ts: new Date().toISOString(), ...body, seq: prev.seq + 1, org: db.org.id, prev_hash: prev.hash, kid: key.kid } as Omit<Receipt, 'hash' | 'sig'>, key);
   db.receipts.push(r);
@@ -966,6 +1044,14 @@ export function append(db: OrgDB, body: Omit<Receipt, 'seq' | 'prev_hash' | 'kid
 
 export function signCheckpointNow(db: OrgDB, onDemand = true): Checkpoint {
   const head = db.receipts[db.receipts.length - 1];
+  if (chainWriter) {
+    // the real chain signs it (after the operation's receipts are written); this one stands in until then
+    const cp: Checkpoint = { id: `cp_${PENDING}${head.seq}`, org: db.org.id, seq: head.seq, hash: head.hash, ts: new Date().toISOString(), kid: activeKid(db, head), sig: `${PENDING}checkpoint:${head.seq}:${pendingNonce}`, onDemand };
+    db.checkpoints.push(cp);
+    chainWriter.checkpoint(db.org.id, cp);
+    emit(db.org.id, 'checkpoint');
+    return cp;
+  }
   const key = db.keys[db.keys.length - 1].key;
   const cp = signCheckpoint({ id: `cp_${head.seq}_${Date.now() % 1000}`, org: db.org.id, seq: head.seq, hash: head.hash, ts: new Date().toISOString(), kid: key.kid, onDemand }, key);
   db.checkpoints.push(cp);
@@ -975,6 +1061,8 @@ export function signCheckpointNow(db: OrgDB, onDemand = true): Checkpoint {
 
 /** The hourly checkpoint: sign the chain head when an hour has passed since the last checkpoint and the head moved. */
 export function ensureHourlyCheckpoint(db: OrgDB): Checkpoint | undefined {
+  // on the server the real chain's hourly job signs them (apps/gate jobs: checkpoints-hourly)
+  if (chainWriter) return undefined;
   const head = db.receipts[db.receipts.length - 1];
   if (!head) return undefined;
   const lastCp = db.checkpoints[db.checkpoints.length - 1];

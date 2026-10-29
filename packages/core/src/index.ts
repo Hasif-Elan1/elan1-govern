@@ -28,3 +28,5 @@ export {
 } from "./seal";
 export type { BundleProfile, EvidenceBundle, SealCrypto, SealRecord, VerifyBundleOptions, VerifyBundleResult, VerifyCode } from "./seal";
 export * from "./billing";
+// ── chain ── the console's receipt shape and core's format, both ways (the console's verifier uses it from ./browser)
+export * from "./console-receipt";

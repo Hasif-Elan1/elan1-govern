@@ -43,7 +43,53 @@ export interface Persistence {
   save(orgId: string, doc: SavedDoc): void;
 }
 
+/** A receipt as the console's documents hold it (apps/console/src/types.ts Receipt; the server's come from the real chain). */
+export interface DocReceipt {
+  seq: number;
+  ts: string;
+  org: string;
+  kind: string;
+  agent?: string;
+  tool?: string;
+  action?: string;
+  actor?: string;
+  decision?: string;
+  ref_seq?: number;
+  details?: Record<string, unknown>;
+  prev_hash: string;
+  kid: string;
+  hash: string;
+  sig: string;
+}
+
+/** A checkpoint as the console's documents hold it. */
+export interface DocCheckpoint {
+  id: string;
+  org: string;
+  seq: number;
+  hash: string;
+  ts: string;
+  kid: string;
+  sig: string;
+  onDemand?: boolean;
+}
+
+/** Where the domain's receipts go on the server: the organisation's real chain (src/mock/db.ts ChainWriter). */
+export interface ChainWriter {
+  base(orgId: string): { seq: number; hash: string };
+  history(orgId: string, generated: DocReceipt[]): DocReceipt[];
+  receipt(orgId: string, r: DocReceipt): void;
+  checkpoint(orgId: string, cp: DocCheckpoint): void;
+}
+
 export interface DomainDb {
+  setChainWriter(w: ChainWriter | undefined, nonce?: string): void;
+  /** What a provisional receipt's hash (and signature) start with until the real chain's replace them. */
+  readonly PENDING: string;
+  /** The refusal of anything that would sign with the organisation's key in the domain (the server holds none). */
+  readonly NO_KEY: string;
+  /** Record an admin action (a receipt) in an open organisation. */
+  logAdmin(orgId: string, userId: string, action: string, details: Record<string, string | number | boolean>, agent?: string): DocReceipt;
   setPersistence(p: Persistence | undefined): void;
   exportDoc(orgId: string): SavedDoc | undefined;
   importDoc(orgId: string, doc: SavedDoc): void;
@@ -62,6 +108,8 @@ export declare const db: DomainDb;
 export declare function settle(maxRounds?: number): Promise<boolean>;
 /** Cancel every domain timer that has not fired yet. */
 export declare function cancelPending(): void;
+/** Hold every domain timer (they run once the returned function is called). */
+export declare function holdTimers(): () => void;
 export declare const api: object;
 export declare const orgApi: object;
 export declare const work: object;
@@ -69,3 +117,16 @@ export declare const agents: object;
 export declare const assessments: object;
 export declare const sovereign: object;
 export declare const deployment: object;
+
+/** The console's in-browser chain verifier (src/lib/crypto.ts verifyChain), as the browser runs it. */
+export interface VerifyReport {
+  result: "verified" | "failed" | "cannot_verify";
+  receipts: number;
+  brokenAt?: number;
+  brokenReason?: string;
+  checkpoints: { total: number; valid: number };
+  keyFingerprint?: string;
+}
+export declare const chainVerifier: {
+  verifyChain(receipts: DocReceipt[], keys: Record<string, string>, checkpoints?: DocCheckpoint[], opts?: { expectedPrev?: string }): VerifyReport;
+};
