@@ -6,6 +6,7 @@ import { BlockList, isIP } from "node:net";
 import { decrypt, encrypt, type Receipt } from "@gate/core";
 import { EgressBlocked, forOrg } from "@gate/db";
 import { adminEvent } from "./admin";
+import { chain } from "./chain";
 import type { Deps } from "./deps";
 
 export const WEBHOOK_EVENTS = ["receipt.created", "approval.pending", "approval.resolved", "alert.created"] as const;
@@ -26,10 +27,18 @@ export function backoffSeconds(failures: number): number {
 
 // ---- Signing (Stripe-style): gate-signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>"> ----
 
-export function signWebhook(secret: string, body: string, now = Date.now()): string {
+/**
+ * The signature header. After a secret is rolled, the previous secrets still valid sign too, each as a further
+ * `v1` value (the current one first), so a receiver can switch over without missing a delivery.
+ */
+export function signWebhook(secret: string, body: string, now = Date.now(), previous: readonly string[] = []): string {
   const t = Math.floor(now / 1000);
-  return `t=${t},v1=${createHmac("sha256", secret).update(`${t}.${body}`).digest("hex")}`;
+  const v1 = (s: string) => `v1=${createHmac("sha256", s).update(`${t}.${body}`).digest("hex")}`;
+  return [`t=${t}`, v1(secret), ...previous.map(v1)].join(",");
 }
+
+/** How long the previous secret keeps signing after a roll. */
+export const ROLL_GRACE_MS = 24 * 3_600_000;
 
 // ---- SSRF protection ----
 
@@ -267,8 +276,11 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
   }
   const body = webhookBody(d, orgId);
   let secret: string;
+  let previous: string[];
   try {
     secret = decrypt(deps.env.GATE_MASTER_KEY, d.webhook.secretEnc, secretAad(d.webhookId));
+    const rolls = await db.webhookSecretRoll.findMany({ where: { webhookId: d.webhookId, validUntil: { gt: new Date() } }, orderBy: { createdAt: "desc" }, select: { previousSecretEnc: true } });
+    previous = rolls.map((x) => decrypt(deps.env.GATE_MASTER_KEY, x.previousSecretEnc, secretAad(d.webhookId)));
   } catch {
     return finish(false, { error: "the signing secret could not be read" });
   }
@@ -276,7 +288,7 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
     const res = await postJson(
       checked.url,
       body,
-      { "content-type": "application/json", "user-agent": "Elan1 Govern-Webhooks/1", "gate-signature": signWebhook(secret, body), "gate-event": d.event, "gate-delivery": d.id },
+      { "content-type": "application/json", "user-agent": "Elan1 Govern-Webhooks/1", "gate-signature": signWebhook(secret, body, Date.now(), previous), "gate-event": d.event, "gate-delivery": d.id },
       { allowPrivate: deps.env.WEBHOOK_ALLOW_PRIVATE },
     );
     if (res.status >= 200 && res.status < 300) return finish(true, { status: res.status });
@@ -288,9 +300,15 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
 
 // ---- Admin ----
 
-export type CreateWebhookResult = { ok: true; id: string; secret: string } | { ok: false; error: string };
+export type CreateWebhookResult = { ok: true; id: string; secret: string; secretPrefix: string; seq: number } | { ok: false; error: string };
 
-export async function createWebhook(deps: Deps, orgId: string, input: { url: string; events: WebhookEvent[]; actor: string }): Promise<CreateWebhookResult> {
+/** The part of a secret shown afterwards (whsec_4fK2): enough to tell secrets apart, too little to sign with. */
+export const secretPrefixOf = (secret: string) => secret.slice(0, 10);
+
+const newSecret = () => `whsec_${randomBytes(32).toString("base64url")}`;
+
+/** `action` names the receipt: webhook.created from the web app's routes, webhook.added from the console's screens. */
+export async function createWebhook(deps: Deps, orgId: string, input: { url: string; events: WebhookEvent[]; actor: string; action?: "webhook.created" | "webhook.added" }): Promise<CreateWebhookResult> {
   const checked = checkWebhookUrl(input.url);
   if (!checked.ok) return checked;
   const egress = await deps.egress.decide(checked.url, "webhook", { orgId, actor: input.actor });
@@ -300,20 +318,66 @@ export async function createWebhook(deps: Deps, orgId: string, input: { url: str
   const db = forOrg(orgId, deps.db);
   if ((await db.webhook.count()) >= 20) return { ok: false, error: "An organisation can have up to 20 webhook endpoints." };
   const id = `wh_${randomBytes(12).toString("base64url")}`;
-  const secret = `whsec_${randomBytes(32).toString("base64url")}`;
-  await db.webhook.create({ data: { id, orgId, url: checked.url.toString(), secretEnc: encrypt(deps.env.GATE_MASTER_KEY, secret, secretAad(id)), events, createdBy: input.actor } });
+  const secret = newSecret();
+  const secretPrefix = secretPrefixOf(secret);
+  await db.webhook.create({ data: { id, orgId, url: checked.url.toString(), secretEnc: encrypt(deps.env.GATE_MASTER_KEY, secret, secretAad(id)), secretPrefix, events, createdBy: input.actor } });
   // The receipt names the host only: paths and query strings can carry tokens.
-  await adminEvent(deps, orgId, input.actor, "webhook.created", { webhook_id: id, host: checked.url.host, events: events.join(",") });
-  return { ok: true, id, secret };
+  const r = await adminEvent(deps, orgId, input.actor, input.action ?? "webhook.created", { webhook_id: id, host: checked.url.host, events: events.join(",") });
+  return { ok: true, id, secret, secretPrefix, seq: r.seq };
+}
+
+/** Deletes an endpoint (its deliveries and rolled secrets go with it) and writes the receipt, in one transaction. */
+export async function removeWebhook(deps: Deps, orgId: string, id: string, actor: string): Promise<{ seq: number } | null> {
+  return chain(deps, orgId, async (append, tx) => {
+    const hook = await tx.webhook.findFirst({ where: { id } });
+    if (!hook) return null;
+    await tx.webhookSecretRoll.deleteMany({ where: { webhookId: id } });
+    await tx.webhook.deleteMany({ where: { id } });
+    const r = await append({ kind: "admin", actor, action: "webhook.deleted", details: { webhook_id: id, host: new URL(hook.url).host } });
+    return { seq: r.seq };
+  });
 }
 
 export async function deleteWebhook(deps: Deps, orgId: string, id: string, actor: string): Promise<boolean> {
-  const db = forOrg(orgId, deps.db);
-  const hook = await db.webhook.findFirst({ where: { id } });
-  if (!hook) return false;
-  await db.webhook.deleteMany({ where: { id } });
-  await adminEvent(deps, orgId, actor, "webhook.deleted", { webhook_id: id, host: new URL(hook.url).host });
-  return true;
+  return !!(await removeWebhook(deps, orgId, id, actor));
+}
+
+/** Turns an endpoint on or off. An endpoint that is off is sent nothing; what waits for it fails. One transaction with its receipt. */
+export async function setWebhookActive(deps: Deps, orgId: string, id: string, active: boolean, actor: string): Promise<{ seq: number } | null> {
+  return chain(deps, orgId, async (append, tx) => {
+    const hook = await tx.webhook.findFirst({ where: { id } });
+    if (!hook) return null;
+    await tx.webhook.updateMany({ where: { id }, data: { active } });
+    const r = await append({ kind: "admin", actor, action: active ? "webhook.enabled" : "webhook.disabled", details: { webhook_id: id, host: new URL(hook.url).host } });
+    return { seq: r.seq };
+  });
+}
+
+export interface RolledSecret {
+  secret: string;
+  secretPrefix: string;
+  previousPrefix: string;
+  previousValidUntil: string;
+  rollId: string;
+  seq: number;
+}
+
+/**
+ * A new signing secret, shown once. The previous one keeps signing, as a second `v1` value, for ROLL_GRACE_MS.
+ * The new secret, the roll and the receipt are one transaction.
+ */
+export async function rollWebhookSecret(deps: Deps, orgId: string, id: string, actor: string, now = new Date()): Promise<RolledSecret | null> {
+  return chain(deps, orgId, async (append, tx) => {
+    const hook = await tx.webhook.findFirst({ where: { id } });
+    if (!hook) return null;
+    const secret = newSecret();
+    const secretPrefix = secretPrefixOf(secret);
+    const validUntil = new Date(now.getTime() + ROLL_GRACE_MS);
+    await tx.webhook.updateMany({ where: { id }, data: { secretEnc: encrypt(deps.env.GATE_MASTER_KEY, secret, secretAad(id)), secretPrefix } });
+    const roll = await tx.webhookSecretRoll.create({ data: { orgId, webhookId: id, previousSecretEnc: hook.secretEnc, previousPrefix: hook.secretPrefix, validUntil, createdBy: actor } });
+    const r = await append({ kind: "admin", actor, action: "webhook.secret_rolled", details: { webhook_id: id, host: new URL(hook.url).host, previous_valid_until: validUntil.toISOString(), roll_id: roll.id } });
+    return { secret, secretPrefix, previousPrefix: hook.secretPrefix, previousValidUntil: validUntil.toISOString(), rollId: roll.id, seq: r.seq };
+  });
 }
 
 /** Sends a `webhook.test` event to one endpoint now and reports how it went. Failures retry as usual. */
@@ -325,4 +389,44 @@ export async function testWebhook(deps: Deps, orgId: string, id: string): Promis
     data: { orgId, webhookId: id, event: TEST_EVENT, payload: { message: "This is a test event from Elan1 Govern. No action happened." }, nextAttemptAt: new Date() },
   });
   return { deliveryId: d.id, outcome: await deliverWebhook(deps, orgId, d.id) };
+}
+
+/**
+ * Sends one delivery again now, under its own id (the body's `id`), so the endpoint can tell it is the same event.
+ * One more attempt: a delivery that gave up gets just this one; one still retrying keeps the attempts it has left.
+ */
+export async function resendWebhookDelivery(deps: Deps, orgId: string, webhookId: string, deliveryId: string): Promise<{ deliveryId: string; outcome: DeliveryOutcome } | null> {
+  const db = forOrg(orgId, deps.db);
+  const d = await db.webhookDelivery.findFirst({ where: { id: deliveryId, webhookId } });
+  if (!d) return null;
+  const attempts = d.status === "pending" ? d.attempts : Math.max(d.attempts, MAX_ATTEMPTS - 1);
+  await db.webhookDelivery.updateMany({ where: { id: deliveryId }, data: { status: "pending", attempts, nextAttemptAt: new Date(), deliveredAt: null } });
+  return { deliveryId, outcome: await deliverWebhook(deps, orgId, deliveryId) };
+}
+
+/** How many dead letters one replay sends (each waits for its endpoint, up to TIMEOUT_MS). */
+export const REPLAY_BATCH = 20;
+
+/**
+ * Sends the deliveries that gave up (failed) again, one attempt each, to endpoints that are on, oldest first; the
+ * receipt says how many got through. A delivery that fails again stays failed, for the next replay.
+ */
+export async function replayDeadLetters(deps: Deps, orgId: string, input: { webhookId?: string; actor: string }): Promise<{ delivered: number; failed: number; seq: number }> {
+  const db = forOrg(orgId, deps.db);
+  const dead = await db.webhookDelivery.findMany({
+    where: { status: "failed", ...(input.webhookId ? { webhookId: input.webhookId } : {}), webhook: { active: true } },
+    orderBy: { createdAt: "asc" },
+    take: REPLAY_BATCH,
+    select: { id: true },
+  });
+  let delivered = 0;
+  let failed = 0;
+  for (const d of dead) {
+    const claimed = await db.webhookDelivery.updateMany({ where: { id: d.id, status: "failed" }, data: { status: "pending", attempts: MAX_ATTEMPTS - 1, nextAttemptAt: new Date() } });
+    if (!claimed.count) continue;
+    if ((await deliverWebhook(deps, orgId, d.id)) === "delivered") delivered++;
+    else failed++;
+  }
+  const r = await adminEvent(deps, orgId, input.actor, "webhook.dead_letter_replayed", { delivered, failed, ...(input.webhookId ? { webhook_id: input.webhookId } : {}) });
+  return { delivered, failed, seq: r.seq };
 }

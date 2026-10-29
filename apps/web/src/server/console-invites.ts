@@ -2,10 +2,9 @@ import "server-only";
 import { hashToken, randomToken } from "@gate/core";
 import { addMembership, findInviteByTokenHash, forOrg, prisma } from "@gate/db";
 import { HttpError } from "./api";
-import { knownConsoleOrg, runOp, stateFor } from "./console-domain";
-import { env } from "./env";
+import { knownConsoleOrg, runOp, serverDoc } from "./console-domain";
 import { gate } from "./gate";
-import { sendInvite } from "./mail";
+import { inviteMember } from "./identity";
 import { canAssignRole, type Role } from "./policy";
 
 /*
@@ -56,12 +55,9 @@ export async function invitePerson(org: { id: string; name: string }, inviter: I
   const expiresAt = new Date(Date.now() + INVITE_DAYS * 86_400_000);
   // the document first: a refusal there (a stopped pilot, a role the inviter no longer holds) leaves no link behind
   const seq = onConsole ? (await recordInConsole(org.id, inviter.id, email, role, token, expiresAt)).seq : undefined;
-  const now = new Date();
-  await db.invite.updateMany({ where: { email, acceptedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
-  await db.invite.create({ data: { orgId: org.id, email, role, tokenHash: hashToken(token), invitedBy: inviter.email, expiresAt } });
-  const link = `${env().WEB_URL}/invite/${token}`;
-  await sendInvite(email, org.name, inviter.name, link, role);
-  if (!onConsole) await gate("POST", `/internal/orgs/${org.id}/events`, { actor: inviter.email, action: "member.invited", details: { role } });
+  // the real invitation and its email (identity.ts); a console organisation's receipt was written by the operation above
+  const recorder = onConsole ? undefined : (action: string, details: Record<string, string | number | boolean | null>) => gate("POST", `/internal/orgs/${org.id}/events`, { actor: inviter.email, action, details });
+  const { link } = await inviteMember(org, inviter, { email, role, token, expiresAt }, recorder);
   return { added: false, link, ...(seq !== undefined ? { seq } : {}) };
 }
 
@@ -79,7 +75,7 @@ async function liveInvite(token: string) {
   if (!invite) throw new HttpError(410, GONE);
   const onConsole = await knownConsoleOrg(invite.orgId);
   if (onConsole) {
-    const { doc } = await stateFor(invite.orgId);
+    const { doc } = await serverDoc(invite.orgId);
     const listed = ((doc.orgSettings as { invites?: DocInvite[] } | undefined)?.invites ?? []).find((i) => i.tokenHash === tokenHash);
     if (!listed || listed.usedAt || listed.revokedAt || listed.replacedBy) throw new HttpError(410, GONE);
   }

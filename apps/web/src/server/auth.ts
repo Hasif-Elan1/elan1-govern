@@ -3,6 +3,7 @@ import { decrypt, encrypt } from "@gate/core";
 import { prisma } from "@gate/db";
 import argon2 from "argon2";
 import * as OTPAuth from "otpauth";
+import { HttpError } from "./api";
 import { env } from "./env";
 
 // A real hash to compare against when the email is unknown, so timing does not reveal it.
@@ -81,4 +82,20 @@ export function verifyTotp(secretEnc: string, code: string): boolean {
 export function totpNow(secretEnc: string): string {
   const secret = OTPAuth.Secret.fromBase32(decrypt(env().WEB_ENC_KEY, secretEnc, totpAad));
   return new OTPAuth.TOTP({ secret, algorithm: "SHA1", digits: 6, period: 30 }).generate();
+}
+
+/**
+ * Turn on two-step sign-in with a secret the person's authenticator already holds (the console's set-up shows the
+ * key and QR code it made, then sends the first code): the code must match, the secret is kept encrypted, and an
+ * account that already has two-step sign-in is refused, as POST /api/auth/totp refuses to start again.
+ */
+export async function enrolTotp(userId: string, secretBase32: string, code: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { totpEnabled: true } });
+  if (!user) throw new HttpError(404, "Your account no longer exists.");
+  if (user.totpEnabled) throw new HttpError(409, "Two-step sign-in is already on.");
+  const secret = secretBase32.replace(/\s+/g, "").toUpperCase();
+  if (!/^[A-Z2-7]{26,128}=*$/.test(secret)) throw new HttpError(400, "That set-up key is not valid. Start again.");
+  const secretEnc = encrypt(env().WEB_ENC_KEY, secret, totpAad);
+  if (!verifyTotp(secretEnc, code)) throw new HttpError(400, "That code did not match. Try the newest code in your app.");
+  await prisma.user.update({ where: { id: userId }, data: { totpSecret: secretEnc, totpEnabled: true } });
 }

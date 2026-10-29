@@ -4,6 +4,7 @@ import { z } from "zod";
 import { chain, checkpoint } from "./chain";
 import type { Deps } from "./deps";
 import { signer } from "./keys";
+import { projectBilling } from "./wiring/billing";
 
 /*
  * The approved console's receipts (plans/console-app.md E5: receipts are always written by the real chain). The
@@ -84,6 +85,8 @@ export async function writeConsoleReceipts(deps: Deps, orgId: string, input: { b
     if (head.seq !== input.base.seq || head.hash !== input.base.hash) throw new ChainMoved(head);
     const out: Receipt[] = [];
     for (const r of input.receipts) out.push(await append(r));
+    // wiring: what billing receipts say goes into the billing ledger in the same transaction
+    await projectBilling(tx, orgId, out);
     return out;
   });
   const cp = input.checkpoint ? ((await checkpoint(deps, orgId)) ?? (await latestCheckpoint(deps, orgId))) : null;

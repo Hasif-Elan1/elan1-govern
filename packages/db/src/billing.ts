@@ -1,4 +1,4 @@
-import { PILOT, PLATFORM_RULE_IDS, type ComputedInvoice, type MeterReceipt } from "@gate/core";
+import { CONSOLE_DETAIL_KEYS, PILOT, PLATFORM_RULE_IDS, type ComputedInvoice, type MeterReceipt } from "@gate/core";
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultClient } from "./client";
 import { forOrg } from "./tenant";
@@ -6,27 +6,30 @@ import { forOrg } from "./tenant";
 /** Decisions that never count towards anything: platform refusals and refusals at the pilot's own stop. */
 const UNCOUNTED_RULES = [...PLATFORM_RULE_IDS, PILOT.ruleId];
 
+/** A sandbox call's receipt says so where the console's receipts carry it (packages/core/src/console-receipt.ts). */
+const SANDBOX_PATH = ["details", CONSOLE_DETAIL_KEYS.environment];
+
 /**
- * Production governed actions in [since, until): every decision receipt except platform refusals (gate-error) and
- * pilot-stop refusals. Two indexed counts, cheap enough to run on every guarded call of a pilot organisation.
- *
- * TODO(plan step 3.5): sandbox keys (sk_sbx_) do not exist in the gate yet, so every key's calls are counted here.
- * When they do, leave sandbox calls out (they are metered at 0 and never stopped).
+ * Production governed actions in [since, until): every decision receipt except platform refusals (gate-error),
+ * pilot-stop refusals and calls made with a sandbox key (metered at ₹0 and never counted towards the cap; the
+ * guard marks them, apps/gate/src/guard.ts). Two indexed counts, cheap enough to run on every guarded call of a
+ * pilot organisation.
  */
 export async function pilotDecisionCount(orgId: string, since: Date, until?: Date | null, client: PrismaClient = defaultClient): Promise<number> {
   const db = forOrg(orgId, client);
   const where = { kind: "decision", ts: { gte: since, ...(until ? { lt: until } : {}) } };
-  const [all, uncounted] = await Promise.all([
-    db.receipt.count({ where }),
-    db.receipt.count({ where: { ...where, OR: UNCOUNTED_RULES.map((id) => ({ body: { path: ["rule_id"], equals: id } })) } }),
-  ]);
-  return all - uncounted;
+  const uncounted = [...UNCOUNTED_RULES.map((id) => ({ body: { path: ["rule_id"], equals: id } })), { body: { path: SANDBOX_PATH, equals: "sandbox" } }];
+  const [all, left] = await Promise.all([db.receipt.count({ where }), db.receipt.count({ where: { ...where, OR: uncounted } })]);
+  return all - left;
 }
 
-/** Decision and approval receipts in [since, until), oldest first, as the meter reads them. */
+/** Decision and approval receipts in [since, until), oldest first, as the meter reads them (a sandbox call's with its `environment`). */
 export async function meterReceipts(orgId: string, since: Date, until?: Date | null, client: PrismaClient = defaultClient): Promise<MeterReceipt[]> {
   const rows = await forOrg(orgId, client).receipt.findMany({ where: { kind: { in: ["decision", "approval"] }, ts: { gte: since, ...(until ? { lt: until } : {}) } }, orderBy: { seq: "asc" }, select: { body: true } });
-  return rows.map((r) => r.body as unknown as MeterReceipt);
+  return rows.map((r) => {
+    const body = r.body as unknown as MeterReceipt;
+    return body.details?.[CONSOLE_DETAIL_KEYS.environment] === "sandbox" ? { ...body, environment: "sandbox" } : body;
+  });
 }
 
 const big = (n: number) => BigInt(n);

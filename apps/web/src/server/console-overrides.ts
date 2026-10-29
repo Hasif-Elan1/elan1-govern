@@ -42,3 +42,5 @@ export function consoleOverride(op: string): Override | undefined {
 
 // each feature's overrides (imported for their registrations)
 import "./console-overrides/signing";
+// ── wiring ── the console screens on the real backends (console-overrides/wiring.ts)
+import "./console-overrides/wiring";

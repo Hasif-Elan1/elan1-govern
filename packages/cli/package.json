@@ -5,5 +5,5 @@
   "type": "module",
   "bin": { "govern": "./bin/gate.mjs", "gate": "./bin/gate.mjs" },
   "scripts": { "typecheck": "tsc --noEmit" },
-  "dependencies": { "@gate/core": "workspace:*", "tsx": "4.23.15" }
+  "dependencies": { "@gate/core": "workspace:*", "@gate/db": "workspace:*", "tsx": "4.23.15" }
 }

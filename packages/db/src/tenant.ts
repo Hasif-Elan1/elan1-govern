@@ -56,6 +56,8 @@ export const TENANT_MODELS = [
   "SealRecord",
   "ReceiptRedaction",
   "ConsoleSignature",
+  // ── wiring ──
+  "WebhookSecretRoll",
 ] as const;
 
 const WHERE_OPS = new Set([

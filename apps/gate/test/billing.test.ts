@@ -1,6 +1,7 @@
+import { randomBytes } from "node:crypto";
 import { inflateSync } from "node:zlib";
-import { buildInvoices, formatPaise, type ComputedInvoice, type Receipt } from "@gate/core";
-import { forOrg, withChain } from "@gate/db";
+import { buildInvoices, formatPaise, hashToken, type ComputedInvoice, type Receipt } from "@gate/core";
+import { forOrg, meterReceipts, pilotDecisionCount, withChain } from "@gate/db";
 import { PDFArray, PDFDocument, PDFRawStream, type PDFObject } from "pdf-lib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { convertPilot, pilotGate, startPilot } from "../src/billing";
@@ -82,6 +83,27 @@ describe("the pilot's hard stop in the guard", () => {
     expect(gateMeta(await read(d)).reason).toMatch(/closed/);
     expect((await receipts(d.org.id)).filter((x) => x.action === "billing.pilot_closed")).toHaveLength(1);
     expect(await convertPilot(ctx.deps, d.org.id, d.owner.email)).toMatchObject({ ok: false, error: expect.stringMatching(/closed/) });
+  });
+
+  it("never counts a sandbox key's calls towards the cap, and never stops them", async () => {
+    const d = await demoOrg(ctx.deps);
+    await startPilot(ctx.deps, d.org.id, d.owner.email, { cap: 2 });
+    const sandboxKey = `sk_sbx_${randomBytes(16).toString("hex")}`;
+    await d.db.apiKey.create({ data: { orgId: d.org.id, agentId: d.agentId, prefix: sandboxKey.slice(0, 10), keyHash: hashToken(sandboxKey), label: "Sandbox", environment: "sandbox" } });
+    const sandbox = () => tool(ctx.app, sandboxKey, "gmail.read_message", { message_id: "m_101" });
+    for (let i = 0; i < 4; i++) expect(gateMeta(await sandbox()).decision).toBe("allow");
+    // marked on the receipt as the console's receipts mark it, and metered at ₹0
+    const marked = (await receipts(d.org.id)).filter((x) => x.kind === "decision" && x.details?.["console.environment"] === "sandbox");
+    expect(marked).toHaveLength(4);
+    const acct = await d.db.billingAccount.findFirstOrThrow();
+    expect(await pilotDecisionCount(d.org.id, acct.pilotStartsAt!)).toBe(0);
+    expect((await meterReceipts(d.org.id, acct.pilotStartsAt!)).filter((r) => r.environment === "sandbox")).toHaveLength(4);
+    // production calls count: two use the cap, the third is refused; the sandbox key keeps working
+    expect(gateMeta(await read(d)).decision).toBe("allow");
+    expect(gateMeta(await read(d)).decision).toBe("allow");
+    expect(gateMeta(await read(d))).toMatchObject({ decision: "refuse", rule_id: "pilot-limit" });
+    expect(gateMeta(await sandbox()).decision).toBe("allow");
+    expect(await pilotDecisionCount(d.org.id, acct.pilotStartsAt!)).toBe(2);
   });
 
   it("leaves organisations without a pilot alone", async () => {

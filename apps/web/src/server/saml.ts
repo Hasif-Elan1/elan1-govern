@@ -1,11 +1,13 @@
 import "server-only";
 import { randomBytes, X509Certificate } from "node:crypto";
 import { decrypt, encrypt, randomToken } from "@gate/core";
-import { addMembership, findSamlForDomain, forOrg, Prisma, prisma, type SamlConnection } from "@gate/db";
+import { addMembership, domainClaimedElsewhere, findSamlForDomain, forOrg, Prisma, prisma, type SamlConnection } from "@gate/db";
 import { SAML, ValidateInResponseTo, type CacheProvider, type Profile } from "@node-saml/node-saml";
 import { z } from "zod";
+import { HttpError } from "./api";
 import { env } from "./env";
 import { gate } from "./gate";
+import { withReceipt } from "./inventory";
 import { log } from "./log";
 import type { Role } from "./policy";
 import { deactivatedByDirectory, orgVerifiedDomains } from "./identity";
@@ -250,4 +252,82 @@ export function spMetadata(conn: { spEntityId: string; idpSsoUrl?: string; idpCe
   const placeholder: CacheProvider = { saveAsync: async () => null, getAsync: async () => null, removeAsync: async () => null };
   const saml = samlFor({ spEntityId: conn.spEntityId, idpSsoUrl: conn.idpSsoUrl ?? "", idpCertPems: conn.idpCertPems?.length ? conn.idpCertPems : ["unused"] }, "_", placeholder);
   return saml.generateServiceProviderMetadata(null, null);
+}
+
+// ---- Saving the connection (PUT /api/settings/saml and the console's Single sign-on screen) ----
+
+export interface SamlSettings {
+  idpEntityId: string;
+  idpSsoUrl: string;
+  /** More than one while the IdP rolls its signing key. */
+  idpCertPems: string[];
+  spEntityId?: string;
+  domains: string[];
+  enforced: boolean;
+  jit: boolean;
+  defaultRole: Role;
+  enabled: boolean;
+}
+
+/**
+ * Save the organisation's SAML connection and "Require SAML for everyone". Requiring it needs SAML on, a verified
+ * domain and at least one owner with two-step sign-in (the break-glass way in), so the org is never locked out.
+ * With `receiptBy`, the change is recorded as identity.updated (and undone if that cannot be written); without it,
+ * the caller records it (the console's own receipt for its operation).
+ */
+export async function saveSamlConnection(orgId: string, body: SamlSettings, opts: { receiptBy?: string } = {}): Promise<void> {
+  const db = forOrg(orgId);
+  if (process.env.APP_ENV === "production" && !body.idpSsoUrl.startsWith("https://")) throw new HttpError(400, "The identity provider's sign-in URL must use https.");
+  const certs: string[] = [];
+  for (const pem of body.idpCertPems) {
+    const c = parseIdpCert(pem);
+    if ("error" in c) throw new HttpError(400, c.error);
+    certs.push(c.pem);
+  }
+  for (const d of body.domains) if (await domainClaimedElsewhere(d, orgId)) throw new HttpError(409, `${d} is already used by another organisation.`);
+
+  const before = await db.samlConnection.findFirst();
+  const sso = await db.ssoConnection.findFirst({ select: { verifyToken: true, verifiedDomains: true } });
+  const verified = (before?.verifiedDomains ?? []).filter((d) => body.domains.includes(d));
+  if (body.enforced) {
+    if (!body.enabled) throw new HttpError(400, "Turn SAML sign-in on before requiring it.");
+    if (!body.domains.some((d) => verified.includes(d) || sso?.verifiedDomains.includes(d))) throw new HttpError(400, "Verify at least one domain before requiring SAML.");
+    // Never lock the org out: someone must be able to get in if the IdP is down.
+    if ((await breakGlassOwners(orgId)) === 0) throw new HttpError(400, "Turn on two-step sign-in for at least one owner first. Owners with two-step sign-in are the break-glass way in if the identity provider is down.");
+  }
+  const data = {
+    idpEntityId: body.idpEntityId,
+    idpSsoUrl: body.idpSsoUrl,
+    idpCertPems: certs,
+    spEntityId: body.spEntityId ?? before?.spEntityId ?? defaultSpEntityId(orgId),
+    wantAssertionsSigned: true,
+    domains: body.domains,
+    verifiedDomains: verified,
+    enforced: body.enforced,
+    jit: body.jit,
+    defaultRole: body.defaultRole,
+    enabled: body.enabled,
+  };
+  const change = () => (before ? db.samlConnection.update({ where: { id: before.id }, data }) : db.samlConnection.create({ data: { orgId, verifyToken: sso?.verifyToken ?? randomToken(), ...data } }));
+  try {
+    if (!opts.receiptBy) {
+      await change();
+      return;
+    }
+    await withReceipt(
+      orgId,
+      opts.receiptBy,
+      "identity.updated",
+      change,
+      () => ({ saml_enabled: body.enabled, saml_enforced: body.enforced, jit: body.jit, default_role: body.defaultRole, domains: body.domains.length }),
+      (t) => {
+        if (!before) return db.samlConnection.delete({ where: { id: t.id } });
+        const { id: _id, orgId: _org, createdAt: _c, updatedAt: _u, ...prev } = before;
+        return db.samlConnection.update({ where: { id: t.id }, data: prev });
+      },
+    );
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new HttpError(409, "That SP entity id is already used by another organisation.");
+    throw e;
+  }
 }

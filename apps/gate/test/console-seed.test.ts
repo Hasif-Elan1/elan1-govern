@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { decrypt } from "@gate/core";
+import { decrypt, invoicePrefix } from "@gate/core";
 import { forOrg, prisma } from "@gate/db";
 import { CONSOLE_DEMO_ACCOUNTS, CONSOLE_INVITES, CONSOLE_ORGS, CONSOLE_PEOPLE } from "@gate/db/console-demo";
 import argon2 from "argon2";
@@ -26,7 +26,9 @@ const snapshot = async () => {
     users: await prisma.user.count({ where: { id: { in: CONSOLE_PEOPLE.map((p) => p.id) } } }),
     memberships: await prisma.membership.count({ where: { orgId: { in: ids } } }),
     invites: await prisma.invite.count({ where: { orgId: { in: ids } } }),
-    receipts: await prisma.receipt.count({ where: { orgId: { in: ids } } }),
+    // the anchor job (anchors.test.ts runs it over every org, in parallel) may batch the console orgs' new receipts:
+    // its anchor.batched receipts are not the seed's
+    receipts: await prisma.receipt.count({ where: { orgId: { in: ids }, OR: [{ action: null }, { action: { not: "anchor.batched" } }] } }),
     hashes: (await prisma.user.findMany({ where: { id: { in: CONSOLE_PEOPLE.map((p) => p.id) } }, select: { id: true, passwordHash: true, totpSecret: true }, orderBy: { id: "asc" } })),
   };
 };
@@ -107,6 +109,14 @@ describe("seeding the console's demo organisations", () => {
     expect(inv).toHaveLength(1);
     expect(inv[0]).toMatchObject({ role: "approver", invitedBy: "ananya.rao@demotraders.in", acceptedAt: null });
     expect(inv[0]!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("opens each organisation's billing account on its console plan, with its receipt, and nobody is platform staff", async () => {
+    for (const o of CONSOLE_ORGS) {
+      expect(await forOrg(o.id).billingAccount.findFirst()).toMatchObject({ plan: o.level, buyerName: o.name, invoicePrefix: invoicePrefix(o.name) });
+      expect(await forOrg(o.id).receipt.count({ where: { action: "billing.account_opened" } })).toBe(1);
+    }
+    expect(await prisma.user.count({ where: { id: { in: CONSOLE_PEOPLE.map((p) => p.id) }, isPlatformStaff: true } })).toBe(0);
   });
 
   it("is idempotent: a second run reuses every row and writes nothing", async () => {

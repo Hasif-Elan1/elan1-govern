@@ -97,6 +97,11 @@ export const GateEnvSchema = z.object({
   EGRESS_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   /** Elan1 release keys that sign update bundles: base64 SPKI DER Ed25519 public keys, comma separated. */
   UPDATE_SIGNING_PUBLIC_KEYS: z.string().optional(),
+  /**
+   * ── wiring ── The folder the operator copies update bundles into from the removable media (one sub-folder per
+   * version). The console imports `<UPDATE_IMPORT_DIR>/<version>`; unset, bundles cannot be imported from the console.
+   */
+  UPDATE_IMPORT_DIR: z.string().optional(),
 }).superRefine((e, ctx) => {
   const ids = tsaIds(e.TSA_AUTHORITIES);
   const problem = (message: string, path = "TSA_AUTHORITIES") => ctx.addIssue({ code: "custom", path: [path], message });

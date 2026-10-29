@@ -23,12 +23,15 @@ export const MANIFEST_FORMAT = "elan1.update.manifest.v1";
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const ADVISORY_KEY = "elan1-govern:updates";
 
+/** A release version (2026.11.1, 2026.11.1-hotfix): also one plain path segment, with no separator and no "..". */
+export const UPDATE_VERSION = /^\d{4}\.\d{1,3}\.\d{1,4}(?:[-.][a-z0-9]{1,20})?$/;
+
 const Artifact = z.object({ name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
 
 export const UpdateManifestSchema = z
   .object({
     format: z.literal(MANIFEST_FORMAT),
-    version: z.string().regex(/^\d{4}\.\d{1,3}\.\d{1,4}(?:[-.][a-z0-9]{1,20})?$/),
+    version: z.string().regex(UPDATE_VERSION),
     createdAt: z.iso.datetime(),
     artifacts: z.array(Artifact).min(1).max(200),
     notes: z.union([z.string().max(4000), z.array(z.string().max(500)).max(50)]),

@@ -439,6 +439,15 @@ function forBrowser(doc: Record<string, unknown>, viewerId?: string): Record<str
   return doc;
 }
 
+/**
+ * The organisation's whole saved document, for server code only (it holds what forBrowser leaves out, such as invite
+ * token hashes). Never send it to a browser: use stateFor for that.
+ */
+export async function serverDoc(orgId: string): Promise<{ version: number; doc: Record<string, unknown> }> {
+  const s = await current(orgId);
+  return { version: s.version, doc: JSON.parse(s.json) as Record<string, unknown> };
+}
+
 /** The organisation's document for the browser (without what forBrowser drops, and only the viewer's own working papers) and its version. */
 export async function stateFor(orgId: string, viewerId?: string): Promise<{ version: number; doc: Record<string, unknown> }> {
   const s = await current(orgId);

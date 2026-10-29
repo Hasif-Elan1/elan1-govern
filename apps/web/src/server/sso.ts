@@ -1,10 +1,12 @@
 import "server-only";
 import { decrypt, encrypt, randomToken } from "@gate/core";
-import { addMembership, EgressBlocked, findSsoForDomain, forOrg, prisma } from "@gate/db";
+import { addMembership, domainClaimedElsewhere, EgressBlocked, findSsoForDomain, forOrg, prisma } from "@gate/db";
 import * as oidc from "openid-client";
+import { HttpError } from "./api";
 import { webFetch } from "./egress";
 import { env } from "./env";
 import { deactivatedByDirectory } from "./identity";
+import type { Role } from "./policy";
 
 // OIDC single sign-on (Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak…).
 // Authorization code flow with PKCE, state and nonce. The transient values travel in an
@@ -121,11 +123,14 @@ export async function passwordBlockedBySso(email: string): Promise<boolean> {
 export type TxtResolver = (host: string) => Promise<string[][]>;
 
 /** A domain is verified when a DNS TXT record on it contains `gate-verify=<token>`. */
+const VERIFY_PREFIXES = ["gate-verify=", "elan1-govern-verify="];
+
 export async function domainVerified(domain: string, token: string, resolveTxt?: TxtResolver): Promise<boolean> {
   const resolver = resolveTxt ?? (await import("node:dns/promises")).resolveTxt;
   try {
     const records = await resolver(domain);
-    return records.some((chunks) => chunks.join("") === `gate-verify=${token}`);
+    // the console shows the record under its own name (elan1-govern-verify=); either name carries the same token
+    return records.some((chunks) => VERIFY_PREFIXES.some((p) => chunks.join("") === `${p}${token}`));
   } catch {
     return false;
   }
@@ -141,4 +146,60 @@ export async function checkIssuer(issuer: string, clientId: string, clientSecret
     if (e instanceof EgressBlocked || (e as { cause?: unknown }).cause instanceof EgressBlocked) return `${new URL(issuer).host} is not on this deployment's egress allow-list, so Elan1 Govern cannot reach your identity provider.`;
     return `Elan1 Govern could not read the identity provider's settings at ${issuer} (${(e as Error).message.slice(0, 120)}).`;
   }
+}
+
+// ---- Saving the connection (PUT /api/settings/sso and the console's Single sign-on screen) ----
+
+export interface SsoSettings {
+  issuer: string;
+  clientId: string;
+  clientSecret?: string;
+  domains: string[];
+  enforce: boolean;
+  defaultRole: Role;
+  enabled: boolean;
+}
+
+/**
+ * Save the organisation's OIDC connection: a new one needs its client secret; a domain another organisation uses is
+ * refused; a new secret is checked against the issuer (real discovery, through the egress gate) before it is kept.
+ * Domains already verified stay verified while they are listed. Returns whether the connection is new.
+ */
+export async function saveSsoConnection(orgId: string, body: SsoSettings, by: { actor: string }): Promise<{ created: boolean }> {
+  const db = forOrg(orgId);
+  const existing = await db.ssoConnection.findFirst();
+  if (!existing && !body.clientSecret) throw new HttpError(400, "Enter the client secret.");
+  for (const d of body.domains) if (await domainClaimedElsewhere(d, orgId)) throw new HttpError(409, `${d} is already used by another organisation.`);
+  if (process.env.APP_ENV === "production" && !body.issuer.startsWith("https://")) throw new HttpError(400, "The issuer must use https.");
+  const problem = body.clientSecret ? await checkIssuer(body.issuer, body.clientId, body.clientSecret, { orgId, actor: by.actor }) : null;
+  if (problem) throw new HttpError(400, problem);
+
+  const verified = (existing?.verifiedDomains ?? []).filter((d) => body.domains.includes(d));
+  const data = {
+    issuer: body.issuer,
+    clientId: body.clientId,
+    domains: body.domains,
+    verifiedDomains: verified,
+    enforce: body.enforce,
+    defaultRole: body.defaultRole,
+    enabled: body.enabled,
+    ...(body.clientSecret ? { clientSecretEnc: sealClientSecret(orgId, body.clientSecret) } : {}),
+  };
+  if (existing) await db.ssoConnection.update({ where: { id: existing.id }, data });
+  else await db.ssoConnection.create({ data: { orgId, verifyToken: randomToken(), clientSecretEnc: "", ...data } });
+  return { created: !existing };
+}
+
+/** Prove the organisation owns a domain listed for single sign-on (its DNS TXT record). */
+export async function verifySsoDomain(orgId: string, domain: string, resolveTxt?: TxtResolver): Promise<{ verified: true; already: boolean }> {
+  const db = forOrg(orgId);
+  const conn = await db.ssoConnection.findFirst();
+  if (!conn || !conn.domains.includes(domain)) throw new HttpError(404, "Add the domain to single sign-on first.");
+  if (await domainClaimedElsewhere(domain, orgId)) throw new HttpError(409, `${domain} is already verified by another organisation.`);
+  if (!(await domainVerified(domain, conn.verifyToken, resolveTxt))) {
+    throw new HttpError(400, `Elan1 Govern could not find the TXT record "gate-verify=${conn.verifyToken}" on ${domain}. DNS changes can take a few minutes.`);
+  }
+  const already = conn.verifiedDomains.includes(domain);
+  if (!already) await db.ssoConnection.update({ where: { id: conn.id }, data: { verifiedDomains: [...conn.verifiedDomains, domain] } });
+  return { verified: true, already };
 }

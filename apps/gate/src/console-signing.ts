@@ -8,6 +8,7 @@ import { ChainMoved, GATE_ONLY_ACTIONS, type ChainHead } from "./console-chain";
 import { openSuccessor } from "./custody";
 import type { Deps } from "./deps";
 import { providerFor } from "./keys";
+import { projectBilling } from "./wiring/billing";
 
 /*
  * What the organisation's key signs for the approved console besides receipts and checkpoints (plans/console-app.md
@@ -732,6 +733,8 @@ export async function flushSigned(deps: Deps, orgId: string, input: FlushInput):
     const encoded = new Map(signed.map((s) => [s.id, s.prepared.encoding === "b64url" ? b64url(Buffer.from(s.sig.slice("ed25519:".length), "base64")) : s.sig]));
     const receipts: Receipt[] = [];
     for (const r of input.receipts) receipts.push(await append(substitute(r, encoded)));
+    // as for any console write (console-chain.ts): what billing receipts say goes into the ledger in this transaction
+    await projectBilling(tx, orgId, receipts);
     const extra: Receipt[] = [];
     for (const s of signed) {
       const had = await tx.consoleSignature.findFirst({ where: { kind: s.kind, message: s.prepared.message, kid: key.kid! } });
