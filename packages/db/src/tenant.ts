@@ -32,6 +32,8 @@ export const TENANT_MODELS = [
   // ── custody ──
   "KeyCeremony",
   "KeySuccessor",
+  // ── tsa ──
+  "AnchorBatch",
 ] as const;
 
 const WHERE_OPS = new Set([
