@@ -33,6 +33,8 @@ export const PERMISSIONS = {
   "alerts:configure": ["owner", "admin"],
   // Pausing every agent at once is a denial of service if misused: owners and admins, fresh sign-in.
   "emergency:stop": ["owner", "admin"],
+  // The Meter page and invoice PDFs (wiring): owners and admins, as the console's billing screens.
+  "billing:view": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

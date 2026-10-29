@@ -8,13 +8,20 @@ import {
   backoffSeconds,
   BlockedAddressError,
   checkWebhookUrl,
+  deleteWebhook,
   deliverWebhook,
   describeError,
   eventsFor,
   isPrivateAddress,
   MAX_ATTEMPTS,
   postJson,
+  replayDeadLetters,
+  resendWebhookDelivery,
+  ROLL_GRACE_MS,
+  rollWebhookSecret,
+  setWebhookActive,
   signWebhook,
+  testWebhook,
 } from "../src/webhooks";
 import { demoOrg, gateMeta, internal, makeApp, tool } from "./helpers";
 
@@ -189,6 +196,72 @@ describe("delivery", () => {
     expect(JSON.parse(h.body)).toMatchObject({ type: "webhook.test", data: { message: expect.stringMatching(/test event/) } });
     const [, t, v] = /^t=(\d+),v1=(.+)$/.exec(String(h.headers["gate-signature"]))!;
     expect(v).toBe(mac(secret, t!, h.body));
+  });
+
+  it("a rolled secret: the new one signs first and the previous one still signs for 24 hours, then only the new one", async () => {
+    const { d, id, secret, db } = await withHook(["receipt.created"]);
+    expect((await db.webhook.findFirstOrThrow({ where: { id } })).secretPrefix).toBe(secret.slice(0, 10));
+    const rolled = (await rollWebhookSecret(ctx.deps, d.org.id, id, d.owner.email))!;
+    expect(rolled.secret).not.toBe(secret);
+    expect(rolled).toMatchObject({ secretPrefix: rolled.secret.slice(0, 10), previousPrefix: secret.slice(0, 10) });
+    expect(Date.parse(rolled.previousValidUntil) - Date.now()).toBeGreaterThan(ROLL_GRACE_MS - 60_000);
+    const row = await db.webhook.findFirstOrThrow({ where: { id } });
+    expect(row.secretPrefix).toBe(rolled.secretPrefix);
+    expect(row.secretEnc).not.toContain(rolled.secret);
+    const receipt = await db.receipt.findFirstOrThrow({ where: { seq: rolled.seq } });
+    expect(receipt).toMatchObject({ action: "webhook.secret_rolled" });
+    expect(receipt.body).toMatchObject({ details: { webhook_id: id, host: new URL(base).host, roll_id: rolled.rollId } });
+    expect(JSON.stringify(receipt.body)).not.toContain(rolled.secret);
+
+    expect((await testWebhook(ctx.deps, d.org.id, id))?.outcome).toBe("delivered");
+    let h = hits.at(-1)!;
+    const both = /^t=(\d+),v1=([0-9a-f]{64}),v1=([0-9a-f]{64})$/.exec(String(h.headers["gate-signature"]))!;
+    expect(both).not.toBeNull();
+    expect(both[2]).toBe(mac(rolled.secret, both[1]!, h.body));
+    expect(both[3]).toBe(mac(secret, both[1]!, h.body));
+
+    // once the grace period is over the previous secret signs nothing
+    await db.webhookSecretRoll.updateMany({ where: { webhookId: id }, data: { validUntil: new Date(Date.now() - 1000) } });
+    expect((await testWebhook(ctx.deps, d.org.id, id))?.outcome).toBe("delivered");
+    h = hits.at(-1)!;
+    const one = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(String(h.headers["gate-signature"]))!;
+    expect(one[2]).toBe(mac(rolled.secret, one[1]!, h.body));
+    // deleting the endpoint takes its rolls with it
+    expect(await deleteWebhook(ctx.deps, d.org.id, id, d.owner.email)).toBe(true);
+    expect(await db.webhookSecretRoll.count({ where: { webhookId: id } })).toBe(0);
+  });
+
+  it("turns an endpoint off and on, resends a delivery under its own id, and replays what gave up", async () => {
+    const { d, id, db } = await withHook(["receipt.created"]);
+    const off = (await setWebhookActive(ctx.deps, d.org.id, id, false, d.owner.email))!;
+    expect((await db.receipt.findFirstOrThrow({ where: { seq: off.seq } })).action).toBe("webhook.disabled");
+    expect((await db.webhook.findFirstOrThrow({ where: { id } })).active).toBe(false);
+    status = 500;
+    const failed = (await testWebhook(ctx.deps, d.org.id, id))!;
+    // an endpoint that is off is sent nothing: what waits for it fails at once
+    expect(failed.outcome).toBe("failed");
+    expect(hits).toHaveLength(0);
+    // nothing is replayed to an endpoint that is off
+    expect(await replayDeadLetters(ctx.deps, d.org.id, { webhookId: id, actor: d.owner.email })).toMatchObject({ delivered: 0, failed: 0 });
+
+    const on = (await setWebhookActive(ctx.deps, d.org.id, id, true, d.owner.email))!;
+    expect((await db.receipt.findFirstOrThrow({ where: { seq: on.seq } })).action).toBe("webhook.enabled");
+    expect(await setWebhookActive(ctx.deps, d.org.id, "wh_missing", true, d.owner.email)).toBeNull();
+    // still answering 500: the replay tries once and the delivery stays dead
+    const again = await replayDeadLetters(ctx.deps, d.org.id, { actor: d.owner.email });
+    expect(again).toMatchObject({ delivered: 0, failed: 1 });
+    expect((await db.webhookDelivery.findFirstOrThrow({ where: { id: failed.deliveryId } })).status).toBe("failed");
+    status = 200;
+    const replayed = await replayDeadLetters(ctx.deps, d.org.id, { webhookId: id, actor: d.owner.email });
+    expect(replayed).toMatchObject({ delivered: 1, failed: 0 });
+    expect(await db.receipt.findFirstOrThrow({ where: { seq: replayed.seq } })).toMatchObject({ action: "webhook.dead_letter_replayed" });
+    expect(JSON.parse(hits.at(-1)!.body)).toMatchObject({ id: failed.deliveryId, type: "webhook.test" });
+
+    // a resend goes out under the same delivery id, so the endpoint can tell it is the same event
+    const resent = (await resendWebhookDelivery(ctx.deps, d.org.id, id, failed.deliveryId))!;
+    expect(resent.outcome).toBe("delivered");
+    expect(JSON.parse(hits.at(-1)!.body)).toMatchObject({ id: failed.deliveryId });
+    expect(await resendWebhookDelivery(ctx.deps, d.org.id, id, "missing")).toBeNull();
   });
 
   it("SSRF: private addresses are refused when WEBHOOK_ALLOW_PRIVATE is off", async () => {

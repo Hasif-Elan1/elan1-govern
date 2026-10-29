@@ -51,6 +51,8 @@ model User {
   title          String          @default("")
   lastSignInAt   DateTime?
   passwordResets PasswordReset[]
+  // wiring: Elan1 platform staff (the billing desk). Set only by `pnpm govern staff add <email>`, never by the app.
+  isPlatformStaff Boolean @default(false)
 }
 
 model Session {
@@ -429,6 +431,8 @@ model Webhook {
   createdBy  String?
   createdAt  DateTime          @default(now())
   deliveries WebhookDelivery[]
+  // wiring: the first characters of the current secret, as the console shows it (whsec_4fK2…)
+  secretPrefix String @default("")
 
   @@index([orgId])
 }
@@ -1044,4 +1048,20 @@ model ConsoleApproverGroup {
 
   @@unique([orgId, consoleId])
   @@unique([orgId, slug])
+}
+
+// ── wiring ──
+// A rolled webhook secret: the previous one keeps signing (a second v1 value) until validUntil, so the receiver
+// can switch over without missing a delivery. AES-GCM under the gate's master key, like Webhook.secretEnc.
+model WebhookSecretRoll {
+  id                String   @id @default(cuid())
+  orgId             String
+  webhookId         String
+  previousSecretEnc String
+  previousPrefix    String
+  validUntil        DateTime
+  createdBy         String
+  createdAt         DateTime @default(now())
+
+  @@index([orgId, webhookId])
 }

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hashToken } from "@gate/core";
-import { prisma } from "@gate/db";
+import { consoleState, prisma } from "@gate/db";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConsoleOrg, startGate } from "./console-gate";
@@ -51,7 +51,11 @@ type Doc = {
   receipts: { seq: number; actor?: string; action?: string; details?: Record<string, unknown> }[];
   orgSettings: { invites: Invite[]; sessions: { id: string; userId: string; endedAt?: string; endReason?: string; seq?: number }[] };
 };
-const docOf = async (orgId = ORG) => (await consoleDomain.stateFor(orgId)).doc as unknown as Doc;
+/** The organisation's document as the server keeps it (the browser's copy leaves out invite token hashes). */
+const docOf = async (orgId = ORG) => {
+  await consoleDomain.stateFor(orgId); // built and saved
+  return JSON.parse((await consoleState.load(orgId))!.json) as Doc;
+};
 
 function req(path: string, method = "GET", body?: unknown) {
   const headers: Record<string, string> = { origin: "http://localhost:3000" };
@@ -115,7 +119,10 @@ describe("an invitation sent in the console", () => {
     let doc = await docOf();
     const pending = doc.orgSettings.invites.find((i) => i.email === email)!;
     expect(pending).toMatchObject({ role: "approver", tokenHash: hashToken(token) });
-    expect(pending.token).toBeUndefined();
+    // and the browser never gets the hash
+    const browser = (await consoleDomain.stateFor(ORG)).doc as unknown as Doc;
+    expect(browser.orgSettings.invites.find((i) => i.email === pending!.email)).not.toHaveProperty("tokenHash");
+    expect(pending.token).toBeFalsy();
     expect(JSON.stringify(doc)).not.toContain(token);
     expect(doc.members.find((m) => m.userId === pending.userId)).toMatchObject({ status: "invited", role: "approver" });
     expect(doc.receipts.findLast((r) => r.action === "member.invited")).toMatchObject({ actor: OWNER, details: { email, role: "approver" } });

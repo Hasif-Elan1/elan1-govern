@@ -32,3 +32,6 @@ export function overrideOp(op: string, fn: Override) {
 export function consoleOverride(op: string): Override | undefined {
   return registry.get(op);
 }
+
+// ── wiring ── the console screens on the real backends (console-overrides/wiring.ts)
+import "./console-overrides/wiring";

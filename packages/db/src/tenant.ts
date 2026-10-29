@@ -52,6 +52,8 @@ export const TENANT_MODELS = [
   "ReconciliationRun",
   // ── guardsync ──
   "ConsoleApproverGroup",
+  // ── wiring ──
+  "WebhookSecretRoll",
 ] as const;
 
 const WHERE_OPS = new Set([

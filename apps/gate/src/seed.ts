@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { BEHAVIOUR_DEFAULTS, encrypt, hashToken, randomToken } from "@gate/core";
+import { BEHAVIOUR_DEFAULTS, encrypt, hashToken, invoicePrefix, randomToken } from "@gate/core";
 import { packById, recommendedFrameworks, type Region } from "@gate/core/frameworks";
 import { addMembership, enableFrameworks, forOrg, membershipsForUser, prisma } from "@gate/db";
 import { CONSOLE_INVITES, CONSOLE_ORGS, CONSOLE_PEOPLE, CONSOLE_SUSPENSIONS } from "@gate/db/console-demo";
@@ -7,6 +7,7 @@ import argon2 from "argon2";
 import pino from "pino";
 import { adminEvent, createOrg, setUpDemoAgent } from "./admin";
 import { addDemoHistory } from "./demo/history";
+import { addEgressRule } from "./egress";
 import { updateBehaviourSettings } from "./behaviour";
 import { guard } from "./guard";
 import { makeDeps } from "./deps";
@@ -148,6 +149,13 @@ function newTotpSecretEnc(webEncKey: string): string {
  * Agents and receipts are not seeded here; only the org's own setup receipts are written.
  * Safe to run again: existing rows are reused and never overwritten (passwords, roles and secrets stay as they are).
  */
+/** ── wiring: sovereign ── the hosts inside Deccan's network its deployment may reach (apps/console/src/mock/sovereign.ts seedState). */
+const DECCAN_INTERNAL_HOSTS = [
+  { host: "siem.deccanbank.internal", note: "Splunk HTTP Event Collector in the security operations centre (receipt events)" },
+  { host: "smtp-relay.deccanbank.internal", note: "Internal mail relay for approval and sign-in emails" },
+  { host: "itsm.deccanbank.internal", note: "On-premises ServiceNow (incident tickets from alerts)" },
+];
+
 export async function seedConsoleDemo(deps: ReturnType<typeof makeDeps>, opts: { password: string; webEncKey: string }) {
   const passwordHash = await argon2.hash(opts.password, { type: argon2.argon2id });
   const byId = new Map(CONSOLE_PEOPLE.map((p) => [p.id, p]));
@@ -196,6 +204,26 @@ export async function seedConsoleDemo(deps: ReturnType<typeof makeDeps>, opts: {
       await db.invite.create({ data: { orgId: o.id, email: inv.email, role: inv.role, tokenHash: hashToken(randomToken()), invitedBy, expiresAt: new Date(Date.now() + 7 * 86_400_000) } });
       await adminEvent(deps, o.id, invitedBy, "member.invited", { role: inv.role });
     }
+  }
+
+  // ── wiring: sovereign ── Deccan's internal allow-list, as the console's Egress screen seeds it (real EgressRule
+  // rows: the console's "what it is for" is the rule's note). Each is added by the owner, with its receipt.
+  const deccanOwner = CONSOLE_PEOPLE.find((p) => p.memberships.some((m) => m.orgId === "org_deccan" && m.role === "owner"));
+  for (const h of DECCAN_INTERNAL_HOSTS) {
+    if (!deccanOwner || (await forOrg("org_deccan").egressRule.findFirst({ where: { host: h.host }, select: { id: true } }))) continue;
+    const r = await addEgressRule(deps, "org_deccan", { host: h.host, port: null, purpose: null, note: h.note, actor: deccanOwner.id });
+    if (!r.ok) throw new Error(`Deccan's internal host ${h.host} could not be seeded: ${r.error}`);
+  }
+
+  // ── wiring: billing ── each demo organisation's billing account on its console plan (its level). The console's
+  // own seed tells the rest as receipts (Demo Traders' pilot, offers, disputes, runs), which the ledger takes as they
+  // are written (apps/gate/src/wiring/billing.ts).
+  for (const o of CONSOLE_ORGS) {
+    const db = forOrg(o.id);
+    if (await db.billingAccount.findFirst({ select: { id: true } })) continue;
+    const owner = CONSOLE_PEOPLE.find((p) => p.memberships.some((m) => m.orgId === o.id && m.role === "owner"))!;
+    const account = await db.billingAccount.create({ data: { orgId: o.id, plan: o.level, invoicePrefix: invoicePrefix(o.name), buyerName: o.name } });
+    await adminEvent(deps, o.id, owner.email, "billing.account_opened", { plan: account.plan, invoice_prefix: account.invoicePrefix });
   }
   return { orgs: CONSOLE_ORGS.length, users: CONSOLE_PEOPLE.length };
 }
