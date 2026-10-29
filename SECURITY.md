@@ -119,6 +119,19 @@ Test locations: `core` = `packages/core/test`, `db` = `packages/db/test`, `gate`
 | **I** | Bundle leaks personal data | Same minimised receipts as above | as above |
 | **D** | Zip bomb sent to the verifier | Uncompressed size capped at 512 MB before reading | `packages/core/src/bundle.ts` |
 
+### Trusted timestamps (L2+ Merkle batches)
+
+Every 15 minutes the receipts of an org at L2 or above are put under one RFC 6962 Merkle root, which is stamped by every authority in `TSA_AUTHORITIES` (RFC 3161). The timestamp proves the records existed by then, independently of Elan1 Govern's own clock and keys.
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | A forged or substituted timestamp token | A token is accepted only if: the reply's status is granted, its nonce is the one sent, the messageImprint is SHA-256 of the batch root, there is exactly one signer whose certificate has the critical `id-kp-timeStamping` EKU and is named by the ESS signing-certificate attribute, the content-type and message-digest attributes match, the signature verifies, and the certificate chains at genTime to a CA pinned in `TSA_*_CA_PEM` (or is the local authority's own pinned certificate). Certificates inside a token never add trust | `gate/tsa.test.ts` "a tampered digest, token or stored field fails", "two local authorities are independent…", "refuses a token that does not chain to the pinned CA", "…without the timestamping EKU it is refused" |
+| **T** | A batch root or receipt changed after stamping | The root is recomputed from the chain for every inclusion proof; the token binds the root; the `anchor.batched` receipt records range, root and each token's serial and time on the signed chain | `gate/anchors.test.ts` "inclusion proofs walk…", "batches an L2 org's receipts…" |
+| **R** | One authority's word only | Two independent authorities per batch; one answering is recorded as `degraded` (with a health alert), none as `failed` (the records go into the next batch). Offline installs use two local authorities with separate keys | `gate/anchors.test.ts` "one authority answering is degraded…", "no authority answering is failed…" |
+| **I** | SSRF through the TSA client | Hosts are fixed in `apps/gate/src/tsa/catalog.ts` (`freetsa.org`, `timestamp.digicert.com`), never from settings or replies; private and reserved addresses are refused inside the socket's DNS lookup; no redirects; 10 s timeout; 1 MB reply cap; errors are fixed phrases with no URL or body | `gate/tsa.test.ts` "refuses a replayed reply…", "times out, and refuses private addresses unless allowed" |
+| **I** | Local TSA private keys at rest | ECDSA P-256 keys in `TsaKey`, wrapped by the `KeyProvider` (AES-256-GCM under `GATE_MASTER_KEY` by default) with the authority id in the AAD; never logged or returned | `gate/tsa.test.ts` "issues tokens that verify…, and keeps its key encrypted" |
+| **E** | One org reads another's batches or proofs | `AnchorBatch` is a tenant model read only through `forOrg` | `db/isolation.test.ts`; `gate/anchors.test.ts` "inclusion proofs…" (another org is refused) |
+
 ### Webhooks
 
 | | Threat | Mitigation | Tested in |
@@ -260,5 +273,6 @@ Run them all with `pnpm security` and `pnpm security:zap`.
 - **Allowed actions run before their receipt is written**, as the brief specifies. If that write then fails, the agent is refused and a health alert names the action and its connector reference (DECISIONS.md #15).
 - **Rate limits are per process.** Several instances need a shared store (planned).
 - **Daily limits are checked outside the chain lock**, so two simultaneous payments can both pass a limit they jointly exceed. Approvals are unaffected.
+- **Timestamp certificates are not checked for revocation** (no CRL or OCSP fetching, which would add more outbound hosts). Trust rests on the pinned CA; replace the pin if an authority's CA is compromised. Local authorities' certificates are self-signed and valid for 10 years.
 - **Key management:** org signing keys can be rotated (owner only; retired keys are kept for verification). They are wrapped through a `KeyProvider`; the shipped one uses a single master key from the environment. A cloud KMS provider plugs into the same interface (DECISIONS.md #36); signing inside an HSM is not done yet.
 - **Webhook events between commit and enqueue:** if Elan1 Govern crashes in that instant, that event is not sent. The receipt itself is safe on the chain. An outbox table would close the gap (DECISIONS.md #29).

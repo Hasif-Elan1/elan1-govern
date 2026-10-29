@@ -88,6 +88,9 @@ model Org {
   regions       String[]     @default([]) // where the org operates: india | eu | us | uk | other
   replayStore   Boolean      @default(true) // keep 30 days of encrypted call arguments for "Test on past actions"
   behaviourSettings Json? // unusual-behaviour thresholds, merged over the defaults in @gate/core (behaviour.ts)
+  // ── tsa ── assurance level: l1 | l2 | l3 | sovereign; receipts are timestamped in Merkle batches from l2.
+  // (Another scope may add this column too; keep one copy on merge.)
+  level         String       @default("l1")
   createdAt     DateTime     @default(now())
   memberships   Membership[]
   agents        Agent[]
@@ -587,4 +590,33 @@ model Incident {
   resumedCount   Int?
 
   @@index([orgId, status])
+}
+
+// ── tsa ──
+
+// A local RFC 3161 timestamp authority: its ECDSA P-256 key and self-signed certificate, one row per
+// authority id ("local-a", "local-b"). Platform data, not tenant data; the key is wrapped by the KeyProvider.
+model TsaKey {
+  id            String   @id
+  name          String
+  certPem       String
+  privateKeyEnc String
+  provider      String   @default("env") // the KeyProvider that wrapped privateKeyEnc
+  createdAt     DateTime @default(now())
+}
+
+// A Merkle batch of an org's receipts fromSeq..toSeq (RFC 6962 root over their hashes) and its RFC 3161 timestamps.
+model AnchorBatch {
+  id         String   @id @default(cuid())
+  orgId      String
+  fromSeq    Int
+  toSeq      Int
+  root       String // hex
+  tokens     Json // TimestampToken[] (apps/gate/src/tsa/token.ts)
+  failures   Json     @default("[]") // [{ tsaId, error }] for each authority that did not stamp
+  status     String // ok (two or more timestamps) | degraded (one) | failed (none: the records go into the next batch)
+  receiptSeq Int // the anchor.batched receipt that records this batch
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, toSeq])
 }

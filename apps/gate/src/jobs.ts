@@ -1,5 +1,6 @@
 import { dueWebhookDeliveries } from "@gate/db";
 import { PgBoss } from "pg-boss";
+import { anchorAll, ANCHOR_QUEUE } from "./anchors";
 import { expireDue } from "./approvals";
 import { CHAT_QUEUE, deliverChatMessage, sweepChat } from "./chat/outbox";
 import { scanAll } from "./behaviour";
@@ -24,6 +25,7 @@ export const QUEUES = {
   chat: CHAT_QUEUE,
   suggestions: "rule-suggestions-nightly",
   behaviour: "behaviour-scan",
+  anchors: ANCHOR_QUEUE,
 } as const;
 
 const CRON: { queue: string; cron: string }[] = [
@@ -34,6 +36,8 @@ const CRON: { queue: string; cron: string }[] = [
   // 02:00 India time (pg-boss cron runs in UTC).
   { queue: QUEUES.suggestions, cron: "30 20 * * *" },
   { queue: QUEUES.behaviour, cron: "*/5 * * * *" },
+  // L2+ Merkle batches, timestamped by every configured authority (anchors.ts).
+  { queue: QUEUES.anchors, cron: "*/15 * * * *" },
 ];
 
 /** Re-sends deliveries that are due but whose job was lost (a crash, or written before jobs ran). */
@@ -89,6 +93,7 @@ export async function startJobs(deps: Deps, opts: { schedule?: boolean; pollingI
   await boss.work(QUEUES.replayPurge, polling, () => runLogged(deps, QUEUES.replayPurge, async () => ({ purged: await purgeReplay(deps) })));
   await boss.work(QUEUES.suggestions, polling, () => runLogged(deps, QUEUES.suggestions, async () => ({ open: await findAllSuggestions(deps) })));
   await boss.work(QUEUES.behaviour, polling, () => runLogged(deps, QUEUES.behaviour, () => scanAll(deps)));
+  await boss.work(QUEUES.anchors, polling, () => runLogged(deps, QUEUES.anchors, () => anchorAll(deps)));
   await boss.work<{ orgId: string; deliveryId: string }>(QUEUES.deliver, { ...polling, batchSize: 5, localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) await deliverWebhook(deps, job.data.orgId, job.data.deliveryId);
   });
