@@ -12,6 +12,7 @@
   "dependencies": {
     "@gate/core": "workspace:*",
     "@gate/db": "workspace:*",
+    "@node-saml/node-saml": "5.1.0",
     "argon2": "0.45.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

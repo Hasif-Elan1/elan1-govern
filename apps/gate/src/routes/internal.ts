@@ -51,6 +51,15 @@ export const WEB_EVENTS = [
   "org.industry_set",
   "framework.enabled",
   "framework.disabled",
+  // SAML and SCIM (apps/web/src/server/saml.ts, scim.ts)
+  "identity.updated",
+  "identity.scim_token_rotated",
+  "auth.refused",
+  "auth.break_glass",
+  "scim.user_provisioned",
+  "scim.user_deactivated",
+  "scim.user_reactivated",
+  "scim.user_removed",
 ] as const;
 
 const schemas = {

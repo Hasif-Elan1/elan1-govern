@@ -30,6 +30,12 @@ interface Opts<S extends z.ZodType> {
   fresh?: boolean;
   body?: S;
   limit?: Limit & { name: string };
+  /**
+   * Only for the SAML assertion consumer, a cross-site form POST from the identity provider with no
+   * CSRF token or same-origin header to check. The signed assertion, InResponseTo the request id in
+   * the flow cookie and the one-time assertion id authenticate it instead (server/saml.ts). Public only.
+   */
+  crossSitePost?: "saml-acs";
 }
 
 type HandlerCtx<S extends z.ZodType, A extends Opts<S>["auth"]> = {
@@ -43,7 +49,10 @@ type HandlerCtx<S extends z.ZodType, A extends Opts<S>["auth"]> = {
 
 /** The caller's address. Forwarded headers are trusted only behind a known proxy (TRUST_PROXY=true). */
 async function clientIp(): Promise<string> {
-  const h = await headers();
+  return ipFrom(await headers());
+}
+
+export function ipFrom(h: { get(name: string): string | null }): string {
   if (process.env.TRUST_PROXY === "true") return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
   // Without a trusted proxy every header is client-controlled, so all callers share one bucket.
   return "direct";
@@ -83,7 +92,8 @@ export function route<S extends z.ZodType = z.ZodUndefined, A extends Opts<S>["a
       userId = session?.userId ?? null;
       const signedIn = session !== null;
 
-      if (req.method !== "GET" && req.method !== "HEAD") {
+      const acs = opts.crossSitePost === "saml-acs" && opts.auth === "public" && !opts.body;
+      if (req.method !== "GET" && req.method !== "HEAD" && !acs) {
         if (!sameOrigin(req)) throw new HttpError(403, "This request came from another site, so it was blocked.");
         // Signed in: the token bound to the session. Signed out (login, sign-up): the double-submit cookie.
         const sent = req.headers.get("x-csrf-token") ?? "";

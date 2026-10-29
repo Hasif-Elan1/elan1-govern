@@ -29,6 +29,10 @@ export const TENANT_MODELS = [
   "RuleSuggestion",
   "BehaviourAlert",
   "Incident",
+  "SamlConnection",
+  "SamlReplay",
+  "ScimConnection",
+  "ScimUser",
 ] as const;
 
 const WHERE_OPS = new Set([

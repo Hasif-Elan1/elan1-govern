@@ -588,3 +588,68 @@ model Incident {
 
   @@index([orgId, status])
 }
+
+// ── saml ──
+// SAML 2.0 single sign-on and SCIM 2.0 provisioning (DECISIONS.md, SAML and SCIM).
+
+// One SAML identity provider per org. The org's verified domains are the union of these and
+// the OIDC connection's, so one DNS TXT proof counts for both.
+model SamlConnection {
+  id                   String   @id @default(cuid())
+  orgId                String   @unique
+  idpEntityId          String
+  idpSsoUrl            String
+  idpCertPems          String[] // PEM certificates; more than one while the IdP rolls its key
+  spEntityId           String   @unique // the audience every assertion must name
+  wantAssertionsSigned Boolean  @default(true)
+  domains              String[]
+  verifyToken          String // "gate-verify=<token>" in a DNS TXT record
+  verifiedDomains      String[]
+  enforced             Boolean  @default(false) // "Require SAML for everyone": passwords refused except break-glass owners
+  jit                  Boolean  @default(true) // create users on first sign-in
+  defaultRole          Role     @default(viewer) // never owner
+  enabled              Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// One-time use: every accepted assertion id and request id is kept until it could no longer be accepted.
+model SamlReplay {
+  id        String   @id @default(cuid())
+  orgId     String
+  key       String // "a:<assertion id>" or "r:<request id>"
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([orgId, key])
+  @@index([expiresAt])
+}
+
+// The directory's SCIM bearer token, stored as a SHA-256 hash and shown once.
+model ScimConnection {
+  id          String    @id @default(cuid())
+  orgId       String    @unique
+  tokenHash   String    @unique
+  tokenPrefix String
+  defaultRole Role      @default(viewer) // never owner or auditor
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// A user the directory provisioned or linked. active=false keeps the row but removes the membership.
+model ScimUser {
+  id          String   @id @default(cuid())
+  orgId       String
+  userId      String
+  userName    String // the email
+  externalId  String?
+  displayName String?
+  active      Boolean  @default(true)
+  role        Role // the membership's role, restored on reactivation
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@unique([orgId, userName])
+}
