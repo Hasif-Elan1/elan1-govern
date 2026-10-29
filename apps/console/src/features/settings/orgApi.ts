@@ -24,7 +24,8 @@ import {
 } from '@/mock/orgSettings';
 
 const wait = (min = 120, max = 280) => new Promise((r) => setTimeout(r, min + Math.random() * (max - min)));
-const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
+// undefined stays undefined (JSON.stringify gives no text for it, and JSON.parse of that throws): orgApi.closure with none scheduled
+const clone = <T,>(x: T): T => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
 const iso = (t: number) => new Date(t).toISOString();
 const H = 3.6e6;
 const D = 864e5;

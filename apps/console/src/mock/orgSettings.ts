@@ -41,7 +41,12 @@ export interface NotifyConfig {
   routing: Record<string, Record<ChannelKey, boolean>>;
 }
 export interface WhatsAppState { number: string; verifiedAt?: string; pending?: { codeHash: string; sentAt: string; attempts: number; testCode: string } }
-export interface InviteToken { token: string; userId: string; email: string; role: Role; invitedBy: string; invitedAt: string; expiresAt: string; usedAt?: string; revokedAt?: string; replacedBy?: string; seq?: number }
+/**
+ * An invitation. `token` is the single-use link's secret in the demonstration; one the server issued keeps only
+ * `tokenHash` (SHA-256 of the link's secret, as the server's own Invite record does) and an empty `token`, since
+ * only the email carries the link. `acceptedBy` is the person who used it.
+ */
+export interface InviteToken { token: string; tokenHash?: string; acceptedBy?: string; userId: string; email: string; role: Role; invitedBy: string; invitedAt: string; expiresAt: string; usedAt?: string; revokedAt?: string; replacedBy?: string; seq?: number }
 export interface GroupEdit { add: string[]; remove: string[] }
 export interface DeadLetter { id: string; webhookId: string; url: string; event: WebhookEvent; ts: string; attempts: number; lastStatus: number; seq?: number; replayedAt?: string; replayStatus?: number }
 export interface SecretRoll { webhookId: string; newPrefix: string; previousPrefix: string; previousValidUntil: string; at: string; by: string; seq: number }

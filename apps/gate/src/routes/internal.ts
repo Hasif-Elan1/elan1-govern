@@ -54,6 +54,8 @@ export const WEB_EVENTS = [
   "framework.disabled",
   "auth.password_reset",
   "auth.sign_in_refused",
+  // DELETE /api/auth/session
+  "auth.signed_out",
   // SAML and SCIM (apps/web/src/server/saml.ts, scim.ts)
   "identity.updated",
   "identity.scim_token_rotated",

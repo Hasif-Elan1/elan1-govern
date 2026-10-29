@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Check, Clock3, Inbox, Loader2, ShieldCheck } from 'lucide-react';
+import type { Role } from '@/types';
 import { db } from '@/api';
+import { get, post } from '@/api/http';
+import { LIVE } from '@/api/mode';
+import { fetchMe, type Me } from '@/api/live/session';
+import { refreshLiveSession } from '@/store/session';
 import { ORGS, userById } from '@/mock/users';
 import { ROLE_INFO } from '@/lib/permissions';
 import { LEVEL_INFO } from '@/lib/levels';
@@ -9,7 +14,7 @@ import { relative } from '@/lib/format';
 import { Avatar, Badge, Banner, Button, Field, Input, toast } from '@/components/ui';
 import { orgApi, orgState } from '@/features/settings/orgApi';
 import { AuthHeading, AuthLayout } from './AuthLayout';
-import { PasswordChecklist, PasswordInput, passwordChecks, passwordOk } from './password';
+import { PasswordChecklist, PasswordInput, emailProblem, passwordChecks, passwordOk } from './password';
 import { acceptInvitation, createdOrg, createdOrgInvites } from './registry';
 
 type Found = NonNullable<ReturnType<typeof orgApi.inviteByToken>>;
@@ -55,8 +60,133 @@ function ensureMembership(orgId: string, userId: string, role: Found['invite']['
   db.touch(orgId, 'member');
 }
 
+/* ══ Live builds: the server holds the invitation ══════════════════════ */
+
+interface LiveSummary { orgName: string; inviter: string | null; role: Role }
+
+/**
+ * The invitation as the server knows it: GET /api/invites/<token> names the organisation, who invited and the role
+ * (nothing else: not even the address it went to); POST /api/invites accepts it as the signed-in person, or makes
+ * the account first for someone signed out. A link that no longer works is one sentence, whatever the reason.
+ */
+function LiveInvitePage({ token }: { token: string }) {
+  const nav = useNavigate();
+  const [found, setFound] = useState<LiveSummary | 'gone' | null>(null);
+  const [me, setMe] = useState<Me | undefined | null>(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => { document.title = 'Accept an invitation · Elan1 Govern'; }, []);
+  useEffect(() => {
+    let live = true;
+    setFound(null);
+    get<LiveSummary>(`/api/invites/${encodeURIComponent(token)}`, { noSignOut: true })
+      .then((s) => { if (live) setFound(s); }, () => { if (live) setFound('gone'); });
+    fetchMe().then((m) => { if (live) setMe(m); }, () => { if (live) setMe(undefined); });
+    return () => { live = false; };
+  }, [token]);
+
+  const checks = passwordChecks(password, { email, name });
+  const nameErr = name.trim().length < 2 ? 'Enter your full name.' : undefined;
+  const emailErr = emailProblem(email.trim());
+  const ok = !nameErr && !emailErr && passwordOk(password, { email, name });
+
+  const accept = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!me) {
+      setSubmitted(true);
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const r = await post<{ orgId: string }>('/api/invites', me ? { token } : { token, name: name.trim(), email: email.trim(), password }, { noSignOut: true });
+      const user = await refreshLiveSession(r.orgId);
+      if (!user) throw new Error('Sign in to continue.');
+      toast.ok(`Welcome to ${found && found !== 'gone' ? found.orgName : 'your organisation'}`, `Signed in as ${user.name}, ${ROLE_INFO[user.role].label.toLowerCase()}. The invitation link no longer works.`);
+      nav(user.role === 'approver' ? '/approvals' : '/', { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  if (found === null || me === null) {
+    return (
+      <AuthLayout statement={<>A person commits it.</>}>
+        <div role="status" className="inline-flex items-center gap-2 text-muted"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Checking the invitation…</div>
+      </AuthLayout>
+    );
+  }
+  if (found === 'gone') {
+    return (
+      <AuthLayout statement={<>A person commits it.</>}>
+        <div>
+          <span className="inline-flex h-11 w-11 items-center justify-center border border-line bg-surface"><Clock3 className="h-5 w-5" aria-hidden /></span>
+          <AuthHeading kicker="Invitation" title="This invitation link no longer works">
+            It may have expired, been used already, been withdrawn or been replaced by a newer one, or it was not copied in full from the invitation email. Invitation links work once and expire after 7 days. For a new one, ask an owner or admin to send it from the Agents door, under People and roles.
+          </AuthHeading>
+          <Button variant="secondary" onClick={() => nav('/login')}>Go to sign in</Button>
+        </div>
+      </AuthLayout>
+    );
+  }
+  const role = ROLE_INFO[found.role];
+  return (
+    <AuthLayout statement={<>A person commits it.</>} sub={<p>Approvers decide the actions a rulebook holds back — in the console, from an email link, or in Slack and WhatsApp for rules marked approvable in chat.</p>}>
+      <div className="mb-7 border border-line bg-surface">
+        <div className="p-4">
+          <p className="text-md leading-snug"><span className="font-semibold">{found.inviter ?? 'An owner'}</span> invited you to <span className="font-semibold">{found.orgName}</span> as {/^[AEIOU]/.test(role.label) ? 'an' : 'a'} <span className="font-semibold">{role.label}</span></p>
+        </div>
+        <div className="border-t border-line px-4 py-3 bg-sunken/50">
+          <div className="flex flex-wrap items-center gap-2"><Badge tone="inverse">{role.label}</Badge><span className="text-sm">{role.summary}</span></div>
+          <ul className="mt-3 space-y-1.5 text-sm text-muted">
+            {found.role === 'approver' && <li className="flex items-start gap-2"><Inbox className="h-4 w-4 mt-0.5 shrink-0" aria-hidden />Held actions routed to an approver group you belong to appear in your inbox. An owner adds you to a group.</li>}
+            <li className="flex items-start gap-2"><ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" aria-hidden />Accepting is recorded as a receipt on the organisation’s chain, with your name; so is every decision you make.</li>
+          </ul>
+        </div>
+      </div>
+
+      {me ? (
+        <>
+          <AuthHeading kicker="Accept the invitation" title={`Join as ${me.user.name}`}>The invitation must have been sent to {me.user.email}. To accept it with another account, sign out first.</AuthHeading>
+          {error && <div role="alert" className="mb-4"><Banner tone="bad">{error}</Banner></div>}
+          <Button variant="primary" size="lg" block loading={busy} icon={!busy ? <Check className="h-4 w-4" /> : undefined} onClick={() => void accept()}>Accept and join {found.orgName}</Button>
+        </>
+      ) : (
+        <>
+          <AuthHeading kicker="Accept the invitation" title="Set up your account" />
+          <form onSubmit={accept} noValidate className="space-y-4">
+            <Field label="Email" htmlFor="inv-email" required hint="The address the invitation was sent to." error={submitted ? emailErr : undefined}>
+              <Input id="inv-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} invalid={submitted && !!emailErr} autoFocus />
+            </Field>
+            <Field label="Full name" htmlFor="inv-name" required error={submitted ? nameErr : undefined}>
+              <Input id="inv-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} invalid={submitted && !!nameErr} />
+            </Field>
+            <Field label="Password" htmlFor="inv-pw" required error={submitted && !passwordOk(password, { email, name }) ? 'Choose a password that meets the checks below.' : undefined}>
+              <PasswordInput id="inv-pw" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-describedby="inv-checks" />
+              <PasswordChecklist id="inv-checks" checks={checks} />
+            </Field>
+            {error && <div role="alert"><Banner tone="bad">{error}</Banner></div>}
+            <Button type="submit" variant="primary" size="lg" block loading={busy} icon={!busy ? <Check className="h-4 w-4" /> : undefined}>Accept and join {found.orgName}</Button>
+            <p className="text-xs text-muted leading-relaxed">Already have an account? <Link to={`/login?next=${encodeURIComponent(`/invite/${token}`)}`} className="link">Sign in</Link> and come back to this link. It works once.</p>
+          </form>
+        </>
+      )}
+    </AuthLayout>
+  );
+}
+
 export default function InvitePage() {
   const { token = '' } = useParams();
+  return LIVE ? <LiveInvitePage token={token} /> : <DemoInvitePage token={token} />;
+}
+
+function DemoInvitePage({ token }: { token: string }) {
   const nav = useNavigate();
   const [found, setFound] = useState<Found | undefined | null>(null);
   const [name, setName] = useState('');

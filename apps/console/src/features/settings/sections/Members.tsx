@@ -15,9 +15,22 @@ import { Person, When } from '@/components/domain';
 import { emailProblem } from '@/features/auth/password';
 import { ReadOnlyNote, RoleBadge, SectionHeader, errText, receiptNote } from '../shared';
 import { effectiveGroups, orgApi } from '../orgApi';
+import { LIVE } from '@/api/mode';
+import { post } from '@/api/http';
+import { resync } from '@/api/live/sync';
 
 type Row = Member & { user?: User };
 const ROLES: Role[] = ['owner', 'admin', 'approver', 'viewer', 'auditor'];
+
+/**
+ * Live builds: the server issues invitations (POST /api/invites/send): the link goes by email and only its hash is
+ * kept, here as on the server; the pending entry and its receipt land in the organisation's document, fetched again.
+ */
+async function sendLiveInvites(orgId: string, emails: string[], role: Role) {
+  const r = await post<{ invites: { email: string; added: boolean }[]; seq: number | null }>('/api/invites/send', { orgId, emails, role });
+  await resync(orgId).catch(() => undefined);
+  return r;
+}
 
 /** `focus` is a member's user id (from ?member= on People and roles): that row is highlighted and scrolled to. */
 export function MembersSection({ focus, onClearFocus }: { focus?: string; onClearFocus?: () => void } = {}) {
@@ -104,6 +117,12 @@ export function MembersSection({ focus, onClearFocus }: { focus?: string; onClea
   const resend = async (m: Row) => {
     if (!me) return;
     try {
+      if (LIVE) {
+        // the server issues the new link (the old one stops working) and emails it
+        const r = await sendLiveInvites(orgId, [emailOf(m)], m.role);
+        toast.ok(`New invitation sent to ${emailOf(m)}`, `The previous link stops working. ${r.seq ? receiptNote(r.seq) : ''}`);
+        return;
+      }
       const r = await orgApi.resendInvite(orgId, m.userId, me.id);
       toast.ok(`New invitation sent to ${emailOf(m)}`, `The previous link stops working. ${receiptNote(r.seq)}`, { label: 'Open the invitation page', onClick: () => nav(`/invite/${r.invite.token}`) });
     } catch (e) { toast.bad('Not sent', errText(e)); }
@@ -242,7 +261,7 @@ export function MembersSection({ focus, onClearFocus }: { focus?: string; onClea
                       <p className="text-sm font-medium truncate">{emailOf(m)}</p>
                       <p className="text-xs text-muted">{ROLE_INFO[m.role].label} · sent <When iso={m.invitedAt} /> · {expired ? <span className="text-held-fg">expired — resend</span> : <>expires <When iso={t?.expiresAt} /></>}</p>
                     </div>
-                    {t && <CopyButton text={`${location.origin}/invite/${t.token}`} label="Copy link" />}
+                    {t?.token && <CopyButton text={`${location.origin}/invite/${t.token}`} label="Copy link" />}
                     <Button size="sm" variant="ghost" icon={<MailPlus className="h-3.5 w-3.5" />} disabled={!canManage} title={!canManage ? 'Owners and admins resend invitations.' : undefined} onClick={() => resend(m)}>Resend</Button>
                     <Button size="sm" variant="quiet-danger" disabled={!canManage} title={!canManage ? 'Owners and admins revoke invitations.' : undefined} onClick={() => setRemove(m)}>Revoke</Button>
                   </li>
@@ -274,6 +293,13 @@ export function MembersSection({ focus, onClearFocus }: { focus?: string; onClea
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} canOwner={role === 'owner'} existing={(data ?? []).map(emailOf)} groupsText={groups.map((g) => `${g.name} (${g.members.map((m) => userName(m).split(' ')[0]).join(', ')})`).join(' · ')}
         onInvite={async (emails, r) => {
           if (!me) return;
+          if (LIVE) {
+            const sent = await sendLiveInvites(orgId, emails, r);
+            const added = sent.invites.filter((i) => i.added).length;
+            toast.ok(emails.length === 1 ? (added ? `${emails[0]} added` : `Invitation sent to ${emails[0]}`) : `${emails.length} invitations sent`, `${added ? `${plural(added, 'person', 'people')} already on Elan1 Govern joined at once. ` : ''}Single-use links by email, valid 7 days. ${sent.seq ? receiptNote(sent.seq) : ''}`);
+            setInviteOpen(false);
+            return;
+          }
           const res = await orgApi.inviteMembers(orgId, emails, r, me.id);
           const first = res.invites[0];
           toast.ok(emails.length === 1 ? `Invitation sent to ${emails[0]}` : `${emails.length} invitations sent`, `Single-use ${emails.length === 1 ? 'link' : 'links'}, valid 7 days. ${receiptNote(res.seq)}`, first ? { label: 'Open the invitation page', onClick: () => nav(`/invite/${first.token}`) } : undefined);
