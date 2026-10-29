@@ -12,3 +12,4 @@ export * from "./profiles";
 export * from "./disclosure";
 export * from "./verify6";
 export * from "./files";
+export * from "./rfc3161";

@@ -21,14 +21,24 @@ export interface OverrideCtx {
 }
 export type Override = (ctx: OverrideCtx) => Promise<unknown> | unknown;
 
-const registry = new Map<string, Override>();
+/**
+ * The registered overrides. A hoisted function rather than a module constant: the feature modules imported below
+ * call overrideOp while this module is still being evaluated (they import it back), before a constant would exist.
+ */
+function registry(): Map<string, Override> {
+  const self = registry as { map?: Map<string, Override> };
+  return (self.map ??= new Map());
+}
 
 /** Register `fn` as the real implementation of console operation `op` (its manifest name, e.g. "api.billing"). */
 export function overrideOp(op: string, fn: Override) {
-  if (registry.has(op)) throw new Error(`console operation ${op} is overridden twice`);
-  registry.set(op, fn);
+  if (registry().has(op)) throw new Error(`console operation ${op} is overridden twice`);
+  registry().set(op, fn);
 }
 
 export function consoleOverride(op: string): Override | undefined {
-  return registry.get(op);
+  return registry().get(op);
 }
+
+// each feature's overrides (imported for their registrations)
+import "./console-overrides/signing";

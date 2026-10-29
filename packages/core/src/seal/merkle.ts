@@ -6,8 +6,9 @@ import { bytesToHex, concatBytes, hexToBytes, sha256 } from "./primitives";
 const LEAF = new Uint8Array([0]);
 const NODE = new Uint8Array([1]);
 
+/** A receipt hash as a leaf: its 32 bytes. A real chain receipt's hash carries a `sha256:` prefix, which is not hashed. */
 export function leafHash(leafHex: string): string {
-  return bytesToHex(sha256(concatBytes(LEAF, hexToBytes(leafHex))));
+  return bytesToHex(sha256(concatBytes(LEAF, hexToBytes(leafHex.startsWith("sha256:") ? leafHex.slice(7) : leafHex))));
 }
 
 export function nodeHash(leftHex: string, rightHex: string): string {

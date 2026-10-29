@@ -58,6 +58,11 @@ export class SoftHsmKeyProvider implements KeyProvider {
     return SIG_PREFIX + edSign(null, Buffer.from(digest, "utf8"), k).toString("base64");
   }
 
+  async signBytes(key: KeyRef, message: Uint8Array): Promise<Uint8Array> {
+    const k = await this.#load(key);
+    return new Uint8Array(edSign(null, Buffer.from(message), k));
+  }
+
   async publicKey(key: KeyRef): Promise<string> {
     const row = await this.#db.hsmKey.findUnique({ where: { handle: this.#handle(key.ref) }, select: { publicKey: true } });
     if (!row) throw new Error("no such key in the software HSM");

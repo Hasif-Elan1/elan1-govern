@@ -231,7 +231,8 @@ describe("the real chain", () => {
     // the demo's key rotations never happened to the real key: recorded under their own name
     expect(imported.some((r) => r.action === "key.rotated")).toBe(false);
     expect(imported.some((r) => r.action === "key.rotated.demo")).toBe(true);
-    expect(new Set(chain.map((r) => r.kid)).size).toBe(1);
+    // one key signs the whole imported history (an earlier test may have rotated the organisation's real key)
+    expect(new Set(imported.map((r) => r.kid)).size).toBe(1);
 
     // approvals point at their decision and result receipts; alerts at their agent's receipts
     const bySeq = new Map(doc.receipts.map((r) => [r.seq, r]));
@@ -245,7 +246,11 @@ describe("the real chain", () => {
 
   it("holds no signing key: what would sign with the organisation's key here is refused, and nothing is written", async () => {
     const head = await prisma.receipt.findFirst({ where: { orgId: ORG }, orderBy: { seq: "desc" } });
-    const res = await rpc({ op: "api.rotateKey", args: [ORG, ADMIN] });
+    // the document has no keys to read
+    expect(() => (domain.db.peekDB(ORG) as unknown as { keys: unknown }).keys).toThrow(domain.db.NO_KEY);
+    // and an L1 key ceremony, which Elan1 Govern does not run for the console yet, signs nothing (a rotation is
+    // the gate's: test/console-signing.test.ts)
+    const res = await rpc({ op: "api.runKeyCeremony", args: [ORG, ADMIN] });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(domain.db.NO_KEY);
     expect(await prisma.receipt.findFirst({ where: { orgId: ORG }, orderBy: { seq: "desc" } })).toEqual(head);

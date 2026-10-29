@@ -52,6 +52,11 @@ export interface KeyProvider {
   generate?(orgId: string, opts?: { backup?: boolean; label?: string }): Promise<GeneratedKey>;
   /** Ed25519-signs `digest` (the text of a hash) with a key the provider holds, as `ed25519:<base64>`. */
   sign?(key: KeyRef, digest: string): Promise<string>;
+  /**
+   * Ed25519-signs raw bytes with a key the provider holds (a Seal v6 record signs its 32 digest bytes, not text).
+   * Only the gate's own signers call it, over messages they built (apps/gate/src/console-signing.ts).
+   */
+  signBytes?(key: KeyRef, message: Uint8Array): Promise<Uint8Array>;
   /** The public key PEM of a key the provider holds. */
   publicKey?(key: KeyRef): Promise<string>;
 }

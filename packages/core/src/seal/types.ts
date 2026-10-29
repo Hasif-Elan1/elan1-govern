@@ -118,6 +118,8 @@ export interface TsaAuthority {
   publicKey: string; // hex, Ed25519 stand-in for the TSA certificate key
   fingerprint: string;
   status: "operational" | "degraded";
+  /** A real authority: the PEM certificate whose key signs its RFC 3161 tokens (a local authority's self-signed one). */
+  certPem?: string;
 }
 
 export interface TimestampToken {
@@ -131,6 +133,13 @@ export interface TimestampToken {
   imprint: string;
   sig: string;
   delaySeconds: number;
+  /**
+   * A real authority's token: the RFC 3161 TimeStampToken (CMS ContentInfo, SignedData over TSTInfo), DER, base64. It
+   * is checked against the authority's certPem instead of `sig`, which a real token leaves empty.
+   */
+  der?: string;
+  /** The certificates the real token carried, PEM, signer first (informational: trust comes from certPem). */
+  chain?: string[];
 }
 
 export interface AnchorBatch {

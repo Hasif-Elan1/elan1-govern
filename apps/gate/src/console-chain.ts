@@ -26,8 +26,14 @@ export interface ChainHead {
 /** The marker receipt written after an imported history. */
 export const HISTORY_IMPORTED = "console.history_imported";
 
-/** Actions only the gate writes: a console receipt naming one would claim what the gate never did. */
-export const GATE_ONLY_ACTIONS: ReadonlySet<string> = new Set([KEY_ROTATED_ACTION, "key.rewrapped", "org.created", HISTORY_IMPORTED]);
+/**
+ * Actions only the gate writes: a console receipt naming one would claim what the gate never did. The second line
+ * is what console-signing.ts records for the signatures, seals and erasures it makes.
+ */
+export const GATE_ONLY_ACTIONS: ReadonlySet<string> = new Set([
+  ...[KEY_ROTATED_ACTION, "key.rewrapped", "org.created", HISTORY_IMPORTED],
+  ...["seal.signed", "record.erased", "disclosure.signed", "disclosure.bundle_signed", "disclosure.sd_jwt_signed", "evidence.manifest_signed", "statement.signed", "residency.statement_signed"],
+]);
 
 /** One receipt as the console sends it: core's format, without what the chain fills in. */
 export const ConsoleReceiptInput = ReceiptSchema.omit({ seq: true, ts: true, org: true, prev_hash: true, kid: true, hash: true, sig: true }).strict();

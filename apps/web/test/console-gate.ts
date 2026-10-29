@@ -66,6 +66,13 @@ export async function resetConsoleOrg(orgId: string) {
   if (from) {
     await prisma.receipt.deleteMany({ where: { orgId, seq: { gte: from } } });
     await prisma.checkpoint.deleteMany({ where: { orgId, seq: { gte: from } } });
+    // what the gate signed over those receipts goes with them (apps/gate/src/console-signing.ts, anchors.ts)
+    await prisma.sealRecord.deleteMany({ where: { orgId, seq: { gte: from } } });
+    await prisma.receiptRedaction.deleteMany({ where: { orgId, seq: { gte: from } } });
+    await prisma.consoleSignature.deleteMany({ where: { orgId, receiptSeq: { gte: from } } });
+    await prisma.anchorBatch.deleteMany({ where: { orgId, toSeq: { gte: from } } });
+    // a successor bound there and not signing yet (one that switched is a key of the organisation's now)
+    await prisma.keySuccessor.deleteMany({ where: { orgId, boundSeq: { gte: from }, activatedAt: null } });
   }
   await prisma.$executeRaw`DELETE FROM "ConsoleState" WHERE "orgId" = ${orgId}`;
   return consoleState.version(orgId);

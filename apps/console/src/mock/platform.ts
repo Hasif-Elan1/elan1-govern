@@ -17,7 +17,7 @@ import type {
   TsaAuthority, UpdateBundle, UpgradePlan, UpgradeStep, GraduationProposal, ComponentStatus, AiSystem, Decision, SampleReview, RiskTag,
   VerifierProfile,
 } from '@/types';
-import { canonical, keyFromSeed, receiptHash, sha256Hex, signText, verifySig, verifyChain, type KeyPair } from '@/lib/crypto';
+import { canonical, keyFromSeed, receiptHash, serverSigner, sha256Hex, signText, verifySig, verifyChain, type KeyPair } from '@/lib/crypto';
 import { makeRand } from '@/lib/prng';
 import { PLANS } from '@/lib/pricing';
 import { CAPABILITIES, LEVEL_INFO, atLeast, capabilitiesAdded, levelAt, levelOfOrg, levelRank, nextLevel } from '@/lib/levels';
@@ -142,6 +142,59 @@ function destroySalt(st: PlatformState, seq: number, existingSeqs: number[]) {
 
 const levelOfReceipt = (db: OrgDB, r: Receipt): LevelId => levelAt(db.org.levelHistory, new Date(r.ts).getTime(), db.org.plan);
 const isSealed = (db: OrgDB, r: Receipt) => { const t = levelStart(db, 'l2'); return t !== undefined && new Date(r.ts).getTime() >= t; };
+
+/* ── On the server: seals, timestamps and erasure are Elan1 Govern's ── */
+
+/**
+ * Set on the server only (apps/web/src/server/console-signing.ts). The organisation's Seal v6 records are made and
+ * signed by Elan1 Govern over its real chain, its Merkle batches carry RFC 3161 tokens from real timestamp
+ * authorities, and an erasure destroys salts Elan1 Govern keeps: the server brings them in before each operation
+ * and the functions below read them from here instead of deriving demo ones. In the browser none is set.
+ */
+export interface ServerEvidence {
+  /** The seal Elan1 Govern made for receipt `seq` (with this hash), if it has made one. */
+  seal(orgId: string, seq: number, receiptHash: string): SealRecord | undefined;
+  /** The organisation's timestamped batches, oldest first (leaves are added here from the receipts). */
+  batches(orgId: string): AnchorBatch[];
+  /** The timestamp authorities whose tokens the batches carry. */
+  authorities(orgId: string): TsaAuthority[];
+}
+let serverEvidence: ServerEvidence | undefined;
+export function setServerEvidence(e: ServerEvidence | undefined) {
+  serverEvidence = e;
+}
+
+/** The receipts the server seals (from the L2 boundary on) and the console's autonomy for each (F11), for Elan1 Govern. */
+export function sealPlan(db: OrgDB, fromSeq: number): { fromSeq?: number; autonomy: Record<string, string>; levels: { level: LevelId; fromSeq: number }[] } {
+  if (levelStart(db, 'l2') === undefined) return { autonomy: {}, levels: [] };
+  const sealed = db.receipts.filter((r) => isSealed(db, r));
+  const autonomy: Record<string, string> = {};
+  const levels: { level: LevelId; fromSeq: number }[] = [];
+  for (const r of sealed) {
+    const lv = levelOfReceipt(db, r);
+    if (levels[levels.length - 1]?.level !== lv) levels.push({ level: lv, fromSeq: r.seq });
+    if (r.seq < fromSeq) continue;
+    const a = autonomyAt(db, r);
+    if (a !== 'A0') autonomy[String(r.seq)] = a;
+  }
+  return { fromSeq: sealed[0]?.seq, autonomy, levels: levels.filter((l) => levelRank(l.level) >= 1) };
+}
+
+/** Record what an erasure Elan1 Govern executed froze: F14 (the payload hash) and F12 (the record id) as sealed. */
+export function noteErased(db: OrgDB, seq: number, payloadHashHex: string, recordId: string) {
+  db.platform.erased[seq] = payloadHashHex;
+  (db.platform.erasedRecordIds ??= {})[seq] = recordId;
+}
+
+/** Elan1 Govern's batches as the console's, each with its leaves: the receipt hashes of its range. */
+function serverBatches(db: OrgDB, e: ServerEvidence): FullBatch[] {
+  const bySeq = new Map(db.receipts.map((r) => [r.seq, r.hash]));
+  return e.batches(db.org.id).map((b) => {
+    const leaves: string[] = [];
+    for (let q = b.firstSeq; q <= b.lastSeq; q++) { const h = bySeq.get(q); if (h) leaves.push(h); }
+    return { ...clone(b), leaves };
+  });
+}
 
 /* ══ Seeding ════════════════════════════════════════════════════════════ */
 
@@ -317,7 +370,7 @@ function seedL3(db: OrgDB, st: PlatformState) {
   }
   // receipts this organisation issues (own chain) and receives (resolved lazily from the issuer)
   const mine = (pred: (r: Receipt) => boolean, n: number) => db.receipts.filter(pred).slice(-n);
-  const key = currentKey(db);
+  const key = serverSigner() ? undefined : currentKey(db);
   const issuedTo = (cpId: string, r: Receipt, summary: string, withDisclosure: number) => {
     const c = st.counterparties.find((x) => x.id === cpId)!;
     const pkg = withDisclosure ? makeDisclosure(db, st, r, ['decision', 'tool', 'amount', 'approval', 'ts', 'rule_id'].slice(0, withDisclosure), `ar-org:${c.domain}`, c.id, owner, new Date(r.ts).getTime() + H) : undefined;
@@ -354,7 +407,7 @@ function keyForKid(db: OrgDB, kid: string) {
   return db.keys.find((k) => k.key.kid === kid)?.key;
 }
 
-function crossFromOwn(db: OrgDB, c: Counterparty, r: Receipt, summary: string, disclosureId: string | undefined, token: string | undefined, _key: KeyPair): CrossOrgReceipt {
+function crossFromOwn(db: OrgDB, c: Counterparty, r: Receipt, summary: string, disclosureId: string | undefined, token: string | undefined, _key: KeyPair | undefined): CrossOrgReceipt {
   const t = new Date(r.ts).getTime();
   const issuedAt = Math.max(t, Math.min(t + H, Date.now() - 10 * 60_000)); // an hour after the decision, never in the future
   return {
@@ -443,6 +496,10 @@ export function ensureSeals(db: OrgDB): SealCacheEntry {
 
 /** The Seal v6 record for one receipt (signed with the key that signed the receipt), or undefined before the L2 boundary. */
 export function sealOf(db: OrgDB, seq: number): SealRecord | undefined {
+  if (serverEvidence) {
+    const r = db.receipts.find((x) => x.seq === seq);
+    return r && isSealed(db, r) ? serverEvidence.seal(db.org.id, seq, r.hash) : undefined;
+  }
   const c = ensureSeals(db);
   const rec = c.recs.get(seq);
   const r = db.receipts.find((x) => x.seq === seq);
@@ -487,6 +544,7 @@ function tsaKey(id: string): KeyPair {
  * Batches stamped before the boundary keep the hosted authorities, so they keep verifying after an upgrade.
  */
 export function tsaAuthorities(db: OrgDB, at?: number): TsaAuthority[] {
+  if (serverEvidence) return serverEvidence.authorities(db.org.id);
   const mk = (id: string, name: string, scope: TsaAuthority['scope'], url: string, oid: string): TsaAuthority => {
     const k = tsaKey(id);
     return { id, name, scope, url, policyOid: oid, publicKey: k.publicKeyHex, fingerprint: k.fingerprint, status: 'operational' };
@@ -509,6 +567,7 @@ function sovereignSites(db: OrgDB): { primary: string; dr: string; primaryLong: 
 
 /** Authorities that stamped this organisation's batches before the Sovereign boundary (empty when none). */
 export function previousTsaAuthorities(db: OrgDB): TsaAuthority[] {
+  if (serverEvidence) return [];
   const sovFrom = db.org.deployment === 'sovereign' ? levelStart(db, 'sovereign') : undefined;
   const l2From = levelStart(db, 'l2');
   if (sovFrom === undefined || l2From === undefined || l2From >= sovFrom) return [];
@@ -538,6 +597,7 @@ function token(a: TsaAuthority, root: string, windowEnd: number, delaySeconds: n
 export function anchorBatches(db: OrgDB): FullBatch[] {
   const start = levelStart(db, 'l2');
   if (start === undefined) return [];
+  if (serverEvidence) return serverBatches(db, serverEvidence);
   let cache = batchCache.get(db.org.id);
   if (!cache) { cache = new Map(); batchCache.set(db.org.id, cache); }
   const now = Date.now();
@@ -581,6 +641,8 @@ export type OnDemandBatch = FullBatch & { onDemand: true; recordedSeq: number };
  */
 export function onDemandAnchorBatches(db: OrgDB): OnDemandBatch[] {
   const out: OnDemandBatch[] = [];
+  // on the server "Anchor now" makes one of Elan1 Govern's own batches (anchorBatches)
+  if (serverEvidence) return out;
   for (const r of db.receipts) {
     if (r.action !== ON_DEMAND_ANCHOR || !r.details) continue;
     const x = r.details;
@@ -667,7 +729,7 @@ export function anchorsView(orgId: string, limit = 60): AnchorsView {
   const degRecords = sealed.filter((r) => { const t = new Date(r.ts).getTime(); return t >= deg.from && t < deg.to; }).length;
   const t09 = new Date(deg.from + 5.5 * H).toISOString().slice(11, 16);
   const t11 = new Date(deg.to + 5.5 * H).toISOString().slice(11, 16);
-  const incidents: AnchorIncident[] = deg.from >= start ? [{ id: `ai_${short(db)}_deg`, from: iso(deg.from), to: iso(deg.to), records: degRecords, status: 'recovered', summary: `${degRecords} records unanchored since ${t09} IST while ${tsaAuthorities(db, deg.from)[0].name} was unreachable. Both timestamps were obtained by ${t11} IST; the second authority stayed within 15 minutes throughout. No record was lost.` }] : [];
+  const incidents: AnchorIncident[] = deg.from >= start && !serverEvidence ? [{ id: `ai_${short(db)}_deg`, from: iso(deg.from), to: iso(deg.to), records: degRecords, status: 'recovered', summary: `${degRecords} records unanchored since ${t09} IST while ${tsaAuthorities(db, deg.from)[0].name} was unreachable. Both timestamps were obtained by ${t11} IST; the second authority stayed within 15 minutes throughout. No record was lost.` }] : [];
   return {
     orgId, enabled: true, level: levelOfOrg(db.org), since: iso(start), authorities: tsaAuthorities(db), previousAuthorities: previousTsaAuthorities(db),
     batches: all.slice(-limit).reverse().map(({ leaves: _l, ...b }) => b),
@@ -1012,7 +1074,8 @@ export function buildEvidenceBundle(db: OrgDB, userId: string, fromSeq?: number,
   // the rule and refusal vocabulary the receipts use (spec 02 §4.9): an extra member beside the eight (mock/lexicon.ts)
   const lexicon = buildLexicon(db, exported);
   // the signing key first: getting it can add its public key to keys.json, which must happen before that member's digest
-  const key = currentKey(db);
+  const signer = serverSigner();
+  const key = signer ? { kid: signer.kid(db.org.id) } : currentKey(db);
   // read before the member digests too: reading the unsigned intervals can mark interim keys (keys.json)
   const intervals = unsignedIntervalsInRange(db.org.id, receipts[0].seq, receipts[receipts.length - 1].seq);
   const hosting = hostingManifest(db);
@@ -1037,7 +1100,9 @@ export function buildEvidenceBundle(db: OrgDB, userId: string, fromSeq?: number,
     profile_id: profile?.id, profile_version: profile?.version, profile_digest: profile?.digest, redaction_profile: 'none', members, unanchored_head: unanchored, signing_kid: key.kid,
     verifier_digest: sha256Hex(VERIFIER_VERSION), note: 'Draft — needs legal review. Sealed records are signed with a key in managed custody and timestamped by two authorities; L1 records are sealed in a hash chain by Elan1 Govern and not externally timestamped.',
   };
-  const manifest_sig = signText(manifestMessage(manifest), key);
+  const manifest_sig = signer
+    ? signer.request(db.org.id, 'evidence-manifest', { manifest, public_keys: db.publicKeys, receipts: exported, checkpoints, seals, anchors, declarations, profile, readme, lexicon })
+    : signText(manifestMessage(manifest), key as KeyPair);
   const bundleObj: EvidenceBundle = { manifest, manifest_sig, public_keys: db.publicKeys, receipts: exported, checkpoints, seals, anchors, declarations, profile, readme, lexicon };
   const json = JSON.stringify(bundleObj);
   const exp: AuditorPackExport = {
@@ -1087,13 +1152,15 @@ function makeDisclosure(db: OrgDB, st: PlatformState, r: Receipt, reveal: string
   const result = db.receipts.find((x) => x.kind === 'approval' && x.ref_seq === r.seq);
   const values = fieldValuesOf(r, result);
   const { committed, salts } = commitFields(values);
-  const key = keyForKid(db, r.kid) ?? currentKey(db);
+  const signer = serverSigner();
+  const key = signer ? undefined : keyForKid(db, r.kid) ?? currentKey(db);
+  const kid = signer ? signer.kid(db.org.id) : key!.kid;
   const id = `dp_${randHex(6)}`;
   const base = { orgId: db.org.id, seq: r.seq, receiptHash: r.hash, audience, expiresAt: iso(Math.max(createdAt, Date.now()) + expiresDays * D), committed };
   const pkg: DisclosurePackage = {
     id, ...base, issuerName: db.org.name, createdAt: iso(createdAt), createdBy: userId, counterpartyId, token: `${db.org.slug}.${randHex(10)}`,
     revealed: reveal.filter((n) => n in values).map((name) => ({ name, salt: salts[name], value: values[name as keyof typeof values] })),
-    kid: key.kid, publicKey: db.publicKeys[key.kid], sig: signText(disclosureMessage(base), key), status: 'active', views: 0,
+    kid, publicKey: db.publicKeys[kid], sig: signer ? signer.request(db.org.id, 'disclosure', { base, salts, ...(result ? { approvalSeq: result.seq } : {}) }) : signText(disclosureMessage(base), key!), status: 'active', views: 0,
   };
   st.disclosures.unshift(pkg);
   st.disclosureSalts[id] = salts;
@@ -1242,7 +1309,7 @@ export function issueToCounterparty(orgId: string, seq: number, counterpartyId: 
   if (!c) throw new Error('No such counterparty.');
   if (!fields.length) throw new Error('Choose at least one field to reveal.');
   const pkg = makeDisclosure(db, db.platform, r, fields, `ar-org:${c.domain}`, c.id, userId, Date.now(), Math.min(365, Math.max(1, Math.round(expiresDays))));
-  const x = crossFromOwn(db, c, r, `${r.tool ?? r.action ?? r.kind} — revealing ${pkg.revealed.length} of ${pkg.committed.length} fields`, pkg.id, pkg.token, currentKey(db));
+  const x = crossFromOwn(db, c, r, `${r.tool ?? r.action ?? r.kind} — revealing ${pkg.revealed.length} of ${pkg.committed.length} fields`, pkg.id, pkg.token, serverSigner() ? undefined : currentKey(db));
   x.issuedAt = iso(Date.now());
   x.expiresAt = pkg.expiresAt;
   // a fresh nonce for every issue (the receiver refuses a second copy of a nonce as RECEIPT_REPLAYED)
@@ -1803,7 +1870,12 @@ export function approveErasure(orgId: string, id: string, userId: string): Erasu
 
 function executeErasureOn(db: OrgDB, st: PlatformState, e: ErasureRequest, userId: string, at: number, writeReceipt: boolean) {
   const existing = db.receipts.map((x) => x.seq);
-  for (const seq of e.affectedSeqs) {
+  // on the server Elan1 Govern destroys the salts and signs the redacted receipts when the operation is written; the
+  // server then puts the redacted copies in place and records F14 and F12 as sealed (noteErased)
+  const signer = serverSigner();
+  const todo = signer ? e.affectedSeqs.filter((seq) => !st.erased[seq] && db.receipts.some((x) => x.seq === seq && !x.redacted?.sig)) : [];
+  if (signer && todo.length) signer.request(db.org.id, 'erasure', { request: e.id, subjectRef: e.subjectRef, seqs: todo, at: iso(at) });
+  for (const seq of signer ? [] : e.affectedSeqs) {
     const i = db.receipts.findIndex((x) => x.seq === seq);
     const r = db.receipts[i];
     if (!r || st.erased[seq]) continue;
@@ -2192,12 +2264,13 @@ export function residencyView(orgId: string): ResidencyView {
       { name: 'Backups', location: backup, provider: 'elan1, dedicated vault', holds: 'Encrypted backups (India only)' });
   }
   const statement = { org: db.org.id, domain: dedicated ? `${dedicated.domain} (${dedicated.region})` : db.org.residency ?? 'ap-south-1 Mumbai', stores: stores.map((x) => `${x.name}@${x.location}`), at: new Date(Math.floor(Date.now() / D) * D).toISOString() };
-  const key = currentKey(db);
+  const signer = serverSigner();
+  const key = signer ? { kid: signer.kid(db.org.id) } : currentKey(db);
   const digest = sha256Hex(canonical(statement));
   return {
     orgId, domain: statement.domain, deployment: db.org.deployment ?? 'hosted', stores,
     crossBorder: { allowed: false, transfers30d: 0, note: sov ? 'Nothing leaves your network: egress is denied by default.' : 'All stores and backups are in India. Timestamp requests send only a 32-byte Merkle root to the authorities.' },
-    proof: { statement: `${db.org.name}: every store listed is in ${statement.domain}. Statement date ${statement.at.slice(0, 10)}.`, digest, signedAt: statement.at, kid: key.kid, sig: signText(digest, key) },
+    proof: { statement: `${db.org.name}: every store listed is in ${statement.domain}. Statement date ${statement.at.slice(0, 10)}.`, digest, signedAt: statement.at, kid: key.kid, sig: signer ? signer.request(db.org.id, 'residency', { statement }) : signText(digest, key as KeyPair) },
   };
 }
 

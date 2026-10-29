@@ -58,7 +58,7 @@ const SOURCES = [
  * Namespaces entry.ts exports that are not operation modules: the document store the server drives itself, and the
  * console's chain verifier, which the server and its tests call directly (never over RPC).
  */
-const NOT_OPS = ['db', 'chainVerifier'];
+const NOT_OPS = ['db', 'chainVerifier', 'serverSigning', 'bundleVerifier'];
 
 function program() {
   const cfgPath = join(ROOT, 'tsconfig.json');

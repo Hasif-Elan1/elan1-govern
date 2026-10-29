@@ -52,6 +52,10 @@ export const TENANT_MODELS = [
   "ReconciliationRun",
   // ── guardsync ──
   "ConsoleApproverGroup",
+  // ── signing ──
+  "SealRecord",
+  "ReceiptRedaction",
+  "ConsoleSignature",
 ] as const;
 
 const WHERE_OPS = new Set([

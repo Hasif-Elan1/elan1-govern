@@ -6,8 +6,12 @@
 // first call (the console passes its @noble adapter); core itself takes no crypto dependency.
 //
 // Formats are the console's, byte for byte: hashes and keys are lower-case hex without a prefix, Ed25519 private
-// keys are 32-byte seeds, signatures are 64 bytes as hex. Canonical JSON is core's canonicalize().
+// keys are 32-byte seeds, signatures are 64 bytes as hex. Canonical JSON is core's canonicalize(). Records from the
+// organisation's real chain keep the chain's own strings (`sha256:` hashes, `ed25519:<base64>` signatures, kids that
+// are key fingerprints): verifySig and keyFingerprintOf accept them beside the console's demo forms.
 import { canonicalize } from "../canonical";
+import { signatureHex } from "../console-receipt";
+import { derToPem } from "./rfc3161";
 
 export interface SealCrypto {
   sha256(data: Uint8Array): Uint8Array;
@@ -16,6 +20,13 @@ export interface SealCrypto {
   ed25519Sign(message: Uint8Array, seed: Uint8Array): Uint8Array;
   /** Never throws: a malformed key or signature fails. */
   ed25519Verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean;
+  /**
+   * Only for RFC 3161 timestamp tokens from hosted authorities (RSA over SHA-384 or SHA-512, an ESS signingCertificate's
+   * SHA-1 certificate hash). Without them such a token does not verify; the gate's own authorities need SHA-256 only.
+   */
+  sha384?(data: Uint8Array): Uint8Array;
+  sha512?(data: Uint8Array): Uint8Array;
+  sha1?(data: Uint8Array): Uint8Array;
 }
 
 let provider: SealCrypto | undefined;
@@ -101,6 +112,26 @@ export function keyFromSeedBytes(seed: Uint8Array, kid: string): KeyPair {
 
 export const fingerprintOf = (publicKeyHex: string): string => sha256Hex(publicKeyHex).slice(0, 16);
 
+/** The DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410): the 32-byte key follows it. */
+const ED25519_SPKI = "302a300506032b6570032100";
+
+/**
+ * A real chain key's fingerprint, which is its kid: core's keyFingerprint (first 16 hex of SHA-256 over the trimmed
+ * PEM) of the SPKI PEM node:crypto writes for the raw key.
+ */
+export function chainKeyFingerprint(publicKeyHex: string): string {
+  return sha256Hex(derToPem(hexToBytes(ED25519_SPKI + publicKeyHex), "PUBLIC KEY").trim()).slice(0, 16);
+}
+
+/**
+ * The fingerprint the verifier shows and trusts for the key a bundle names `kid`: a real chain key's is its kid, when
+ * the kid is that key's chain fingerprint; any other key's is fingerprintOf its hex, as in the console's demo.
+ */
+export function keyFingerprintOf(kid: string | undefined, publicKeyHex: string): string {
+  const chainKey = typeof kid === "string" && /^[0-9a-f]{16}$/.test(kid) && typeof publicKeyHex === "string" && /^[0-9a-fA-F]{64}$/.test(publicKeyHex);
+  return chainKey && chainKeyFingerprint(publicKeyHex) === kid ? kid : fingerprintOf(publicKeyHex);
+}
+
 export function signBytes(message: Uint8Array, key: Pick<KeyPair, "privateKey">): string {
   return bytesToHex(sealCrypto().ed25519Sign(message, key.privateKey));
 }
@@ -118,9 +149,13 @@ export function verifyBytes(message: Uint8Array, sigHex: string, publicKeyHex: s
   }
 }
 
-/** Verify Ed25519 over the UTF-8 bytes of `message` (usually a hash as hex text). Never throws. */
+/**
+ * Verify Ed25519 over the UTF-8 bytes of `message` (usually a hash as hex text). The signature is 64 bytes as hex, or
+ * a real chain signature, `ed25519:<base64>`, over the same text. Never throws.
+ */
 export function verifySig(message: string, sigHex: string, publicKeyHex: string): boolean {
-  return typeof message === "string" && verifyBytes(utf8ToBytes(message), sigHex, publicKeyHex);
+  const sig = typeof sigHex === "string" && sigHex.startsWith("ed25519:") ? signatureHex(sigHex) : sigHex;
+  return typeof message === "string" && !!sig && verifyBytes(utf8ToBytes(message), sig, publicKeyHex);
 }
 
 /** Random bytes as hex from the platform's secure source. There is no fallback: salts are secrets. */

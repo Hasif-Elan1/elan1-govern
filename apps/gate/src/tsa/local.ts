@@ -73,7 +73,11 @@ export class LocalTsa implements TimestampAuthority {
   private loaded?: Promise<Loaded>;
 
   constructor(
-    private readonly store: { db: Db; keys: KeyProvider },
+    /**
+     * `keys` wraps a new authority key; `providerFor` finds the provider that wrapped a stored one (TsaKey.provider).
+     * The key is used in this process (pkijs signs with it), so `keys` must be a provider that can unwrap.
+     */
+    private readonly store: { db: Db; keys: KeyProvider; providerFor?: (name: string) => KeyProvider },
     readonly id: string,
     readonly name: string,
     readonly policyOid: string,
@@ -94,7 +98,7 @@ export class LocalTsa implements TimestampAuthority {
 
   private async loadOrCreate(): Promise<Loaded> {
     const row = (await this.store.db.tsaKey.findUnique({ where: { id: this.id } })) ?? (await this.create());
-    const pem = await this.store.keys.unwrap(row.privateKeyEnc, keyCtx(this.id));
+    const pem = await (this.store.providerFor?.(row.provider) ?? this.store.keys).unwrap(row.privateKeyEnc, keyCtx(this.id));
     const pkcs8 = pemToDer(pem, "PRIVATE KEY")[0];
     if (!pkcs8) throw new Error(`timestamp authority ${this.id}: stored key is not a PKCS#8 PEM`);
     const key = await subtle.importKey("pkcs8", pkcs8, EC, false, ["sign"]);

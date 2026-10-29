@@ -13,7 +13,7 @@
  */
 import type { OrgDB } from './db';
 import { NOW0, append, getDB, memberRole, touch } from './db';
-import { canonical, sha256Hex, signText, verifySig } from '@/lib/crypto';
+import { canonical, serverSigner, sha256Hex, signText, verifySig } from '@/lib/crypto';
 import { makeRand } from '@/lib/prng';
 import { levelOfOrg, LEVEL_INFO } from '@/lib/levels';
 import type { ComponentStatus, UpdateBundle } from '@/types';
@@ -388,12 +388,15 @@ export function exportUsageStatement(orgId: string, periodId: string, media: str
   if (media.trim().length < 3) throw new Error('Name the media it is written to, for example the serial printed on the USB drive.');
   const d = getDB(orgId);
   const m = meterFor(orgId, p.from, p.to);
-  const key = d.keys[d.keys.length - 1].key;
+  // on the server Elan1 Govern signs it, after counting the period again from the organisation's chain
+  const signer = serverSigner();
+  const key = signer ? undefined : d.keys[d.keys.length - 1].key;
+  const kid = signer ? signer.kid(d.org.id) : key!.kid;
   const body = { format: 'elan1.usage.statement.v1' as const, org: d.org.id, orgName: d.org.name, period: { from: iso(p.from), to: iso(p.to), label: p.label }, counts: m.counts, units: m.units, head: m.head, meterDigest: m.meterDigest };
   const digest = sha256Hex(canonical(body));
-  const sig = signText(digest, key);
+  const sig = signer ? signer.request(d.org.id, 'usage-statement', { body }) : signText(digest, key!);
   const r = append(d, { kind: 'admin', actor: userId, action: 'meter.statement_exported', details: { period: p.id, units: m.units, decisions: m.counts.decisions, refused: m.counts.refused, head_seq: m.head.seq, digest: digest.slice(0, 16), media: media.trim().slice(0, 60) } });
-  const st: UsageStatement = { id: `us_${p.id}_${Date.now().toString(36)}`, ...body, digest, kid: key.kid, publicKey: key.publicKeyHex, sig, createdAt: r.ts, createdBy: userId, media: media.trim(), seq: r.seq };
+  const st: UsageStatement = { id: `us_${p.id}_${Date.now().toString(36)}`, ...body, digest, kid, publicKey: key?.publicKeyHex ?? d.publicKeys[kid], sig, createdAt: r.ts, createdBy: userId, media: media.trim(), seq: r.seq };
   sovState(orgId).statements.unshift(st);
   touch(orgId, 'deployment');
   return { statement: clone(st), seq: r.seq };

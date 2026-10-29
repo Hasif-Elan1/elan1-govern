@@ -3,7 +3,7 @@
 // issuer signs the sorted list of digests with its Ed25519 key. A counterparty receives only the revealed fields
 // with their salts, recomputes each digest, checks it is in the signed list, and checks the issuer's signature with
 // a key it pinned out of band. Fields not revealed stay hidden but are still bound by the signature.
-import { canonical, fingerprintOf, randomHex, sha256Hex, verifySig } from "./primitives";
+import { canonical, keyFingerprintOf, randomHex, sha256Hex, verifySig } from "./primitives";
 import type { DisclosureField, DisclosurePackage, Receipt, RevealedField, VerifyStep } from "./types";
 
 /** The 11 fields a receipt commits to in a disclosure package. */
@@ -72,7 +72,8 @@ export function verifyDisclosure(p: DisclosurePackage, opts: { pinnedFingerprint
   steps.push({ label: "Audience", state: !opts.audience || opts.audience === p.audience ? "pass" : "fail", detail: `Issued to ${p.audience}.` });
   const expired = new Date(p.expiresAt).getTime() < now;
   steps.push({ label: "Expiry", state: expired ? "fail" : "pass", detail: expired ? `Expired ${p.expiresAt}.` : `Valid until ${p.expiresAt}.` });
-  const fp = fingerprintOf(p.publicKey);
+  // a package signed with a real chain key names it by its fingerprint (keyFingerprintOf)
+  const fp = keyFingerprintOf(p.kid, p.publicKey);
   steps.push({ label: "Issuer key", state: opts.pinnedFingerprint ? (opts.pinnedFingerprint === fp ? "pass" : "fail") : "skip", detail: opts.pinnedFingerprint ? `Fingerprint ${fp} ${opts.pinnedFingerprint === fp ? "matches" : "does not match"} the pinned ${opts.pinnedFingerprint}.` : `Key fingerprint ${fp}. Compare it with one you obtained from the issuer directly.` });
   const sigOk = verifySig(disclosureMessage(p), p.sig, p.publicKey);
   steps.push({ label: "Issuer signature", state: sigOk ? "pass" : "fail", detail: sigOk ? `Ed25519 signature over ${p.committed.length} committed digests verifies.` : "The signature does not verify — the package was changed or signed by another key." });

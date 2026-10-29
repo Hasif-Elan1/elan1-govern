@@ -10,7 +10,7 @@ import type { Receipt } from '@/types';
 import { getDB, append, touch, type OrgDB } from './db';
 import { ORGS, personFor } from './users';
 import { LEVEL_INFO, levelOfOrg } from '@/lib/levels';
-import { sha256Hex, signText } from '@/lib/crypto';
+import { serverSigner, sha256Hex, signText } from '@/lib/crypto';
 import {
   BUNDLE_FORMAT, BUNDLE_MAX, DISCLOSABLE_FIELDS, bundleManifestObject, bundleMessage, disclosureDigest, fieldValuesOf, verifyDisclosureBundle,
   type BundleItem, type DisclosureBundle, type DisclosureProfile, type DisclosurePurpose,
@@ -157,7 +157,10 @@ function buildBundle(db: OrgDB, a: { seqs: number[]; fromSeq: number; toSeq: num
   const id = `db_${randHex(5)}`;
   const secret = randHex(16);
   (x.bundleSecrets ??= {})[id] = secret;
-  const key = db.keys[db.keys.length - 1].key;
+  // on the server Elan1 Govern signs it, after checking every commitment against the receipts in its chain
+  const signer = serverSigner();
+  const key = signer ? undefined : db.keys[db.keys.length - 1].key;
+  const kid = signer ? signer.kid(db.org.id) : key!.kid;
   const createdAt = a.createdAt ?? Date.now();
   const fields: string[] = DISCLOSABLE_FIELDS.filter((f) => a.fields.includes(f));
   const items = itemsOf(db, a.seqs, fields, secret);
@@ -168,7 +171,7 @@ function buildBundle(db: OrgDB, a: { seqs: number[]; fromSeq: number; toSeq: num
   const stored: StoredBundle = {
     id, orgId: db.org.id, issuerName: db.org.name, format: BUNDLE_FORMAT, range: base.range, createdAt: iso(createdAt), createdBy: a.userId, audience: a.audience,
     counterpartyId: a.counterpartyId, profileId: a.profile?.id, profileName: a.profile?.name, fields, expiresAt: base.expiresAt, token: `${db.org.slug}.rb.${randHex(10)}`,
-    kid: key.kid, publicKey: db.publicKeys[key.kid], sig: signText(bundleMessage(base), key), status: 'active', views: 0, downloads: 0, seqs: items.map((i) => i.seq),
+    kid, publicKey: db.publicKeys[kid], sig: signer ? signer.request(db.org.id, 'disclosure-bundle', { base: { ...base, items: base.items.map(({ revealed: _r, ...i }) => i) }, secret }) : signText(bundleMessage(base), key!), status: 'active', views: 0, downloads: 0, seqs: items.map((i) => i.seq),
   };
   (x.bundles ??= []).unshift(stored);
   return stored;

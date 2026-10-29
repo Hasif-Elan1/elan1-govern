@@ -4,6 +4,7 @@ import type { OpEntry, SavedDoc } from "@gate/console/server";
 import { HttpError } from "./api";
 import { ChainRetry, ConsoleChain, fixResult, flushChain, importHistory, realHead, replaceStrings, syncDoc, type ChainDoc, type Fixes, type Head } from "./console-chain";
 import { consoleOverride } from "./console-overrides";
+import { forgetSigned, installSigning } from "./console-signing";
 import { syncAfterOp } from "./console-sync";
 import { log } from "./log";
 
@@ -96,6 +97,8 @@ async function load(): Promise<Runtime> {
     queue: Promise.resolve(),
   };
   domain.db.setChainWriter(rt.chain, rt.chain.nonce);
+  // the organisation's signatures, seals and erasures are Elan1 Govern's too (console-signing.ts)
+  installSigning(domain, rt.chain);
   domain.db.setPersistence({
     load: (orgId) => {
       const s = rt.stored.get(orgId);
@@ -215,10 +218,10 @@ class OpFailed extends Error {}
  * the result inside the lock, once the real receipts are in place. Returns it and `lockOrg`'s saved version after
  * the commit. When the chain moved under the operation it is undone and run again, up to MAX_ATTEMPTS times.
  */
-async function locked<T, R = T>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish?: (value: T, fixes: Fixes) => R): Promise<{ value: R; version: number | null }> {
+async function locked<T, R = T>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish?: (value: T, fixes: Fixes) => R, opName?: string): Promise<{ value: R; version: number | null }> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await lockedOnce(rt, lockOrg, fn, finish ?? ((v: T) => v as unknown as R));
+      return await lockedOnce(rt, lockOrg, fn, finish ?? ((v: T) => v as unknown as R), opName);
     } catch (e) {
       await keepImported(rt);
       if (!(e instanceof ChainRetry)) throw e;
@@ -240,7 +243,7 @@ async function keepImported(rt: Runtime) {
   }
 }
 
-async function lockedOnce<T, R>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish: (value: T, fixes: Fixes) => R): Promise<{ value: R; version: number | null }> {
+async function lockedOnce<T, R>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish: (value: T, fixes: Fixes) => R, opName?: string): Promise<{ value: R; version: number | null }> {
   return exclusive(rt, async () => {
     const commits: { orgId: string; stored: Stored; kind: string }[] = [];
     try {
@@ -249,6 +252,8 @@ async function lockedOnce<T, R>(rt: Runtime, lockOrg: string, fn: () => Promise<
         rt.changed.clear();
         rt.kinds.clear();
         rt.chain.reset();
+        // which operation this is: one that reads evidence has the organisation's new receipts sealed first (console-signing.ts)
+        rt.chain.op = opName;
         // the organisation's document on its real chain, with what the gate wrote itself since; and any
         // organisation whose write was refused last time because its chain moved. The domain's deferred writes
         // (open-time seeds) wait until the document is on its chain.
@@ -376,6 +381,7 @@ export async function runOp(orgId: string | null, actorUserId: string, opName: s
     rt,
     orgId,
     async () => {
+      rt.chain.actor = actorUserId;
       rt.domain.db.getDB(orgId);
       rt.domain.db.setActiveOrg(orgId);
       // a feature the real backend serves itself (console-overrides.ts) runs instead of the console's own code,
@@ -386,6 +392,7 @@ export async function runOp(orgId: string | null, actorUserId: string, opName: s
     },
     // copied once the real receipts are in place (it may share objects with the documents)
     (raw, fixes) => fixResult(jsonSafe(raw), fixes),
+    op.name,
   );
   return { result: value, version };
 }
@@ -459,5 +466,6 @@ export async function forgetConsoleMemory() {
     rt.stored.clear();
     rt.changed.clear();
     rt.chain.forget();
+    forgetSigned();
   });
 }

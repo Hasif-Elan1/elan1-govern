@@ -8,6 +8,7 @@ import type { GateEnv } from "./env";
 import { registerMcp } from "./mcp";
 import { registerAgentApi } from "./routes/agent-api";
 import { registerChat } from "./routes/chat";
+import { registerConsoleSigning } from "./routes/console-signing";
 import { registerConsoleSync } from "./routes/console-sync";
 import { registerInternal } from "./routes/internal";
 import { registerOAuth } from "./routes/oauth";
@@ -81,5 +82,6 @@ export async function buildApp(env: GateEnv, overrides: Partial<Deps> = {}): Pro
   registerOAuth(app, deps);
   registerChat(app, deps);
   registerConsoleSync(app, deps);
+  registerConsoleSigning(app, deps);
   return { app, deps };
 }

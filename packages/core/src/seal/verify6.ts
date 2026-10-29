@@ -19,8 +19,9 @@ import { verifyChain, type VerifyReport } from "./chain";
 import { verifyDisclosure } from "./disclosure";
 import { LEVEL_INFO, levelRank } from "./levels";
 import { merkleRoot } from "./merkle";
-import { canonical, fingerprintOf, sha256Hex, verifySig } from "./primitives";
+import { canonical, keyFingerprintOf, sealCrypto, sha256Hex, verifySig } from "./primitives";
 import { profileById, runProfileRules, type ProfileContext } from "./profiles";
+import { verifyTimestampToken, type TimestampTokenFields, type TsaHashes } from "./rfc3161";
 import { verifySeal } from "./seal";
 import type {
   AnchorBatch, Checkpoint, DisclosurePackage, LevelId, ProfileRuleResult, Receipt, SealRecord, TsaAuthority, VerifierProfile, VerifyCode, VerifySection,
@@ -198,6 +199,12 @@ export function memberDigest(content: unknown) {
 
 export function tokenMessage(t: { tsaId: string; imprint: string; genTime: string; serial: string; policyOid: string }) {
   return sha256Hex(canonical({ tsa: t.tsaId, imprint: t.imprint, gen_time: t.genTime, serial: t.serial, policy: t.policyOid }));
+}
+
+/** The hashes a real RFC 3161 token may need, from the installed crypto provider (SHA-256 always, the others when it has them). */
+function tsaHashes(): TsaHashes {
+  const c = sealCrypto();
+  return { sha256: c.sha256.bind(c), sha384: c.sha384?.bind(c), sha512: c.sha512?.bind(c), sha1: c.sha1?.bind(c) };
 }
 
 export function manifestMessage(m: BundleManifest) {
@@ -438,9 +445,10 @@ function verifyBundleUnsafe(input: unknown, opts: VerifyBundleOptions, t0: numbe
   const kids = Array.from(new Set(receipts.map((r) => r.kid)));
   const missingKeys = kids.filter((k) => !keys[k]);
   const headKid = receipts[receipts.length - 1]?.kid;
-  const fpOf = (kid?: string) => (kid && keys[kid] ? fingerprintOf(keys[kid]) : undefined);
+  // a real chain key's fingerprint is its kid; the demo's is of the raw key hex (keyFingerprintOf)
+  const fpOf = (kid?: string) => (kid && keys[kid] ? keyFingerprintOf(kid, keys[kid]) : undefined);
   const fingerprint = fpOf(headKid);
-  const allFps = Object.values(keys).map((k) => fingerprintOf(k));
+  const allFps = Object.entries(keys).map(([kid, k]) => keyFingerprintOf(kid, k));
   const supplied = opts.expectedFingerprint?.trim().toLowerCase();
   const keySource: "bundle" | "supplied" = supplied ? "supplied" : "bundle";
   // The supplied fingerprint is trusted for the key it names, and for each key that a key.rotated receipt signed by
@@ -530,6 +538,7 @@ function verifyBundleUnsafe(input: unknown, opts: VerifyBundleOptions, t0: numbe
     const bySeq = new Map(receipts.map((r) => [r.seq, r]));
     let firstBad: VerifySection["firstFailure"] | undefined;
     let badText = "";
+    let hashes: TsaHashes | undefined;
     for (const batch of b.anchors.batches) {
       batches++;
       const root = merkleRoot(batch.leaves ?? []);
@@ -544,8 +553,12 @@ function verifyBundleUnsafe(input: unknown, opts: VerifyBundleOptions, t0: numbe
       for (const t of batch.tokens ?? []) {
         tokens++;
         const a = auth.get(t.tsaId);
-        const ok = !!a && t.imprint === batch.root && verifySig(tokenMessage(t), t.sig, a.publicKey);
-        if (!ok) { firstBad ??= { field: `timestamp ${t.serial}`, expected: "token signed by the named authority over the batch root", found: a ? "signature or imprint mismatch" : "unknown authority" }; badText ||= `A timestamp token on batch ${batch.id} does not verify.`; }
+        // a token with its DER is a real authority's RFC 3161 token, checked against the authority's certificate; one
+        // without is the console's modelled token, signed with the authority's stand-in Ed25519 key
+        const real = typeof t.der === "string";
+        const rfc = a && real ? verifyTimestampToken(t as TimestampTokenFields, batch.root, a.certPem, (hashes ??= tsaHashes())) : undefined;
+        const ok = !!a && t.imprint === batch.root && (real ? !!rfc?.ok : verifySig(tokenMessage(t), t.sig, a.publicKey));
+        if (!ok) { firstBad ??= { field: `timestamp ${t.serial}`, expected: "token signed by the named authority over the batch root", found: !a ? "unknown authority" : rfc && !rfc.ok ? rfc.error : "signature or imprint mismatch" }; badText ||= `A timestamp token on batch ${batch.id} does not verify.`; }
         else scopes.add(a!.id);
       }
       // one valid authority is degraded (a warning), not a failure; none at all fails

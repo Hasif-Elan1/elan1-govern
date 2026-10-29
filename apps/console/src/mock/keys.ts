@@ -18,7 +18,7 @@ import * as db from './db';
 import type { OrgDB } from './db';
 import { custodyView, pendingRotationRequest } from './platform';
 import { atLeast, levelAt, levelOfOrg } from '@/lib/levels';
-import { keyFromSeed, type KeyPair } from '@/lib/crypto';
+import { keyFromSeed, serverSigner, type KeyPair } from '@/lib/crypto';
 import { dateTime } from '@/lib/format';
 import { bundleDigest, type EvidenceBundle, type UnsignedIntervalManifest } from '@/lib/verify6';
 import { ORGS, personFor, userById, userName } from './users';
@@ -285,7 +285,7 @@ function seedKeyHistory(d: OrgDB, x: KeysExt) {
       });
     }
   }
-  if (d.org.id === 'org_deccan') {
+  if (d.org.id === 'org_deccan' && !onServer()) {
     const b = DECCAN_BOUND;
     const r = rs.find((y) => y.action === 'key.bound' && y.details?.kid === b.kid);
     const signedSince = rs.some((y) => y.action === 'key.rotated' && y.seq > (r?.seq ?? Infinity));
@@ -383,6 +383,67 @@ export function assertKeyChangeAllowed(orgId: string, userId: string, what: stri
   throw new Error(`${why} The attempt is recorded as receipt #${r.seq}.`);
 }
 
+/* ── On the server: successors are Elan1 Govern's ──────────────────────── */
+
+/**
+ * On the server the organisation's keys are Elan1 Govern's (apps/gate/src/custody.ts): it binds a successor, records
+ * its confirmation, switches to it after the overlap and withdraws it, before the console's own bookkeeping below runs
+ * (apps/web/src/server/console-overrides/signing.ts). The step it took is handed in here: the key it made (or the one
+ * the step is about) and the receipt it wrote, which the bookkeeping uses instead of writing its own.
+ */
+export interface ServerKeyStep { kid: string; publicKeyHex: string; seq: number; switchAt?: string }
+let serverStep: ServerKeyStep | undefined;
+function setServerKeyStep(s: ServerKeyStep | undefined) {
+  serverStep = s;
+}
+const onServer = () => !!serverSigner();
+/** The receipt Elan1 Govern wrote for the step being recorded (it is in the document by now). */
+function gateReceipt(d: OrgDB): Receipt {
+  const r = serverStep && d.receipts.find((x) => x.seq === serverStep!.seq);
+  if (!r) throw new Error(db.NO_KEY);
+  return r;
+}
+
+/** What bindKey refuses, checked first (nothing written): the server asks Elan1 Govern for the key only when it passes. */
+function bindCheck(orgId: string, userId: string, input: { purpose: 'planned' | 'compromise'; holders?: string[] }) {
+  requireOwnerOrAdmin(orgId, userId, 'Binding a new signing key');
+  const d = db.getDB(orgId);
+  const level = levelOfOrg(d.org);
+  if (input.purpose === 'compromise') throw new Error('Replacing a compromised key is not run by Elan1 Govern for the console yet: the interim chain key it needs does not exist.');
+  if (!atLeast(level, 'l2')) throw new Error('Publishing a successor ahead of signing starts at L2. At L1 the key rotates at once.');
+  if (ext(orgId).bound) throw new Error(`Key ${ext(orgId).bound!.kid} is already bound and waiting for signing to be turned on.`);
+  if (atLeast(level, 'l3') && (input.holders?.length ?? 0) < 3) throw new Error('At L3 a new key is generated in your HSM with 3 of 5 key holders present.');
+  assertKeyChangeAllowed(orgId, userId, 'bind a successor key');
+}
+
+/** What ceremonySuccessor refuses (nothing written). */
+function ceremonyCheck(orgId: string, userId: string, participantNames?: string[], via: 'ceremony' | 'kms' = 'ceremony') {
+  requireOwnerOrAdmin(orgId, userId, via === 'kms' ? 'Approving a KMS rotation' : 'Running a key ceremony');
+  const d = db.getDB(orgId);
+  const level = levelOfOrg(d.org);
+  if (!atLeast(level, 'l2')) throw new Error('At L1 the key rotates at once. A successor published ahead of signing starts at L2.');
+  const l3 = atLeast(level, 'l3');
+  if (level === 'l2') {
+    const pending = pendingRotationRequest(d);
+    if (!pending) throw new Error('Rotation in AWS KMS needs two people: ask for the rotation first, and a different owner or admin approves it.');
+    if (pending.actor === userId) throw new Error('You asked for this rotation. A different owner or admin approves and rotates the key.');
+  }
+  const holders = custodyView(orgId).holders ?? [];
+  const present = l3 ? (participantNames?.length ? holders.filter((h) => participantNames.includes(h.name)) : holders.slice(0, 3)) : [];
+  if (l3 && present.length < 3) throw new Error(`A key ceremony needs 3 of ${holders.length} key holders present; ${present.length} named.`);
+  if (ext(orgId).bound) throw new Error(`Key ${ext(orgId).bound!.kid} is already bound and waiting for signing to be turned on.`);
+  assertKeyChangeAllowed(orgId, userId, l3 ? 'run a key ceremony' : 'approve a KMS rotation');
+}
+
+/** The successor the console holds as bound, if any (the server checks it against Elan1 Govern's). */
+function boundOf(orgId: string): Pick<BoundKey, 'kid' | 'boundBy' | 'purpose' | 'switchAt'> | undefined {
+  const b = ext(orgId).bound;
+  return b ? { kid: b.kid, boundBy: b.boundBy, purpose: b.purpose, switchAt: b.switchAt } : undefined;
+}
+
+/** For the server only (an object, so neither the operation manifest nor the browser's live build treats these as operations). */
+export const serverKeys = { setStep: setServerKeyStep, bindCheck, ceremonyCheck, boundOf };
+
 function requireOwnerOrAdmin(orgId: string, userId: string, what: string) {
   const role = db.memberRole(orgId, userId);
   if (role !== 'owner' && role !== 'admin') throw new Error(`${what} — owners and admins can do this; your role cannot.`);
@@ -391,6 +452,11 @@ function requireOwnerOrAdmin(orgId: string, userId: string, what: string) {
 /* ── Signing switch (the mechanics behind rotation, compromise and binding) ── */
 
 function newKey(d: OrgDB, tag: string): { key: KeyPair; seed: string } {
+  // on the server the key is the one Elan1 Govern just made in custody; nothing here holds its private key
+  if (onServer()) {
+    if (!serverStep) throw new Error(db.NO_KEY);
+    return { key: { kid: serverStep.kid, privateKey: new Uint8Array(0), publicKeyHex: serverStep.publicKeyHex, fingerprint: serverStep.kid }, seed: '' };
+  }
   const n = d.keys.length + 1;
   const seed = `${d.org.id}:key:${tag}:${n}:${Date.now()}`;
   const kid = `k_${shortOf(d)}_${tag}_${new Date().toISOString().slice(2, 7).replace('-', '')}_${n}`;
@@ -512,10 +578,10 @@ function bindKey(orgId: string, userId: string, input: { reason: string; purpose
   const tag = atLeast(level, 'l3') ? 'hsm' : 'kms';
   const k = newKey(d, tag);
   const provider = custodyView(orgId).provider;
-  const switchAt = input.purpose === 'planned' ? iso(Date.now() + Math.max(1, input.overlapDays ?? 30) * D) : undefined;
-  const r = db.logAdmin(orgId, userId, 'key.bound', { kid: k.key.kid, fingerprint: k.key.fingerprint, provider, purpose: input.purpose, reason: input.reason.trim(), signing: 'off', ...(c && input.purpose === 'compromise' ? { compromise: c.id } : {}), ...(switchAt ? { switch_at: switchAt } : {}), ...(input.holders?.length ? { holders: input.holders.length } : {}) });
+  const switchAt = input.purpose === 'planned' ? (onServer() && serverStep?.switchAt) || iso(Date.now() + Math.max(1, input.overlapDays ?? 30) * D) : undefined;
+  const r = onServer() ? gateReceipt(d) : db.logAdmin(orgId, userId, 'key.bound', { kid: k.key.kid, fingerprint: k.key.fingerprint, provider, purpose: input.purpose, reason: input.reason.trim(), signing: 'off', ...(c && input.purpose === 'compromise' ? { compromise: c.id } : {}), ...(switchAt ? { switch_at: switchAt } : {}), ...(input.holders?.length ? { holders: input.holders.length } : {}) });
   d.publicKeys[k.key.kid] = k.key.publicKeyHex; // published from binding: verifiers can pin it before it signs
-  d.signingKeys.push({ kid: k.key.kid, fingerprint: k.key.fingerprint, algorithm: 'Ed25519', status: 'bound', createdAt: r.ts, publishedAt: r.ts, receiptsSigned: 0 });
+  if (!onServer() || !d.signingKeys.some((x) => x.kid === k.key.kid)) d.signingKeys.push({ kid: k.key.kid, fingerprint: k.key.fingerprint, algorithm: 'Ed25519', status: 'bound', createdAt: r.ts, publishedAt: r.ts, receiptsSigned: 0 });
   const b: BoundKey = { kid: k.key.kid, fingerprint: k.key.fingerprint, publicKeyHex: k.key.publicKeyHex, seed: k.seed, boundAt: r.ts, boundBy: userId, seq: r.seq, reason: input.reason.trim(), purpose: input.purpose, compromiseId: input.purpose === 'compromise' ? c?.id : undefined, holders: input.holders, switchAt,
     ...(input.confirmed && input.confirmed.by !== userId ? { confirmedBy: input.confirmed.by, confirmedAt: input.confirmed.at, confirmedSeq: input.confirmed.seq } : {}) };
   x.bound = b;
@@ -530,7 +596,7 @@ function withdrawBound(orgId: string, userId: string, reason: string) {
   const x = ext(orgId);
   const b = x.bound;
   if (!b) throw new Error('No key is bound.');
-  const r = db.logAdmin(orgId, userId, 'key.bound_withdrawn', { kid: b.kid, reason: reason.trim() || 'Withdrawn before signing' });
+  const r = onServer() ? gateReceipt(d) : db.logAdmin(orgId, userId, 'key.bound_withdrawn', { kid: b.kid, reason: reason.trim() || 'Withdrawn before signing' });
   const e = d.signingKeys.find((k) => k.kid === b.kid);
   if (e) { e.status = 'revoked'; e.revokedAt = r.ts; e.revokedReason = 'Withdrawn before it signed'; }
   if (b.compromiseId) { const c = x.compromises.find((y) => y.id === b.compromiseId); if (c) c.successor = undefined; }
@@ -559,7 +625,7 @@ function switchToBound(orgId: string, userId: string, auto = false) {
   const b = x.bound!;
   const c = b.compromiseId ? x.compromises.find((y) => y.id === b.compromiseId) : undefined;
   const interimTail = c ? d.receipts[d.receipts.length - 1].seq : undefined;
-  const r = switchSigning(d, { key: keyFromSeed(b.seed, b.kid), seed: b.seed }, userId, c ? 'Signing on with the replacement key after a key compromise' : auto ? 'Signing switched to the successor at the end of the planned overlap' : 'Signing switched to the successor published ahead', { signWith: 'old', oldStatus: 'retired', details: { bound_seq: b.seq, bound_by: b.boundBy, signing: 'on', ...(c ? { compromise: c.id } : {}), ...(auto && b.switchAt ? { switch_at: b.switchAt, automatic: true } : {}) } });
+  const r = onServer() ? switchedByGate(d, b) : switchSigning(d, { key: keyFromSeed(b.seed, b.kid), seed: b.seed }, userId, c ? 'Signing on with the replacement key after a key compromise' : auto ? 'Signing switched to the successor at the end of the planned overlap' : 'Signing switched to the successor published ahead', { signWith: 'old', oldStatus: 'retired', details: { bound_seq: b.seq, bound_by: b.boundBy, signing: 'on', ...(c ? { compromise: c.id } : {}), ...(auto && b.switchAt ? { switch_at: b.switchAt, automatic: true } : {}) } });
   if (c) {
     c.signingOn = { at: r.ts, by: userId, seq: r.seq };
     // the interim key sealed every receipt up to and including this key.rotated receipt
@@ -579,11 +645,37 @@ function switchToBound(orgId: string, userId: string, auto = false) {
 }
 
 /**
+ * On the server: Elan1 Govern made the switch (its key.rotated receipt, signed by the old key; the keys came in with
+ * the document). The incoming key signs one record at once, as switchSigning does here in the demo.
+ */
+function switchedByGate(d: OrgDB, b: BoundKey): Receipt {
+  const r = gateReceipt(d);
+  if (r.action !== 'key.rotated' || r.details?.new_kid !== b.kid) throw new Error(db.NO_KEY);
+  db.append(d, { kind: 'admin', actor: 'system', action: 'key.signing_started', details: { kid: b.kid, fingerprint: b.fingerprint, rotated_seq: r.seq } });
+  return r;
+}
+
+/**
  * A planned successor whose overlap has ended switches on its own: the key.rotated receipt is the system's and says
  * so. Not while a chain incident or a key compromise is open — the switch then waits, and the panel says why.
  */
 function settleSwitch(orgId: string) {
   const b = ext(orgId).bound;
+  // on the server Elan1 Govern makes the switch when its overlap has ended (the server settles it before this runs):
+  // its key.rotated receipt is what says so, and only the bookkeeping is done here
+  if (onServer() && b?.purpose === 'planned') {
+    const d = db.getDB(orgId);
+    const rot = [...d.receipts].reverse().find((r) => r.action === 'key.rotated' && r.details?.new_kid === b.kid);
+    if (!rot) return;
+    const before = serverStep;
+    serverStep = { kid: b.kid, publicKeyHex: b.publicKeyHex, seq: rot.seq };
+    try {
+      switchToBound(orgId, 'system', true);
+    } finally {
+      serverStep = before;
+    }
+    return;
+  }
   if (!b || b.purpose !== 'planned' || !b.switchAt || new Date(b.switchAt).getTime() > Date.now()) return;
   if (keyChangeBlock(orgId, 'bound')) return;
   // L2: a KMS rotation needs two people. A successor one person published waits for a second owner or admin.
@@ -626,7 +718,7 @@ function confirmSwitch(orgId: string, userId: string) {
   if (confirmationOf(d, b)) throw new Error('A second owner or admin has already confirmed this switch.');
   if (b.boundBy === userId) throw new Error('You published this successor. At L2 a different owner or admin confirms the switch (dual control).');
   assertKeyChangeAllowed(orgId, userId, 'confirm the switch to a successor', 'bound');
-  const r = db.logAdmin(orgId, userId, 'key.bound_confirmed', { kid: b.kid, fingerprint: b.fingerprint, bound_by: b.boundBy, bound_seq: b.seq, ...(b.switchAt ? { switch_at: b.switchAt } : {}), control: 'dual' });
+  const r = onServer() ? gateReceipt(d) : db.logAdmin(orgId, userId, 'key.bound_confirmed', { kid: b.kid, fingerprint: b.fingerprint, bound_by: b.boundBy, bound_seq: b.seq, ...(b.switchAt ? { switch_at: b.switchAt } : {}), control: 'dual' });
   b.confirmedBy = userId;
   b.confirmedAt = r.ts;
   b.confirmedSeq = r.seq;

@@ -10,7 +10,7 @@
  * L1 copy says "sealed in a hash chain", never "signed", until DR-017 is decided.
  */
 import type { Agent, LevelId, Receipt } from '@/types';
-import { receiptHash, signText, verifyChain } from '@/lib/crypto';
+import { receiptHash, serverSigner, signText, verifyChain, type KeyPair } from '@/lib/crypto';
 import { L1_PACK_MEMBERS, bundleDigest, fileDigest, l1PackFiles, manifestMessage, type BundleManifest, type EvidenceBundle } from '@/lib/verify6';
 import { applyAutonomy, grantFor } from '@/lib/autonomy';
 import { evaluate } from '@/lib/evaluate';
@@ -21,7 +21,7 @@ import { LEGAL_ENTITY } from '@/lib/company';
 import { buildPdf, type PdfBlock } from '@/lib/pdf';
 import { makeRand } from '@/lib/prng';
 import { SCENARIOS } from './scenarios';
-import { append, getDB, governCall, redactErased, toolTagsIn, type AuditorPackExport, type OrgDB } from './db';
+import { append, getDB, governCall, PENDING, redactErased, toolTagsIn, type AuditorPackExport, type OrgDB } from './db';
 import { unsignedIntervalsInRange } from './keys';
 import { indexControls, liveControlsOf, receiptPredicates, requirementsOf } from './controlMap';
 
@@ -283,7 +283,9 @@ export function buildAuditorPack(db: OrgDB, userId: string, fromSeq?: number, to
   // each digest is the SHA-256 of the file's bytes as written into the ZIP, so sha256sum on the extracted file matches
   const files = l1PackFiles({ public_keys: db.publicKeys, receipts, checkpoints, summary_pdf, compliance_map: map, readme });
   const members = L1_PACK_MEMBERS.map((path) => (path === 'manifest.json' ? { path, bytes: 0, sha256: 'self' } : { path, ...fileDigest(files[path] ?? '') }));
-  const key = db.keys[db.keys.length - 1].key;
+  // on the server Elan1 Govern seals the manifest, after checking every file against its chain
+  const signer = serverSigner();
+  const key = signer ? { kid: signer.kid(db.org.id) } : db.keys[db.keys.length - 1].key;
   const manifest: BundleManifest = {
     format: 'auditor-pack/1', issuer: `Elan1 Govern · ${LEGAL_ENTITY}`, org: db.org.name, org_id: db.org.id, created_at: createdAt, created_by: userId,
     receipts: receipts.length, record_count: receipts.length, refusal_count: receipts.filter((r) => r.decision === 'refuse').length,
@@ -297,7 +299,9 @@ export function buildAuditorPack(db: OrgDB, userId: string, fromSeq?: number, to
     members, digest_of: 'file', sealing_kid: key.kid, container: opts.container ?? 'zip',
     note: `Draft — needs legal review. ${L1_CLAIM}`,
   };
-  const manifest_seal = signText(manifestMessage(manifest), key);
+  const manifest_seal = signer
+    ? signer.request(db.org.id, 'pack-manifest', { manifest, public_keys: db.publicKeys, receipts, checkpoints, summary_pdf, compliance_map: map, readme })
+    : signText(manifestMessage(manifest), key as KeyPair);
   const bundle: EvidenceBundle = { manifest, manifest_seal, public_keys: db.publicKeys, receipts, checkpoints, summary_pdf, compliance_map: map, readme };
   const json = JSON.stringify(bundle);
   const exp: AuditorPackExport = {
@@ -502,7 +506,9 @@ export interface IntegrityOutcome { fromSeq: number; toSeq: number; records: num
 
 export function runIntegrityNow(orgId: string, userId: string, outcome?: IntegrityOutcome): IntegrityRun {
   const db = getDB(orgId);
-  const rs = db.receipts;
+  // on the server a receipt this operation appended is provisional until the real chain writes it: the run checks the
+  // chain as written (in the browser nothing is provisional)
+  const rs = db.receipts.filter((r) => !r.hash.startsWith(PENDING));
   if (!rs.length) throw new Error('There are no receipts to check yet.');
   let o = outcome;
   if (o && (o.fromSeq < rs[0].seq || o.toSeq > rs[rs.length - 1].seq || o.fromSeq > o.toSeq)) throw new Error('That check does not cover records in this window.');

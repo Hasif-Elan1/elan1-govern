@@ -1,14 +1,36 @@
 // The receipt hash chain as the console's records carry it (lib/crypto.ts): SHA-256 over canonical JSON (sorted
 // keys, no whitespace), Ed25519 over the hash as text, each receipt naming the previous receipt's hash. The
 // three-valued chain check the six-code verifier reports under sections 3 to 5.
-import { canonical, sha256Hex, signText, verifySig, type KeyPair } from "./primitives";
+//
+// Receipts and checkpoints from the organisation's real chain (written by Elan1 Govern) keep the chain's own strings:
+// `sha256:<hex>` hashes and `ed25519:<base64>` signatures, over core's field names. They are recognised by that
+// prefix and checked with core's preimages (console-receipt.ts), as the console's verifier does; the demo chain's
+// bare-hex receipts take the console's path unchanged.
+import { checkpointPreimage, isChainFormat, receiptPreimage } from "../console-receipt";
+import { canonical, keyFingerprintOf, sha256Hex, signText, verifySig, type KeyPair } from "./primitives";
 import type { Checkpoint, Receipt } from "./types";
 
 type Unsigned<T> = Omit<T, "hash" | "sig">;
 
 export function receiptHash(r: Unsigned<Receipt> | Receipt): string {
+  if (isChainFormat(r)) return chainReceiptHash(r as Receipt);
   const { hash: _h, sig: _s, ...body } = r as Receipt;
   return sha256Hex(canonical(body));
+}
+
+/** A real chain receipt's hash, recomputed from its console form; '' when it cannot be (a field the chain has no place for). */
+function chainReceiptHash(r: Receipt): string {
+  try {
+    return "sha256:" + sha256Hex(receiptPreimage(r as unknown as Record<string, unknown>));
+  } catch {
+    return "";
+  }
+}
+
+/** What a checkpoint's signature is over: the canonical head statement, hashed first for a real chain checkpoint. */
+export function checkpointMessage(cp: Checkpoint): string {
+  if (isChainFormat(cp)) return "sha256:" + sha256Hex(checkpointPreimage(cp));
+  return canonical({ org: cp.org, seq: cp.seq, hash: cp.hash, ts: cp.ts, kid: cp.kid });
 }
 
 /**
@@ -159,16 +181,16 @@ export function verifyChain(
   let validCps = 0;
   for (const cp of checkpoints) {
     const pub = keys[cp.kid];
-    const msg = canonical({ org: cp.org, seq: cp.seq, hash: cp.hash, ts: cp.ts, kid: cp.kid });
     const r = sorted.find((x) => x.seq === cp.seq);
-    if (pub && verifySig(msg, cp.sig, pub) && (!r || r.hash === cp.hash)) validCps++;
+    if (pub && verifySig(checkpointMessage(cp), cp.sig, pub) && (!r || r.hash === cp.hash)) validCps++;
   }
 
   const all = (k: keyof Omit<ReceiptCheck, "seq">): CheckState => (checks.some((c) => c[k] === "fail") ? "fail" : "pass");
   const failed = brokenAt !== undefined || validCps < checkpoints.length;
   const first = sorted[0]!;
   const last = sorted[sorted.length - 1]!;
-  const fp = keys[first.kid] ? sha256Hex(keys[first.kid]!).slice(0, 16) : undefined;
+  // a real chain key's id is its fingerprint (of the PEM); the demo's fingerprint is of the raw key hex
+  const fp = keys[first.kid] ? keyFingerprintOf(first.kid, keys[first.kid]!) : undefined;
   return {
     result: failed ? "failed" : "verified",
     exitCode: failed ? 1 : 0,

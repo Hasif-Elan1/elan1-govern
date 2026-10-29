@@ -28,6 +28,9 @@ function publicKey(raw: Uint8Array): KeyObject {
 
 export const nodeSealCrypto: SealCrypto = {
   sha256: (data) => new Uint8Array(createHash("sha256").update(data).digest()),
+  sha384: (data) => new Uint8Array(createHash("sha384").update(data).digest()),
+  sha512: (data) => new Uint8Array(createHash("sha512").update(data).digest()),
+  sha1: (data) => new Uint8Array(createHash("sha1").update(data).digest()),
   ed25519PublicKey: (seed) => new Uint8Array(createPublicKey(privateKey(seed)).export({ format: "der", type: "spki" }).subarray(SPKI_PREFIX.length)),
   ed25519Sign: (message, seed) => new Uint8Array(sign(null, message, privateKey(seed))),
   ed25519Verify: (signature, message, pub) => {

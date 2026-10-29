@@ -130,3 +130,76 @@ export interface VerifyReport {
 export declare const chainVerifier: {
   verifyChain(receipts: DocReceipt[], keys: Record<string, string>, checkpoints?: DocCheckpoint[], opts?: { expectedPrev?: string }): VerifyReport;
 };
+
+/** What the organisation's key signs, each asked of Elan1 Govern as a structured request (src/lib/crypto.ts). */
+export type SigningKind = "disclosure" | "disclosure-bundle" | "sd-jwt" | "evidence-manifest" | "pack-manifest" | "usage-statement" | "residency" | "erasure";
+export interface OrgSigner {
+  kid(orgId: string): string;
+  request(orgId: string, kind: SigningKind, input: unknown): string;
+}
+/** A Seal v6 record (src/types.ts SealRecord). */
+export interface DocSeal {
+  format: "elan1.seal.v6";
+  seq: number;
+  receiptHash: string;
+  level: string;
+  fields: { id: string; name: string; value: string }[];
+  preimageBytes: number;
+  digest: string;
+  kid: string;
+  sig: string;
+  payloadUnbound?: boolean;
+}
+/** A timestamped Merkle batch as the console lists it (src/types.ts AnchorBatch), with real RFC 3161 tokens. */
+export interface DocAnchorBatch {
+  id: string;
+  windowStart: string;
+  windowEnd: string;
+  firstSeq: number;
+  lastSeq: number;
+  count: number;
+  root: string;
+  tokens: { tsaId: string; tsaName: string; genTime: string; serial: string; policyOid: string; status: "granted" | "granted_late"; imprint: string; sig: string; delaySeconds: number; der?: string; chain?: string[] }[];
+  status: "anchored" | "late";
+}
+export interface DocTsaAuthority {
+  id: string;
+  name: string;
+  scope: "India" | "Global" | "Local";
+  url: string;
+  policyOid: string;
+  publicKey: string;
+  fingerprint: string;
+  status: "operational" | "degraded";
+  certPem?: string;
+}
+export interface ServerEvidence {
+  seal(orgId: string, seq: number, receiptHash: string): DocSeal | undefined;
+  batches(orgId: string): DocAnchorBatch[];
+  authorities(orgId: string): DocTsaAuthority[];
+}
+export declare const serverSigning: {
+  setOrgSigner(s: OrgSigner | undefined): void;
+  setServerEvidence(e: ServerEvidence | undefined): void;
+  sealPlan(db: SavedDoc, fromSeq: number): { fromSeq?: number; autonomy: Record<string, string>; levels: { level: string; fromSeq: number }[] };
+  noteErased(db: SavedDoc, seq: number, payloadHash: string, recordId: string): void;
+  /** Successor keys (src/mock/keys.ts): the step Elan1 Govern took, handed to the console's bookkeeping, and its checks. */
+  serverKeys: {
+    setStep(s: { kid: string; publicKeyHex: string; seq: number; switchAt?: string } | undefined): void;
+    bindCheck(orgId: string, userId: string, input: { purpose: "planned" | "compromise"; holders?: string[] }): void;
+    ceremonyCheck(orgId: string, userId: string, participantNames?: string[], via?: "ceremony" | "kms"): void;
+    boundOf(orgId: string): { kid: string; boundBy: string; purpose: string; switchAt?: string } | undefined;
+  };
+};
+
+/** The console's in-browser Seal v6 verifier (src/lib/verify6.ts), as the browser runs it. */
+export interface BundleVerifyResult {
+  code: string;
+  exitCode: number;
+  variants: string[];
+  headline: string;
+  sections: { id: string; state: string; detail: string }[];
+}
+export declare const bundleVerifier: {
+  verifyBundle(input: unknown, opts?: { expectedFingerprint?: string; profileId?: string; now?: number }): BundleVerifyResult;
+};

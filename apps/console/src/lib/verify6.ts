@@ -20,7 +20,11 @@
 import type {
   AnchorBatch, Checkpoint, DisclosurePackage, LevelId, ProfileRuleResult, Receipt, SealRecord, TsaAuthority, VerifierProfile, VerifyCode, VerifySection,
 } from '@/types';
-import { canonical, sha256Hex, verifyChain, verifySig, type VerifyReport } from './crypto';
+import { verifyTimestampToken, type TimestampTokenFields, type TsaHashes } from '@gate/core/rfc3161';
+import { sha1 } from '@noble/hashes/legacy';
+import { sha256 } from '@noble/hashes/sha256';
+import { sha384, sha512 } from '@noble/hashes/sha512';
+import { canonical, keyFingerprintOf, sha256Hex, verifyChain, verifySig, type VerifyReport } from './crypto';
 import { merkleRoot } from './merkle';
 import { verifySeal } from './seal';
 import { profileById, runProfileRules, type ProfileContext } from './profiles';
@@ -200,6 +204,12 @@ export function memberDigest(content: unknown) {
 export function tokenMessage(t: { tsaId: string; imprint: string; genTime: string; serial: string; policyOid: string }) {
   return sha256Hex(canonical({ tsa: t.tsaId, imprint: t.imprint, gen_time: t.genTime, serial: t.serial, policy: t.policyOid }));
 }
+
+/**
+ * The hashes a real authority's RFC 3161 token may need (@gate/core/rfc3161 verifies it: the DER, the TSTInfo, the
+ * signed attributes and the ECDSA P-256 or RSA signature, synchronously, in the page or a worker).
+ */
+const TSA_HASHES: TsaHashes = { sha256, sha384, sha512, sha1 };
 
 export function manifestMessage(m: BundleManifest) {
   return sha256Hex(canonical(m));
@@ -430,9 +440,10 @@ export function verifyBundle(input: unknown, opts: VerifyBundleOptions = {}): Ve
   const kids = Array.from(new Set(receipts.map((r) => r.kid)));
   const missingKeys = kids.filter((k) => !keys[k]);
   const headKid = receipts[receipts.length - 1]?.kid;
-  const fpOf = (kid?: string) => (kid && keys[kid] ? sha256Hex(keys[kid]).slice(0, 16) : undefined);
+  // a real chain key's fingerprint is its kid; the demo's is of the raw key hex (keyFingerprintOf)
+  const fpOf = (kid?: string) => (kid && keys[kid] ? keyFingerprintOf(kid, keys[kid]) : undefined);
   const fingerprint = fpOf(headKid);
-  const allFps = Object.values(keys).map((k) => sha256Hex(k).slice(0, 16));
+  const allFps = Object.entries(keys).map(([kid, k]) => keyFingerprintOf(kid, k));
   const supplied = opts.expectedFingerprint?.trim().toLowerCase();
   const keySource: 'bundle' | 'supplied' = supplied ? 'supplied' : 'bundle';
   // The supplied fingerprint is trusted for the key it names, and for each key that a key.rotated receipt signed by
@@ -536,8 +547,12 @@ export function verifyBundle(input: unknown, opts: VerifyBundleOptions = {}): Ve
       for (const t of batch.tokens ?? []) {
         tokens++;
         const a = auth.get(t.tsaId);
-        const ok = !!a && t.imprint === batch.root && verifySig(tokenMessage(t), t.sig, a.publicKey);
-        if (!ok) { firstBad ??= { field: `timestamp ${t.serial}`, expected: 'token signed by the named authority over the batch root', found: a ? 'signature or imprint mismatch' : 'unknown authority' }; badText ||= `A timestamp token on batch ${batch.id} does not verify.`; }
+        // a token with its DER is a real authority's RFC 3161 token, checked against the authority's certificate; one
+        // without is the modelled token, signed with the authority's stand-in Ed25519 key
+        const real = typeof t.der === 'string';
+        const rfc = a && real ? verifyTimestampToken(t as TimestampTokenFields, batch.root, a.certPem, TSA_HASHES) : undefined;
+        const ok = !!a && t.imprint === batch.root && (real ? !!rfc?.ok : verifySig(tokenMessage(t), t.sig, a.publicKey));
+        if (!ok) { firstBad ??= { field: `timestamp ${t.serial}`, expected: 'token signed by the named authority over the batch root', found: !a ? 'unknown authority' : rfc && !rfc.ok ? rfc.error : 'signature or imprint mismatch' }; badText ||= `A timestamp token on batch ${batch.id} does not verify.`; }
         else scopes.add(a!.id);
       }
       // one valid authority is degraded (a warning), not a failure; none at all fails

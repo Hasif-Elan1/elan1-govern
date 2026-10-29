@@ -1045,3 +1045,61 @@ model ConsoleApproverGroup {
   @@unique([orgId, consoleId])
   @@unique([orgId, slug])
 }
+
+// ── signing ──
+// What the gate signs for the approved console beyond receipts and checkpoints, always over its own data
+// (apps/gate/src/console-signing.ts). A Seal v6 record per receipt from an organisation's L2 boundary on: the 16
+// frozen field values, their digest and the org key's signature over it. `saltEnc` is the record's salt (F12/F14),
+// encrypted under GATE_MASTER_KEY; an erasure deletes it (null) and marks the payload unbound, and the seal keeps
+// verifying because F14 is frozen in `values`.
+model SealRecord {
+  id             String   @id @default(cuid())
+  orgId          String
+  seq            Int
+  receiptHash    String
+  level          String
+  values         Json // the 16 field values, F01 … F16
+  recordId       String // F12, for F13's per-record count
+  digest         String // hex
+  kid            String
+  sig            String // hex, Ed25519 over the 32 digest bytes
+  saltEnc        String?
+  payloadUnbound Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([orgId, seq])
+  @@index([orgId, recordId])
+  @@index([orgId, updatedAt])
+}
+
+// An erasure's redacted copy of one receipt (DPDP, salt destruction). The Receipt row is never changed; the console's
+// documents and every export show this copy instead, and its signature (the org key over the redacted receipt with
+// its original hash) is what a verifier checks in place of the content hash. `erasureSeq` is the record.erased
+// receipt that made it.
+model ReceiptRedaction {
+  id         String   @id @default(cuid())
+  orgId      String
+  seq        Int
+  receipt    Json // the console-form receipt as erased, with `redacted` { fields, reason, request, payloadHash, at, kid, sig }
+  erasureSeq Int
+  createdAt  DateTime @default(now())
+
+  @@unique([orgId, seq])
+}
+
+// Every other signature the gate made for the console (a disclosure, a bundle manifest, a statement …): what was
+// signed, by which key, and the receipt that records it. A request for the same message again gets the same
+// signature back, without a second receipt.
+model ConsoleSignature {
+  id         String   @id @default(cuid())
+  orgId      String
+  kind       String
+  message    String // the text that was signed (a hex digest the gate computed from the request)
+  kid        String
+  sig        String
+  receiptSeq Int
+  createdAt  DateTime @default(now())
+
+  @@unique([orgId, kind, message, kid])
+}

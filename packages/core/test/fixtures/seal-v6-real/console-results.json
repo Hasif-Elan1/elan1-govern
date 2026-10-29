@@ -1,0 +1,459 @@
+{
+ "real: pinned to the chain kid": {
+  "inputDigest": "57789fd4bcc12e575a8e9dc7c3c4522d10f10760f56b3be9b454de328c549b7b",
+  "summary": {
+   "code": "PASS",
+   "exitCode": 0,
+   "headline": "8 records verify, 6 sealed and 6 timestamped by two authorities.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "270d74a25044fa88624b60b22a46292cd06b0424cef436fd5be38e306bca2496",
+  "reportDigest": "d2f1b1151f6b68029d75f7c03e105ecdacc8e30c32522387f8cb40b67d86a7cc"
+ },
+ "real: key from the bundle": {
+  "inputDigest": "57789fd4bcc12e575a8e9dc7c3c4522d10f10760f56b3be9b454de328c549b7b",
+  "summary": {
+   "code": "PASS_KEY_FROM_BUNDLE",
+   "exitCode": 0,
+   "headline": "8 records verify, 6 sealed and 6 timestamped by two authorities.",
+   "variants": [
+    "PASS_KEY_FROM_BUNDLE"
+   ],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:warn: Key taken from the bundle (fingerprint 566346dc70924843). Supply the fingerprint you obtained from the organisation to rule out a substituted key.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them.",
+    "The key came from the bundle itself. A fabricated bundle would carry its own key too: compare the fingerprint with one you obtained from the organisation directly."
+   ]
+  },
+  "resultDigest": "3f71fc3dff5b74a05b31f4e8af523755dfcd1244abc2a83a8b113588ab0b8f53",
+  "reportDigest": "bcc80630cbf06e9dc5711634e1b3ff4045c817da4f3c6ee64b26a4a907d182f3"
+ },
+ "real: hosted RSA authorities": {
+  "inputDigest": "e3a66bb75db9e0c5985d157bcf30e4bf3ee71a7b50788c47c1e26f2752a52aa2",
+  "summary": {
+   "code": "PASS",
+   "exitCode": 0,
+   "headline": "8 records verify, 6 sealed and 6 timestamped by two authorities.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "260021af8781497fc5cb66714acccfa949e69577594fdba828ae231721cec596",
+  "reportDigest": "4a27ed09ace5998700fc9cf17f4b2315063f173d55a8d2b65446bfe17f01df34"
+ },
+ "real: a local and a hosted authority": {
+  "inputDigest": "dbe32d8ce82c0442a2d074f555474f632aa84541ebef835f61fcca24df16fc9f",
+  "summary": {
+   "code": "PASS",
+   "exitCode": 0,
+   "headline": "8 records verify, 6 sealed and 6 timestamped by two authorities.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "bde7c298de49669e13651d8110559c123106578d235d3c3cb46eded0dd22990a",
+  "reportDigest": "e6c035b3d216e04a2e84facacab8b0865bbd3a722c8288ea6c032e318c3e4c94"
+ },
+ "real: an erased receipt, payload unbound": {
+  "inputDigest": "b937d0cb144782188d1cace3ae5a53893ca6014ce5eaa394f6ca639a779ef3e4",
+  "summary": {
+   "code": "PASS_PAYLOAD_UNBOUND",
+   "exitCode": 0,
+   "headline": "8 records verify, 6 sealed and 6 timestamped by two authorities.",
+   "variants": [
+    "PASS_PAYLOAD_UNBOUND"
+   ],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it. 1 payloads unbound by erasure.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them.",
+    "1 records have an unbound payload: an erasure request destroyed the salt, so the payload hash (F14) can no longer be recomputed from the payload. In 1 of them the values the rules inspected were removed from the receipt; their original signatures, links and seals still verify, and the organisation's redaction signature covers every field left. The seal's record id (F12) is kept as it was sealed: an email domain or account in it is a digest salted with the destroyed salt."
+   ]
+  },
+  "resultDigest": "aeb3d37183f0a5bdd9b8220f5806fb0ff96347d85bc3925fd333df9b24d1d68b",
+  "reportDigest": "ff2749f681f661147555bd3c291edb14b8156ae816967d8466c447abf56d90d5"
+ },
+ "real: pinned to the demo fingerprint of the same key": {
+  "inputDigest": "57789fd4bcc12e575a8e9dc7c3c4522d10f10760f56b3be9b454de328c549b7b",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:fail: The fingerprint you supplied (85098242c241ae73) is not the key that signed these records: the newest record (#8) is signed by 566346dc70924843 (566346dc70924843). These records were not signed by the key you expected.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "e3d50f0e95d0bb7cc4c1b52e28d2840c44c3ab81b87eaa91c9bec9b254e94187",
+  "reportDigest": "c0e736b471c3fd057471fb0744bb37d112ec16c9d8e52bb0d6e89a563b49a948"
+ },
+ "real: a byte of a token's DER flipped": {
+  "inputDigest": "46abbdf4ad929445fa6a960b6cc46d05e924f6e3bbebcbf5d8d0ae08af7057c6",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_1 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "c6ca6af4af019c0da19a2e7accc2229d1ca7b0de6674cd6fc894fa70f24df0af",
+  "reportDigest": "596a17bd0e7f20d28200b778ece58522676df9100c5e2a93df48ab1c9ee0f824"
+ },
+ "real: an RSA token's DER flipped": {
+  "inputDigest": "61597cb3a1ce69adae30936298a412c565c522df2d30e06b056263d40cc40349",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_2 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "4a2fd39d3e91fb17cbcacce5988218ba55f579fe797e289b950b30095a40e9c9",
+  "reportDigest": "6f3d5622f7bdda252f8e20c4abfd31c09309104fc7375afce088360e34cfff0a"
+ },
+ "real: a token's stored imprint changed": {
+  "inputDigest": "1ab40bb97bcdbc65fbb8fce3942963778fc2a6ac94319f017b1955965b3ecee4",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_2 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "41318123efbf885a19b4ddd56184eacff548f1305358e8ffc050f1a6be01ea7f",
+  "reportDigest": "9cf9c02e6a587839f6afde348b9ccb8f96eabe5cde60a05185ece0580454874a"
+ },
+ "real: a token's stored serial changed": {
+  "inputDigest": "1569be140053c6d6379bf233575b8d137771656eded201930375f69010234097",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_1 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "07ed92ef6bd2ef622a40b21ac7c993b2d5a11ed30e24be5b20efc386b965a698",
+  "reportDigest": "a007478b1bdf2715a19de1e8b8cfd78126bf9e05fa4babf65df817d67373ba1f"
+ },
+ "real: the authorities' certificates swapped": {
+  "inputDigest": "7e6df3795e26bef21f03ecc86f94c5dfd45962d4dc40e0de107dc3904029ab82",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_1 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "1a4da2ff71e569d92f2ffbea01b943c38d7bcad2d2d4e02a56685f078f64c820",
+  "reportDigest": "a99842033637c123e5f4faa68839a6f3dc305ac8e7b7c250d1897f5a1d061a83"
+ },
+ "real: an authority without its certificate": {
+  "inputDigest": "2890002b1e11bc967e67041e61259433bf73d0feaa42872fb5f0a7bd3911b948",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_1 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "eb025fd166942af65d8b6a9e0aa5d3ac5cac7cf75e51b3c7a82924fe5223e71a",
+  "reportDigest": "a55c88f2ddb87bc0e2c6c7afb9fea9f666bc25b158e9eca07be30258199318a1"
+ },
+ "real: a real token stripped of its DER": {
+  "inputDigest": "6902f29384960706b2a8325b1657972c9f98542d13a41019a38fdd4260d9f49c",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:fail: A timestamp token on batch b_1 does not verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "d0904dffd8e77082131d35dd3a723d723a5bf7c09727118d6d25d2a89c970703",
+  "reportDigest": "a125c55f8658b806d0a86a316134abd48f43a193e2d259b084b18163cb5f499e"
+ },
+ "real: a receipt changed": {
+  "inputDigest": "c23c67146157ef2be0656bb6ff39e7a9f1fc95f3cfa6d4e7fc6468ec9d0be0df",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails at #5. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:fail: Broken at #5: The content does not match its hash — the receipt was changed after it was signed.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "dcb41268c39ad7dda82ad20c8841926f3185c13efbb2a2a0021e7e74762e3af5",
+  "reportDigest": "4d9b93e8876b315b33b8a4fdced56f61832210e1286e16ab01cf4a8690c01271"
+ },
+ "real: a checkpoint changed": {
+  "inputDigest": "a66c71b038d00e3ca648acce6131586c8e88ca178f138d34a44ec489be54e552",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:fail: 1 of 2 signed checkpoints do not match the chain head they name.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "6494dbd6f4a0235e4f3f0703755e858905fa962122c227824e39811fac071ccc",
+  "reportDigest": "e55a5c2e672799346248e68d3f76e72c301f8237cf0ef8f31bd545ad3177a0f9"
+ },
+ "real: an erased receipt changed after its redaction": {
+  "inputDigest": "1aea100795f06ceb671d22864ae31d55a10f67ce272e579250b9ed8d2d930afd",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails at #7. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:fail: Broken at #7: The erased receipt does not match its redaction signature — a field was changed after the erasure.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it. 1 payloads unbound by erasure.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them.",
+    "1 records have an unbound payload: an erasure request destroyed the salt, so the payload hash (F14) can no longer be recomputed from the payload. In 1 of them the values the rules inspected were removed from the receipt; their original signatures, links and seals still verify, and the organisation's redaction signature covers every field left. The seal's record id (F12) is kept as it was sealed: an email domain or account in it is a digest salted with the destroyed salt."
+   ]
+  },
+  "resultDigest": "7e35e1d9af9981fee62f6e931b026d6be06d0506d0a7947e5707c61d52624c0e",
+  "reportDigest": "fdc9439627d4d13813a96c887ed70937fd92f638726d2bf5e014985695d0111d"
+ },
+ "real: a seal's signature broken": {
+  "inputDigest": "068c1cb62d77c709f44011c6dd160494c66959a942e987870957576db0d332d9",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:fail: Seal #5 does not verify (seal sig).",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:pass: 1 disclosure package verify; revealed fields recompute to signed digests."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "4f64fa228d14858626d819739fe71b4a3ac9d2a77d4e65f2019af633d32e847c",
+  "reportDigest": "3e332f0feed3941571015942a49a5b5deaeea6ac9e95d60f3c10e2928d78b8a9"
+ },
+ "real: the disclosure package changed": {
+  "inputDigest": "ac7883dfb8d9e75d1758a6a951127840cdd00d7e17316f4c91c69bcd16279f24",
+  "summary": {
+   "code": "FAIL_INTEGRITY",
+   "exitCode": 1,
+   "headline": "Integrity fails. Do not rely on these records.",
+   "variants": [],
+   "sections": [
+    "bundle:pass: All 8 members are present and match the signed manifest.",
+    "keys:pass: The fingerprint you obtained out of band is the key that signed the newest record and the manifest. Earlier records are bound to it through the hash chain.",
+    "signatures:pass: 8 Ed25519 receipt signatures verify.",
+    "chain:pass: 8 receipts recompute to their hashes and each names the one before.",
+    "checkpoints:pass: 2 signed checkpoints match the chain.",
+    "anchors:pass: 2 Merkle batches recompute; 4 RFC 3161 timestamp tokens from 2 authorities verify.",
+    "seals:pass: 6 sealed records: 16 frozen fields each, digests recompute, Ed25519 signatures verify, each links to the seal before it.",
+    "profile:not_applicable: No verifier profile claimed. The bundle is checked for integrity only.",
+    "disclosure:fail: Disclosure package dp_1 does not verify."
+   ],
+   "notes": [
+    "This bundle has no lexicon member (bundles made before 28 October 2026). Rule and refusal ids are shown as the receipts write them."
+   ]
+  },
+  "resultDigest": "fb030523dd559a820ff10f9af3d57bb32a68406ee2ab433d39a3eeac72ac52a9",
+  "reportDigest": "6a10af5acaa0450e8a2795b12e41593e7be3aab1b4e13633c9caadf2720b417a"
+ }
+}

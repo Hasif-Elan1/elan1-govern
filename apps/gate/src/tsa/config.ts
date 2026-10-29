@@ -1,4 +1,5 @@
 import type { Deps } from "../deps";
+import { envKeyProvider, providerFor, type KeyProvider } from "../keys";
 import { isTsaId, TSA_CATALOG, type TsaCatalogEntry } from "./catalog";
 import { HttpTsa } from "./http";
 import { LocalTsa } from "./local";
@@ -16,12 +17,21 @@ export function configuredAuthorities(deps: Deps): TimestampAuthority[] {
   if (!list) {
     list = deps.env.TSA_AUTHORITIES.map((id) => {
       const entry = TSA_CATALOG[id];
-      if (entry.kind === "local") return new LocalTsa({ db: deps.db, keys: deps.keys }, id, entry.name, entry.policyOid);
+      if (entry.kind === "local") return new LocalTsa({ db: deps.db, keys: tsaKeyHolder(deps), providerFor: (name) => providerFor(deps, name) }, id, entry.name, entry.policyOid);
       return new HttpTsa(id, entry.name, new URL(entry.url), [deps.env[entry.caEnv] ?? ""]);
     });
     built.set(deps, list);
   }
   return list;
+}
+
+/**
+ * Where a local authority's key is kept: the active KeyProvider, unless it holds keys inside its boundary (the
+ * software HSM signs by reference and never unwraps), since pkijs signs with the key in this process; then the env
+ * master key, which is always available.
+ */
+function tsaKeyHolder(deps: Deps): KeyProvider {
+  return deps.keys.sign ? envKeyProvider(deps.env.GATE_MASTER_KEY) : deps.keys;
 }
 
 /**

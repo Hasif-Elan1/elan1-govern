@@ -933,7 +933,9 @@ export const HEALTH_FOR: Partial<Record<AssuranceDetector, HealthKind>> = {
 let vectorCache: { agree: number; total: number; at: string } | undefined;
 
 function chainLinkage(d: OrgDB) {
-  const rs = d.receipts.slice(-300);
+  // on the server a receipt the running operation appended is provisional (a pending hash) until the real chain
+  // writes it: it is not a break, so the check stops before it
+  const rs = d.receipts.slice(-300).filter((r) => !r.hash.startsWith(db.PENDING));
   for (let i = 1; i < rs.length; i++) {
     if (rs[i].prev_hash !== rs[i - 1].hash) return { ok: false, seq: rs[i].seq, why: 'prev_hash does not match the receipt before it' };
     if (!contentOk(rs[i], d.publicKeys)) return { ok: false, seq: rs[i].seq, why: 'the receipt hash does not match its contents' };

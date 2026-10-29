@@ -31,3 +31,7 @@ export * as consoleOps from '@/features/console/ops';
 export type { OrgDB } from '@/mock/db';
 // the browser's own chain verifier, so the server's tests check the real chain with the code the console runs
 export * as chainVerifier from '@/lib/crypto';
+// how the server makes the organisation's signatures Elan1 Govern's (not operations)
+export * as serverSigning from './signing';
+// the browser's Seal v6 verifier, so the server's tests check real bundles with the code the console runs
+export * as bundleVerifier from '@/lib/verify6';

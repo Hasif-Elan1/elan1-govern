@@ -6,7 +6,7 @@
  * out of band. Fields not revealed stay hidden but are still bound by the signature.
  */
 import type { DisclosureField, DisclosurePackage, Receipt, RevealedField, VerifyStep } from '@/types';
-import { canonical, sha256Hex, verifySig } from './crypto';
+import { canonical, keyFingerprintOf, sha256Hex, verifySig } from './crypto';
 
 /** The 11 fields a receipt commits to in a disclosure package. */
 export const DISCLOSABLE_FIELDS = ['seq', 'ts', 'agent', 'tool', 'decision', 'rule_id', 'reason', 'rulebook_version', 'approval', 'outcome', 'amount'] as const;
@@ -78,7 +78,8 @@ export function verifyDisclosure(p: DisclosurePackage, opts: { pinnedFingerprint
   steps.push({ label: 'Audience', state: !opts.audience || opts.audience === p.audience ? 'pass' : 'fail', detail: `Issued to ${p.audience}.` });
   const expired = new Date(p.expiresAt).getTime() < now;
   steps.push({ label: 'Expiry', state: expired ? 'fail' : 'pass', detail: expired ? `Expired ${p.expiresAt}.` : `Valid until ${p.expiresAt}.` });
-  const fp = sha256Hex(p.publicKey).slice(0, 16);
+  // a package signed with a real chain key names it by its fingerprint (keyFingerprintOf)
+  const fp = keyFingerprintOf(p.kid, p.publicKey);
   steps.push({ label: 'Issuer key', state: opts.pinnedFingerprint ? (opts.pinnedFingerprint === fp ? 'pass' : 'fail') : 'skip', detail: opts.pinnedFingerprint ? `Fingerprint ${fp} ${opts.pinnedFingerprint === fp ? 'matches' : 'does not match'} the pinned ${opts.pinnedFingerprint}.` : `Key fingerprint ${fp}. Compare it with one you obtained from the issuer directly.` });
   const sigOk = verifySig(disclosureMessage(p), p.sig, p.publicKey);
   steps.push({ label: 'Issuer signature', state: sigOk ? 'pass' : 'fail', detail: sigOk ? `Ed25519 signature over ${p.committed.length} committed digests verifies.` : 'The signature does not verify — the package was changed or signed by another key.' });
@@ -176,7 +177,7 @@ export function verifyDisclosureBundle(b: DisclosureBundle, opts: { pinnedFinger
   steps.push({ label: 'Audience', state: !opts.audience || opts.audience === b.audience ? 'pass' : 'fail', detail: `Issued to ${b.audience}.` });
   const expired = new Date(b.expiresAt).getTime() < now;
   steps.push({ label: 'Expiry', state: expired ? 'fail' : 'pass', detail: expired ? `Expired ${b.expiresAt}.` : `Valid until ${b.expiresAt}.` });
-  const fp = sha256Hex(b.publicKey).slice(0, 16);
+  const fp = keyFingerprintOf(b.kid, b.publicKey);
   steps.push({ label: 'Issuer key', state: opts.pinnedFingerprint ? (opts.pinnedFingerprint === fp ? 'pass' : 'fail') : 'skip', detail: opts.pinnedFingerprint ? `Fingerprint ${fp} ${opts.pinnedFingerprint === fp ? 'matches' : 'does not match'} the pinned ${opts.pinnedFingerprint}.` : `Key fingerprint ${fp}. Compare it with one you obtained from the issuer directly.` });
   const countOk = b.items.length === b.range.count;
   const sigOk = countOk && verifySig(bundleMessage(b), b.sig, b.publicKey);

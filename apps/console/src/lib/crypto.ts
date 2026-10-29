@@ -11,6 +11,7 @@
  */
 import * as ed from '@noble/ed25519';
 import { checkpointPreimage, isChainFormat, receiptPreimage, signatureHex } from '@gate/core/console-receipt';
+import { derToPem } from '@gate/core/rfc3161';
 import { sha256 } from '@noble/hashes/sha256';
 import { sha512 } from '@noble/hashes/sha512';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils';
@@ -51,6 +52,26 @@ export function keyFromSeed(seedText: string, kid: string): KeyPair {
   const pub = ed.getPublicKey(privateKey);
   const publicKeyHex = bytesToHex(pub);
   return { kid, privateKey, publicKeyHex, fingerprint: sha256Hex(publicKeyHex).slice(0, 16) };
+}
+
+/** The DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410): the 32-byte key follows it. */
+const ED25519_SPKI = '302a300506032b6570032100';
+
+/**
+ * A real chain key's fingerprint, which is its kid: core's keyFingerprint (first 16 hex of SHA-256 over the trimmed
+ * PEM) of the SPKI PEM node:crypto writes for the raw key.
+ */
+export function chainKeyFingerprint(publicKeyHex: string): string {
+  return sha256Hex(derToPem(hexToBytes(ED25519_SPKI + publicKeyHex), 'PUBLIC KEY').trim()).slice(0, 16);
+}
+
+/**
+ * The fingerprint the verifier shows and trusts for the key a bundle names `kid`: a real chain key's is its kid, when
+ * the kid is that key's chain fingerprint; any other key's is SHA-256 of its hex, as in the demo.
+ */
+export function keyFingerprintOf(kid: string | undefined, publicKeyHex: string): string {
+  const chainKey = typeof kid === 'string' && /^[0-9a-f]{16}$/.test(kid) && typeof publicKeyHex === 'string' && /^[0-9a-fA-F]{64}$/.test(publicKeyHex);
+  return chainKey && chainKeyFingerprint(publicKeyHex) === kid ? kid : sha256Hex(publicKeyHex).slice(0, 16);
 }
 
 type Unsigned<T> = Omit<T, 'hash' | 'sig'>;
@@ -114,6 +135,28 @@ export function signCheckpoint(cp: Omit<Checkpoint, 'sig'>, key: KeyPair): Check
   const msg = canonical({ org: cp.org, seq: cp.seq, hash: cp.hash, ts: cp.ts, kid: cp.kid });
   return { ...cp, sig: bytesToHex(ed.sign(utf8ToBytes(msg), key.privateKey)) };
 }
+
+/* ── On the server: the organisation's key is Elan1 Govern's ──── */
+
+/** What Elan1 Govern signs for the console, each built by it from a structured request (apps/gate/src/console-signing.ts). */
+export type SigningKind = 'disclosure' | 'disclosure-bundle' | 'sd-jwt' | 'evidence-manifest' | 'pack-manifest' | 'usage-statement' | 'residency' | 'erasure';
+
+/**
+ * Set on the server only (apps/web/src/server/console-signing.ts): the documents hold no signing keys, so a signature
+ * the organisation's key makes is asked of Elan1 Govern. `request` records what is to be signed, as structured data
+ * Elan1 Govern checks against the organisation's chain and builds the message from itself, and returns a stand-in
+ * that the server replaces with the real signature before anything is saved or returned. `kid` is the key Elan1
+ * Govern signs with now. In the browser (the demo) none is set and everything signs as it always has.
+ */
+export interface OrgSigner {
+  kid(orgId: string): string;
+  request(orgId: string, kind: SigningKind, input: unknown): string;
+}
+let orgSigner: OrgSigner | undefined;
+export function setOrgSigner(s: OrgSigner | undefined) {
+  orgSigner = s;
+}
+export const serverSigner = (): OrgSigner | undefined => orgSigner;
 
 /** Ed25519 over the UTF-8 bytes of a text message (the same convention verifySig checks). */
 export function signText(message: string, key: KeyPair): string {
@@ -246,7 +289,7 @@ export function verifyChain(
   const failed = brokenAt !== undefined || validCps < checkpoints.length;
   const firstKid = sorted[0].kid;
   // a real chain key's id is its fingerprint (of the PEM); the demo's fingerprint is of the raw key hex
-  const fp = keys[firstKid] ? (isChainFormat(sorted[0]) ? firstKid : sha256Hex(keys[firstKid]).slice(0, 16)) : undefined;
+  const fp = keys[firstKid] ? keyFingerprintOf(firstKid, keys[firstKid]) : undefined;
   return {
     result: failed ? 'failed' : 'verified',
     exitCode: failed ? 1 : 0,

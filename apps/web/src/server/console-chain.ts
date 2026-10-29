@@ -2,8 +2,9 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { CHAIN_FIELDS, GENESIS_HASH, fromConsoleReceipt, isChainFormat, publicKeyHex, toConsoleCheckpoint, toConsoleReceipt, type Checkpoint, type Receipt } from "@gate/core";
 import { forOrg, orgPublicKeys, toCheckpoint } from "@gate/db";
-import type { ChainWriter, DocCheckpoint, DocReceipt } from "@gate/console/server";
+import type { ChainWriter, DocCheckpoint, DocReceipt, SigningKind } from "@gate/console/server";
 import { HttpError } from "./api";
+import { applyRedactions, noteKid, rememberKid, syncSigned, type SignatureRequest, type SignatureSink } from "./console-signing";
 import { gate } from "./gate";
 
 /*
@@ -35,6 +36,9 @@ interface SigningKeyRow {
   createdAt: string;
   retiredAt?: string;
   receiptsSigned: number;
+  publishedAt?: string;
+  revokedAt?: string;
+  revokedReason?: string;
 }
 
 /** The parts of an organisation document this module reads and writes. */
@@ -100,6 +104,8 @@ async function call<T>(orgId: string, path: string, body: unknown): Promise<T> {
 /** The real chain's head, or the genesis head when the organisation has no receipt yet. */
 export async function realHead(orgId: string): Promise<Head> {
   const db = forOrg(orgId);
+  // what the organisation's document is built with names the key Elan1 Govern signs with (console-signing.ts)
+  await rememberKid(orgId);
   const last = await db.receipt.findFirst({ orderBy: { seq: "desc" }, select: { seq: true, hash: true } });
   if (last) return { seq: last.seq, hash: last.hash };
   if (!(await db.org.findFirst({ select: { id: true } }))) throw new HttpError(404, `${orgId} is not set up in Elan1 Govern yet (run pnpm db:seed).`);
@@ -130,11 +136,18 @@ export async function importHistory(orgId: string, base: Head, generated: DocRec
  * The writer the domain's `append` hands receipts to on the server (apps/console/src/mock/db.ts ChainWriter). It
  * collects one operation's provisional receipts and checkpoint requests; the bridge flushes them (flushChain).
  */
-export class ConsoleChain implements ChainWriter {
+export class ConsoleChain implements ChainWriter, SignatureSink {
   /** Part of every provisional hash and signature: a document holding it holds something not yet written. */
   readonly nonce = randomBytes(8).toString("hex");
   private pending = new Map<string, DocReceipt[]>();
   private cps = new Map<string, DocCheckpoint[]>();
+  /** Signatures the operation asked of the organisation's key (console-signing.ts), written with its receipts. */
+  private sigs = new Map<string, SignatureRequest[]>();
+  private sigCount = 0;
+  /** Who the operation runs as: the signatures' receipts name them (Elan1 Govern when nobody does). */
+  actor: string | undefined;
+  /** The operation running (its manifest name), or undefined for a state read. */
+  op: string | undefined;
   private bases = new Map<string, Head>();
   private histories = new Map<string, ImportedHistory>();
   /** What the domain asked for during an operation that was not prepared (an organisation it opened for the first time). */
@@ -174,6 +187,19 @@ export class ConsoleChain implements ChainWriter {
     this.cps.set(orgId, list);
   }
 
+  /** A signature the domain asked for: a stand-in now, the organisation's real signature once the operation is written. */
+  signature(orgId: string, kind: SigningKind, input: unknown): string {
+    const id = `${SIGN_STANDIN}${++this.sigCount}:${this.nonce}`;
+    const list = this.sigs.get(orgId) ?? [];
+    list.push({ id, kind, input: structuredClone(input) });
+    this.sigs.set(orgId, list);
+    return id;
+  }
+
+  signaturesOf(orgId: string) {
+    return this.sigs.get(orgId) ?? [];
+  }
+
   hasBase(orgId: string) {
     return this.bases.has(orgId);
   }
@@ -211,7 +237,7 @@ export class ConsoleChain implements ChainWriter {
 
   /** Organisations with receipts or checkpoints to write, `last` last. */
   writes(last: string): string[] {
-    const orgs = new Set([...this.pending.keys(), ...this.cps.keys()]);
+    const orgs = new Set([...this.pending.keys(), ...this.cps.keys(), ...this.sigs.keys()]);
     return [...orgs].sort((a, b) => Number(a === last) - Number(b === last));
   }
 
@@ -227,7 +253,10 @@ export class ConsoleChain implements ChainWriter {
   reset() {
     this.pending.clear();
     this.cps.clear();
+    this.sigs.clear();
     this.needs.clear();
+    this.actor = undefined;
+    this.op = undefined;
   }
 
   /** Forget everything (a fresh process). */
@@ -244,6 +273,17 @@ function diverged(orgId: string, seq: number) {
   return new HttpError(409, `The console document of ${orgId} no longer matches its chain at #${seq} (was the database restored?). Nothing was changed.`);
 }
 
+/** Add the receipts the real chain has after the document's head. Returns whether there were any. */
+async function pullReceipts(orgId: string, d: ChainDoc): Promise<boolean> {
+  const db = forOrg(orgId);
+  const head = d.receipts[d.receipts.length - 1]!;
+  const at = await db.receipt.findFirst({ where: { seq: head.seq }, select: { hash: true } });
+  if (at?.hash !== head.hash) throw diverged(orgId, head.seq);
+  const rows = await db.receipt.findMany({ where: { seq: { gt: head.seq } }, orderBy: { seq: "asc" }, select: { body: true } });
+  for (const r of rows) d.receipts.push(toDoc(r.body as Receipt));
+  return rows.length > 0;
+}
+
 /**
  * Bring a document up to its organisation's real chain: receipts the chain has after the document's head, the
  * checkpoints, and the public keys (every key, with when it was retired). A document whose receipts are not the
@@ -258,12 +298,12 @@ export async function syncDoc(orgId: string, d: ChainDoc): Promise<boolean> {
     d.receipts = rows.map((r) => toDoc(r.body as Receipt));
     changed = true;
   } else {
-    const at = await db.receipt.findFirst({ where: { seq: head.seq }, select: { hash: true } });
-    if (at?.hash !== head.hash) throw diverged(orgId, head.seq);
-    const rows = await db.receipt.findMany({ where: { seq: { gt: head.seq } }, orderBy: { seq: "asc" }, select: { body: true } });
-    for (const r of rows) d.receipts.push(toDoc(r.body as Receipt));
-    changed = rows.length > 0;
+    changed = await pullReceipts(orgId, d);
   }
+  // seals, erasures and timestamps Elan1 Govern made (console-signing.ts); sealing may write a receipt
+  const gateSigned = await syncSigned(orgId, d);
+  if (gateSigned.written.length) await pullReceipts(orgId, d);
+  changed = gateSigned.changed || changed;
 
   const last = d.checkpoints[d.checkpoints.length - 1];
   const real = d.checkpoints.length > 0 && d.checkpoints.every((c) => isChainFormat(c));
@@ -289,7 +329,18 @@ export async function syncDoc(orgId: string, d: ChainDoc): Promise<boolean> {
     ...(k.retiredAt ? { retiredAt: k.retiredAt } : {}),
     receiptsSigned: signed.get(k.kid) ?? 0,
   }));
+  // successors bound ahead of signing are published from binding (verifiers can pin them before they sign), and one
+  // withdrawn before it signed stays listed as withdrawn (apps/gate/src/custody.ts)
+  for (const s of await db.keySuccessor.findMany({ where: { activatedAt: null }, orderBy: { boundAt: "asc" } })) {
+    const at = s.boundAt.toISOString();
+    publicKeys[s.kid] = publicKeyHex(s.publicKey);
+    signingKeys.push({
+      kid: s.kid, fingerprint: s.kid, algorithm: "Ed25519", status: s.withdrawnAt ? "revoked" : "bound", createdAt: at, receiptsSigned: 0, publishedAt: at,
+      ...(s.withdrawnAt ? { revokedAt: s.withdrawnAt.toISOString(), revokedReason: "Withdrawn before it signed" } : {}),
+    });
+  }
   const active = keys.find((k) => !k.retiredAt)?.kid ?? keys[keys.length - 1]?.kid;
+  if (active) noteKid(orgId, active);
   if (JSON.stringify(d.publicKeys) !== JSON.stringify(publicKeys) || JSON.stringify(d.signingKeys) !== JSON.stringify(signingKeys) || d.org.keyFingerprint !== active) {
     d.publicKeys = publicKeys;
     d.signingKeys = signingKeys;
@@ -338,11 +389,16 @@ async function flushEach(chain: ConsoleChain, docOf: (orgId: string) => ChainDoc
     if (!d) throw new Error(`${orgId} has receipts to write but its document is not open.`);
     const rs = chain.pendingOf(orgId);
     const cps = chain.checkpointsOf(orgId);
+    const sigs = chain.signaturesOf(orgId);
     const first = rs[0];
-    const base: Head = first ? { seq: first.seq - 1, hash: first.prev_hash } : { seq: cps[0]!.seq, hash: cps[0]!.hash };
-    let out: { receipts: Receipt[]; checkpoint?: Checkpoint };
+    const docHead = d.receipts[d.receipts.length - 1]!;
+    const base: Head = first ? { seq: first.seq - 1, hash: first.prev_hash } : cps[0] && !sigs.length ? { seq: cps[0].seq, hash: cps[0].hash } : { seq: docHead.seq, hash: docHead.hash };
+    let out: { receipts: Receipt[]; checkpoint?: Checkpoint } & Partial<SignedWrite>;
     try {
-      out = await call(orgId, "console-receipts", { base, receipts: rs.map((r) => bodyOf(r)), checkpoint: cps.length > 0 });
+      // signatures go with the receipts in one chain write: the gate checks and signs each, and records it
+      out = sigs.length
+        ? await call(orgId, "console-signing/flush", { base, receipts: rs.map((r) => bodyOf(r)), checkpoint: cps.length > 0, requests: sigs, actor: chain.actor ?? "Elan1 Govern" })
+        : await call(orgId, "console-receipts", { base, receipts: rs.map((r) => bodyOf(r)), checkpoint: cps.length > 0 });
     } catch (e) {
       if (e instanceof ChainRetry) chain.stale.add(orgId);
       throw e;
@@ -358,6 +414,14 @@ async function flushEach(chain: ConsoleChain, docOf: (orgId: string) => ChainDoc
       fixes.objects.set(p.hash, real);
       replaceInPlace(p, real);
     });
+    for (const s of out.signatures ?? []) fixes.strings.set(s.id, s.sig);
+    // the receipts the gate wrote after the operation's (one per signature, one per erasure) continue the document
+    for (const x of out.extra ?? []) {
+      const r = toDoc(x);
+      if (r.prev_hash !== d.receipts[d.receipts.length - 1]?.hash) throw new Error(`${orgId}'s chain wrote the signing receipts out of order.`);
+      d.receipts.push(r);
+    }
+    if (out.redactions?.length) applyRedactions(orgId, d, out.redactions);
     if (cps.length) {
       if (!out.checkpoint) throw new Error(`${orgId}'s chain signed no checkpoint.`);
       const real = cpToDoc(out.checkpoint);
@@ -372,6 +436,25 @@ async function flushEach(chain: ConsoleChain, docOf: (orgId: string) => ChainDoc
   }
 }
 
+/** What a signature's stand-in starts with until the gate's signature replaces it (followed by a count and the nonce). */
+export const SIGN_STANDIN = "pending:sign:";
+
+/** The real value for a provisional string: an exact match, or a text that quotes signature stand-ins (a file's JSON). */
+function fixedString(x: string, strings: ReadonlyMap<string, string>): string | undefined {
+  const to = strings.get(x);
+  if (to !== undefined || !x.includes(SIGN_STANDIN)) return to;
+  let out = x;
+  for (const [from, real] of strings) if (from.startsWith(SIGN_STANDIN) && out.includes(from)) out = out.split(from).join(real);
+  return out === x ? undefined : out;
+}
+
+/** The receipts the gate wrote for an operation's signatures and erasures, and what it returned for them. */
+interface SignedWrite {
+  signatures: { id: string; kid: string; sig: string }[];
+  extra: Receipt[];
+  redactions: { seq: number; receipt: unknown; payloadHash: string; recordId: string }[];
+}
+
 /** Replace, in place, every string in `root` that is a provisional value with the real one. */
 export function replaceStrings(root: unknown, strings: ReadonlyMap<string, string>) {
   if (!strings.size) return;
@@ -380,7 +463,7 @@ export function replaceStrings(root: unknown, strings: ReadonlyMap<string, strin
       for (let i = 0; i < v.length; i++) {
         const x = v[i];
         if (typeof x === "string") {
-          const to = strings.get(x);
+          const to = fixedString(x, strings);
           if (to !== undefined) v[i] = to;
         } else if (x && typeof x === "object") walk(x);
       }
@@ -389,7 +472,7 @@ export function replaceStrings(root: unknown, strings: ReadonlyMap<string, strin
       for (const k of Object.keys(o)) {
         const x = o[k];
         if (typeof x === "string") {
-          const to = strings.get(x);
+          const to = fixedString(x, strings);
           if (to !== undefined) o[k] = to;
         } else if (x && typeof x === "object") walk(x);
       }
@@ -402,7 +485,7 @@ export function replaceStrings(root: unknown, strings: ReadonlyMap<string, strin
 export function fixResult(value: unknown, fixes: Fixes): unknown {
   if (!fixes.strings.size) return value;
   const fix = (v: unknown): unknown => {
-    if (typeof v === "string") return fixes.strings.get(v) ?? v;
+    if (typeof v === "string") return fixedString(v, fixes.strings) ?? v;
     if (Array.isArray(v)) return v.map(fix);
     if (v && typeof v === "object") {
       const o = v as Record<string, unknown>;
