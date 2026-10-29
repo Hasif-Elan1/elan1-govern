@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { egress } from "./egress";
 import { env } from "./env";
 import { log } from "./log";
 
@@ -8,6 +9,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 /** Best effort: a failed email is logged, and the link is also shown in the app. */
 export async function sendInvite(to: string, orgName: string, inviter: string, link: string, role: string) {
   try {
+    await egress().check({ host: env().SMTP_HOST, port: env().SMTP_PORT }, "smtp");
     const t = nodemailer.createTransport({ host: env().SMTP_HOST, port: env().SMTP_PORT, secure: env().SMTP_PORT === 465, ignoreTLS: env().SMTP_PORT !== 465 && process.env.APP_ENV !== "production" });
     await t.sendMail({
       from: env().MAIL_FROM,

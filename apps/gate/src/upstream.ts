@@ -2,7 +2,7 @@ import { ConnectorError, type Connector, type ToolResult } from "@gate/connector
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { decrypt, encrypt, isValidToolName, suggestTags, type RiskTag } from "@gate/core";
-import { forOrg } from "@gate/db";
+import { EgressBlocked, forOrg } from "@gate/db";
 import { adminEvent } from "./admin";
 import type { Deps } from "./deps";
 import { allowPrivateUpstreams } from "./env";
@@ -30,6 +30,7 @@ interface ServerRow {
 function safeError(e: unknown): ConnectorError {
   if (e instanceof ConnectorError) return e;
   if (e instanceof UpstreamBlocked) return new ConnectorError(e.message, "invalid");
+  if (e instanceof EgressBlocked) return new ConnectorError("this deployment's egress policy does not allow Elan1 Govern to reach the MCP server", "invalid");
   const name = (e as Error)?.name;
   if (name === "TimeoutError" || name === "AbortError") return new ConnectorError("the MCP server did not answer in time");
   if (e instanceof StreamableHTTPError && e.code) {
@@ -52,12 +53,15 @@ function redact<T>(value: T, secret: string | undefined): T {
 
 async function withUpstream<T>(deps: Deps, row: ServerRow, fn: (client: Client, auth: string | undefined) => Promise<T>): Promise<T> {
   const auth = row.authHeaderEnc ? decrypt(deps.env.GATE_MASTER_KEY, row.authHeaderEnc, authAad(row.orgId, row.id)) : undefined;
-  const transport = new StreamableHTTPClientTransport(new URL(row.url), {
-    fetch: upstreamFetch({ allowPrivate: allowPrivateUpstreams(deps.env), timeoutMs: TIMEOUT_MS, maxBytes: MAX_BYTES }),
+  const url = new URL(row.url);
+  const transport = new StreamableHTTPClientTransport(url, {
+    // One egress decision per session: the fetch below refuses any other origin, so the SDK cannot reach past it.
+    fetch: upstreamFetch({ allowPrivate: allowPrivateUpstreams(deps.env), timeoutMs: TIMEOUT_MS, maxBytes: MAX_BYTES, origin: url.origin }),
     requestInit: { headers: auth ? { authorization: auth } : {} },
   });
   const client = new Client({ name: "gate", version: "0.1.0" });
   try {
+    await deps.egress.check(url, "upstream-mcp", { orgId: row.orgId });
     await client.connect(transport, { timeout: TIMEOUT_MS });
     return await fn(client, auth);
   } catch (e) {
@@ -106,6 +110,9 @@ export async function addUpstream(deps: Deps, orgId: string, input: { name: stri
     url = await checkUpstreamUrl(input.url, allowPrivateUpstreams(deps.env));
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof UpstreamBlocked ? e.message : "That URL cannot be used." } satisfies UpstreamFail;
+  }
+  if (!(await deps.egress.decide(url, "upstream-mcp", { orgId, actor: input.actor })).allowed) {
+    return { ok: false, status: 400, error: `${url.host} is not on this deployment's egress allow-list, so Elan1 Govern cannot reach it. Nothing was saved.` } satisfies UpstreamFail;
   }
   const slug = input.slug ?? slugFor(input.name);
   if (!slug || RESERVED.has(slug)) return { ok: false, status: 400, error: "Choose another name: it is used for tool names like <name>.tool." } satisfies UpstreamFail;

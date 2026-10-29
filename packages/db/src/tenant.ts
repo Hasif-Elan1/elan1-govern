@@ -29,6 +29,9 @@ export const TENANT_MODELS = [
   "RuleSuggestion",
   "BehaviourAlert",
   "Incident",
+  // ── sovereign ──
+  "EgressRule",
+  "EgressLog",
 ] as const;
 
 const WHERE_OPS = new Set([

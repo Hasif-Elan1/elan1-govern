@@ -4,7 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import { BlockList, isIP } from "node:net";
 import { decrypt, encrypt, type Receipt } from "@gate/core";
-import { forOrg } from "@gate/db";
+import { EgressBlocked, forOrg } from "@gate/db";
 import { adminEvent } from "./admin";
 import type { Deps } from "./deps";
 
@@ -235,8 +235,8 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
   if (claimed.count !== 1) return "skipped";
   const d = await db.webhookDelivery.findFirstOrThrow({ where: { id: deliveryId }, include: { webhook: true } });
   const attempts = d.attempts + 1;
-  const finish = async (ok: boolean, info: { error?: string; status?: number }): Promise<DeliveryOutcome> => {
-    const outcome: DeliveryOutcome = ok ? "delivered" : attempts >= MAX_ATTEMPTS || !d.webhook.active ? "failed" : "retrying";
+  const finish = async (ok: boolean, info: { error?: string; status?: number }, final = false): Promise<DeliveryOutcome> => {
+    const outcome: DeliveryOutcome = ok ? "delivered" : final || attempts >= MAX_ATTEMPTS || !d.webhook.active ? "failed" : "retrying";
     const delay = backoffSeconds(attempts);
     await db.webhookDelivery.update({
       where: { id: deliveryId },
@@ -257,6 +257,14 @@ export async function deliverWebhook(deps: Deps, orgId: string, deliveryId: stri
 
   const checked = checkWebhookUrl(d.webhook.url);
   if (!checked.ok) return finish(false, { error: checked.error });
+  // The deployment's egress policy, before connecting; the address checks still run at connect time.
+  // A denied host is not retried: nothing changes until the allow-list does.
+  try {
+    await deps.egress.check(checked.url, "webhook", { orgId });
+  } catch (e) {
+    if (e instanceof EgressBlocked) return finish(false, { error: e.message }, true);
+    throw e;
+  }
   const body = webhookBody(d, orgId);
   let secret: string;
   try {
@@ -285,6 +293,8 @@ export type CreateWebhookResult = { ok: true; id: string; secret: string } | { o
 export async function createWebhook(deps: Deps, orgId: string, input: { url: string; events: WebhookEvent[]; actor: string }): Promise<CreateWebhookResult> {
   const checked = checkWebhookUrl(input.url);
   if (!checked.ok) return checked;
+  const egress = await deps.egress.decide(checked.url, "webhook", { orgId, actor: input.actor });
+  if (!egress.allowed) return { ok: false, error: `${checked.url.host} is not on this deployment's egress allow-list, so Elan1 Govern cannot deliver to it. Nothing was saved.` };
   const events = [...new Set(input.events)].filter((e) => (WEBHOOK_EVENTS as readonly string[]).includes(e));
   if (!events.length) return { ok: false, error: "Pick at least one event." };
   const db = forOrg(orgId, deps.db);

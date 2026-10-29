@@ -51,6 +51,8 @@ export const WEB_EVENTS = [
   "org.industry_set",
   "framework.enabled",
   "framework.disabled",
+  // ── sovereign ── a person's attempt the web app's egress gate refused (an OIDC issuer)
+  "egress.blocked",
 ] as const;
 
 const schemas = {

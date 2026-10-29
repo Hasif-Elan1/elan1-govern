@@ -1,4 +1,5 @@
 import { authedJson } from "./http";
+import type { EgressHook } from "./types";
 import type { Fetch, ProviderConfig } from "./oauth";
 import { ConnectorError, type Connector, type ConnectorContext, type Evidence } from "./types";
 
@@ -31,7 +32,7 @@ interface ZohoContact {
 
 const VENDOR_FIELD_MAP: Record<string, string> = { name: "contact_name", email: "email", phone: "phone", gstin: "gst_no" };
 
-export function zohoConnector(cfg: ZohoConfig, f: Fetch = fetch): Connector {
+export function zohoConnector(cfg: ZohoConfig, f: Fetch = fetch, egress?: EgressHook): Connector {
   const orgId = (ctx: ConnectorContext) => {
     const id = ctx.meta?.zoho_org_id;
     if (typeof id !== "string" || !id) throw new ConnectorError("Zoho Books organisation is not set; reconnect Zoho Books", "auth");
@@ -46,6 +47,7 @@ export function zohoConnector(cfg: ZohoConfig, f: Fetch = fetch): Connector {
       `${cfg.apiUrl}/books/v3${path}${sep}organization_id=${encodeURIComponent(orgId(ctx))}`,
       { method, authScheme: "Zoho-oauthtoken", ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) },
       f,
+      egress,
     ) as Promise<Record<string, unknown>>;
   };
   const bill = async (ctx: ConnectorContext, id: string) => (await req(ctx, "GET", `/bills/${encodeURIComponent(id)}`)).bill as ZohoBill;

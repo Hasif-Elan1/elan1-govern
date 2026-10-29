@@ -86,8 +86,8 @@ export function decisionOf(m: WaIncoming): { result: "approved" | "rejected"; ap
 const NON_RETRYABLE = new Set([100, 131008, 131009, 131021, 131026, 131030, 131031, 131047, 131051, 132000, 132001, 132012, 133010, 190, 200, 10]);
 const WaError = z.object({ error: z.object({ code: z.number().optional() }).passthrough() }).passthrough();
 
-async function waCall(deps: Deps, token: string, path: string, body?: object): Promise<Record<string, unknown>> {
-  const res = await chatFetch(deps, "whatsapp", path, {
+async function waCall(deps: Deps, orgId: string, token: string, path: string, body?: object): Promise<Record<string, unknown>> {
+  const res = await chatFetch(deps, orgId, "whatsapp", path, {
     method: body ? "POST" : "GET",
     headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -102,8 +102,8 @@ async function waCall(deps: Deps, token: string, path: string, body?: object): P
   return data;
 }
 
-export async function waSend(deps: Deps, token: string, phoneNumberId: string, to: string, message: object): Promise<string> {
-  const data = await waCall(deps, token, `${phoneNumberId}/messages`, { messaging_product: "whatsapp", recipient_type: "individual", to, ...message });
+export async function waSend(deps: Deps, orgId: string, token: string, phoneNumberId: string, to: string, message: object): Promise<string> {
+  const data = await waCall(deps, orgId, token, `${phoneNumberId}/messages`, { messaging_product: "whatsapp", recipient_type: "individual", to, ...message });
   const id = z.object({ messages: z.array(z.object({ id: z.string().max(200) })).min(1) }).safeParse(data);
   if (!id.success) throw new ChatApiError("WhatsApp did not return a message id");
   return id.data.messages[0]!.id;
@@ -175,7 +175,7 @@ export async function connectWhatsApp(
   for (const t of [input.templateName, input.verifyTemplateName]) if (t !== undefined && !TEMPLATE_RE.test(t)) return { ok: false, error: "Template names use lowercase letters, numbers and underscores." };
   if (input.templateLanguage !== undefined && !/^[a-z]{2,3}(_[A-Z]{2})?$/.test(input.templateLanguage)) return { ok: false, error: "The template language is a code like en or en_US." };
   try {
-    const r = z.object({ id: z.string() }).safeParse(await waCall(deps, input.accessToken, `${input.phoneNumberId}?fields=id`));
+    const r = z.object({ id: z.string() }).safeParse(await waCall(deps, orgId, input.accessToken, `${input.phoneNumberId}?fields=id`));
     if (!r.success || r.data.id !== input.phoneNumberId) return { ok: false, error: "Meta did not recognise that phone-number ID for this token." };
   } catch (e) {
     return { ok: false, error: `Meta did not accept the access token (${(e as Error).message}).` };
@@ -248,7 +248,7 @@ export async function startNumberVerification(deps: Deps, orgId: string, input: 
       }
     : textMessage(`Your Elan1 Govern code is ${code}. It expires in 10 minutes. If you did not ask for it, ignore this message.`);
   try {
-    await waSend(deps, channel.secrets.accessToken, channel.config.phoneNumberId, e164, message);
+    await waSend(deps, orgId, channel.secrets.accessToken, channel.config.phoneNumberId, e164, message);
   } catch (e) {
     deps.log.warn({ job: "whatsapp.verify", orgId, err: (e as Error).message }, "verification code not sent");
     return { ok: false, status: 502, error: `WhatsApp did not deliver the code (${(e as Error).message}).` };

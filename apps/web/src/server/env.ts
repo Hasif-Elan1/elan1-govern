@@ -1,6 +1,7 @@
 import "server-only";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { GATE_PROFILES, sovereignProblems } from "@gate/db";
 import { hexSecret, loadEnv, registerExampleSecrets } from "@gate/db/env";
 import { z } from "zod";
 
@@ -19,6 +20,17 @@ const Schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   ZOHO_CLIENT_ID: z.string().optional(),
   COOKIE_SECURE: z.enum(["true", "false"]).default("true"),
+  /** The same deployment profile as the gate service (packages/db/src/egress.ts). */
+  GATE_PROFILE: z.enum(GATE_PROFILES).default("standard"),
+  EGRESS_ALLOW: z.string().optional(),
+  EGRESS_INTERNAL_DOMAINS: z.string().optional(),
+}).superRefine((e, ctx) => {
+  if (e.GATE_PROFILE !== "sovereign") return;
+  // Deny-all egress: the mail relay must be an internal host on the allow-list (OIDC issuers are per
+  // organisation and are checked by the egress gate when they are saved and used).
+  for (const p of sovereignProblems({ allow: e.EGRESS_ALLOW, internalDomains: e.EGRESS_INTERNAL_DOMAINS }, [{ name: "SMTP_HOST", target: { host: e.SMTP_HOST, port: e.SMTP_PORT } }])) {
+    ctx.addIssue({ code: "custom", path: [p.name], message: `${p.message} (GATE_PROFILE=sovereign)` });
+  }
 });
 
 /** The value of NAME= in a dotenv file, without regular expressions. */

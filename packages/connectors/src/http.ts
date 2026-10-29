@@ -1,5 +1,5 @@
 import { refreshTokens, type Fetch, type ProviderConfig } from "./oauth";
-import { ConnectorError, type ConnectorContext, type ConnectorKind } from "./types";
+import { ConnectorError, type ConnectorContext, type ConnectorKind, type EgressHook } from "./types";
 
 /** Authenticated JSON request with one refresh-and-retry on expiry or 401. */
 export async function authedJson(
@@ -8,9 +8,12 @@ export async function authedJson(
   ctx: ConnectorContext,
   url: string,
   init: RequestInit & { authScheme: "Bearer" | "Zoho-oauthtoken" },
-  f: Fetch,
+  raw: Fetch,
+  egress?: EgressHook,
 ): Promise<unknown> {
   if (!ctx.tokens?.access_token) throw new ConnectorError("This connector is not connected", "auth");
+  // Token refreshes and API calls alike go through the egress gate first.
+  const f: Fetch = egress ? async (u, i) => (await egress(u instanceof Request ? u.url : String(u), ctx.orgId), raw(u, i)) : raw;
   let tokens = ctx.tokens;
 
   const refresh = async () => {

@@ -6,3 +6,4 @@ export * from "./lookups";
 export { evidenceCounts, enabledFrameworks, enableFrameworks, disableFramework } from "./compliance";
 export * from "@prisma/client";
 export { behaviourEvents, firstActivity, seenBefore, earlierAmounts, type EventRow } from "./behaviour";
+export * from "./egress";
