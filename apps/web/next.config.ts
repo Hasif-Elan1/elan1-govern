@@ -20,6 +20,11 @@ const config: NextConfig = {
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
         ],
       },
+      // the console's built files (copied into public/ by scripts/console-assets.mjs): content-hashed, so cached for good
+      { source: "/assets/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // the service worker and its asset list are always checked again, so a new build reaches every browser
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
+      { source: "/sw-assets.json", headers: [{ key: "Cache-Control", value: "no-cache" }] },
     ];
   },
 };

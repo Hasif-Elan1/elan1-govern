@@ -21,10 +21,16 @@ import { flushDeferred, noteServerVersion, resync } from './sync';
 
 type Override = (args: unknown[]) => unknown;
 const overrides = new Map<string, Override>();
+const local = new Set<string>();
 
 /** Serve an operation differently in live builds (e.g. `work.reauth` checks the real password). */
 export function override(name: string, fn: Override) {
   overrides.set(name, fn);
+}
+
+/** An async read whose answer cannot travel as JSON (it hands back a function): it reads this tab's copy instead. */
+export function runLocally(name: string) {
+  local.add(name);
 }
 
 /** Results come back as JSON: the server writes Maps and Sets as { $map: [...] } and { $set: [...] }. */
@@ -97,7 +103,7 @@ export const engine: LiveEngine = {
     if (ov) return ov(args);
     if (op.async) {
       // without an organisation the server runs nothing from the browser (verification, link pages): those stay here
-      if (op.org === null) return impl.apply(self, args);
+      if (op.org === null || local.has(op.name)) return impl.apply(self, args);
       return rpc(op, args);
     }
     const mark = live.changes;

@@ -35,5 +35,8 @@ export const GET = route({ auth: "user" }, async () => {
     activeOrgId,
     signedInAt: s.createdAt.toISOString(),
     lastAuthAt: s.lastAuthAt.toISOString(),
+    // the console's writes carry it as x-csrf-token. It is the token of the readable gate_csrf cookie, and this
+    // answer, like the cookie, is readable only by pages of this origin (no CORS; CORP same-origin).
+    csrfToken: s.csrfToken,
   };
 });

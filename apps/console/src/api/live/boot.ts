@@ -15,7 +15,7 @@ import { LIVE } from '@/api/mode';
 import { setHttpHooks } from '@/api/http';
 import { endLiveSessionByServer, refreshLiveSession, useSession } from '@/store/session';
 import { __live } from './call';
-import { engine, override } from './engine';
+import { engine, override, runLocally } from './engine';
 import { installPersistence } from './sync';
 import { confirmPassword, requestReauth } from './ReauthDialog';
 import { login } from './session';
@@ -34,6 +34,8 @@ export function installLive() {
     offline: () => window.dispatchEvent(new Event('offline')),
     online: () => window.dispatchEvent(new Event('online')),
   });
+  // a pure read that hands back a function (the chain range check): answered from this tab's copy
+  runLocally('keys.chainRange');
   // "Confirm it's you" before approvals, the stop and key changes: the real password (and code)
   override('work.reauth', async (args) => confirmPassword(String(args[1] ?? '')));
   // api.signIn checks a password: signed in, that is a re-authentication; signed out, a sign-in

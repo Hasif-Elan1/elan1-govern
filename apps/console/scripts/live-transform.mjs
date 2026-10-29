@@ -2,12 +2,13 @@
  * Live builds (VITE_DATA=live): every console operation the server's RPC door runs goes through one entry point,
  * `__live.call` (src/api/live/call.ts), so the client can run it locally, send it to the server, or both.
  *
- * Which modules hold operations comes from src/server/entry.ts (its `export * as X from …` and `export { x } from …`
- * lines); which of their exports are operations, and whether each is async, from the operation manifest the server
- * itself uses (scripts/op-manifest.mjs). Nothing is listed twice. Each operation module is then rewritten:
+ * Which exports are operations, whether each is async and which file each namespace is come from the operation
+ * manifest the server itself uses (scripts/op-manifest.mjs: `ops` and `modules`); the entry's named exports
+ * (`export { api } from '@/api'`) from src/server/entry.ts. Nothing is listed twice. Each operation module is then
+ * rewritten:
  *
  *  - an exported function `f` becomes `function f__impl` (same place, same lines), and a wrapper is appended:
- *      export function f(...a) { return __live.call("work.f", f__impl, a, this, 1, 0); }
+ *      export function f(...__args) { return __live.call("work.f", f__impl, __args, this, 1, 0); }
  *    Function declarations stay hoisted, which the mock's import cycles need. `export async function`,
  *    `export const f = …` and `export { f }` / `export { f } from "…"` are handled the same way;
  *  - an exported object of operations (`api`, `orgApi` …) keeps its shape: its methods are wrapped at the end of the
@@ -56,9 +57,14 @@ export function resolveSpec(spec, srcDir) {
 /**
  * The rewrite plan: source file → { fns: Map<export, op>, objects: Map<export, [path, op][]> }, where op is
  * { name, async, org }. Built from the manifest's operation paths ([entryExport, moduleExport, …properties]).
+ *
+ * Which file an operation lives in: the manifest's `modules` (prefix → file, for each `export * as X` namespace of
+ * the entry) where it lists the operation's prefix; otherwise the entry's own exports (`export { api } from '@/api'`,
+ * from entryModules). `resolveFile(spec)` turns an entry specifier into a file, `rootFile(rel)` a manifest file.
  */
-export function planFromManifest(manifest, modules, resolveFile) {
+export function planFromManifest(manifest, modules, resolveFile, rootFile = (rel) => rel) {
   const plan = new Map();
+  const byPrefix = new Map((manifest.modules ?? []).map((m) => [m.prefix, m]));
   const forFile = (file) => {
     let p = plan.get(file);
     if (!p) plan.set(file, (p = { fns: new Map(), objects: new Map() }));
@@ -66,9 +72,10 @@ export function planFromManifest(manifest, modules, resolveFile) {
   };
   for (const op of manifest.ops) {
     const [entryName, ...rest] = op.path;
-    const mod = modules.get(entryName);
+    const listed = byPrefix.get(op.name.split('.')[0]);
+    const mod = listed ? { kind: 'namespace' } : modules.get(entryName);
     if (!mod) throw new Error(`${op.name}: the manifest names ${entryName}, which src/server/entry.ts does not export.`);
-    const file = resolveFile(mod.spec);
+    const file = listed ? rootFile(listed.file) : resolveFile(mod.spec);
     // a namespace's first step is the module's export; a named export is the module's export itself
     const exportName = mod.kind === 'namespace' ? rest[0] : mod.local;
     const props = mod.kind === 'namespace' ? rest.slice(1) : rest;
@@ -98,7 +105,7 @@ function applyEdits(code, edits) {
 
 const lit = (v) => JSON.stringify(v);
 const wrapper = (exported, impl, op) =>
-  `export function ${exported}(...a) { return __live.call(${lit(op.name)}, ${impl}, a, this, ${op.async ? 1 : 0}, ${op.org === null ? 'null' : op.org}); }`;
+  `export function ${exported}(...__args) { return __live.call(${lit(op.name)}, ${impl}, __args, this, ${op.async ? 1 : 0}, ${op.org === null ? 'null' : op.org}); }`;
 
 /**
  * Rewrite one operation module. `code` is the module's JavaScript or TypeScript; `plan` its entry from
@@ -195,6 +202,10 @@ export async function livePlan(consoleRoot) {
   const src = join(consoleRoot, 'src');
   const modules = entryModules(readFileSync(join(src, 'server/entry.ts'), 'utf8'));
   const manifest = buildManifest();
-  const plan = planFromManifest(manifest, modules, (spec) => resolveSpec(spec, src));
+  const plan = planFromManifest(manifest, modules, (spec) => resolveSpec(spec, src), (rel) => {
+    const file = join(consoleRoot, rel);
+    if (!existsSync(file)) throw new Error(`The operation manifest lists ${rel}, which does not exist.`);
+    return file;
+  });
   return { plan, manifest, files: [...plan.keys()].map((f) => resolve(f)), root: dirname(src) };
 }

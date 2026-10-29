@@ -6,6 +6,8 @@ import { AuthHeading, AuthLayout } from './AuthLayout';
 import { emailProblem } from './password';
 import { RESET_MINUTES, requestPasswordReset } from './registry';
 import { DemoOutbox } from './Outbox';
+import { LIVE } from '@/api/mode';
+import { forgot } from '@/api/live/session';
 
 export default function ForgotPage() {
   const [email, setEmail] = useState('');
@@ -24,7 +26,9 @@ export default function ForgotPage() {
     setBusy(true);
     setError(undefined);
     try {
-      await requestPasswordReset(email);
+      // live builds: the server emails the link (the answer is the same whether or not the address has an account)
+      if (LIVE) await forgot(email.trim());
+      else await requestPasswordReset(email);
       setSent(true);
     } catch (err) {
       setError((err as Error).message);
@@ -58,7 +62,7 @@ export default function ForgotPage() {
           <AuthHeading title="If an account exists, we sent a link">
             Check the inbox for <span className="text-fg font-medium break-all">{email.trim()}</span>. The link works once and expires in {RESET_MINUTES} minutes. For your safety we do not say whether an account exists.
           </AuthHeading>
-          <DemoOutbox to={email} title="Demo outbox for this address" limit={3} empty="No message for this address — no account uses it. That is what an unknown address looks like; the page above reads the same either way." />
+          {!LIVE && <DemoOutbox to={email} title="Demo outbox for this address" limit={3} empty="No message for this address — no account uses it. That is what an unknown address looks like; the page above reads the same either way." />}
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => { setSent(false); setSubmitted(false); }}>Use a different email</Button>
           </div>

@@ -24,6 +24,8 @@ import {
 import { breakGlassSignIn, policyFor, recordRefusal, samlRequired, ssoOnlyFor, type BreakGlassInfo, type Refusal } from './signInPolicy';
 import { usePortalSession } from './PortalSession';
 import { RefusalBanner } from './RefusalBanner';
+import { LivePasswordSignIn } from './LiveSignIn';
+import { LIVE } from '@/api/mode';
 
 /** Where to go after sign-in: a same-site `next` path (see safeNext), never back to the sign-in page. */
 function destination(user: User, next: string | null) {
@@ -61,6 +63,12 @@ function suspendedIn(orgId: string, userId: string) {
 }
 
 export default function LoginPage() {
+  // live builds: the same page, checked by the server (LiveSignIn.tsx)
+  if (LIVE) return <LivePasswordSignIn />;
+  return <DemoLoginPage />;
+}
+
+function DemoLoginPage() {
   const [params] = useSearchParams();
   const sso = params.get('sso');
   const acs = params.get('acs');

@@ -13,7 +13,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:mock": "VITE_DATA=mock vite",
     "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
+    "build:spa": "vite build",
+    "build:mock": "VITE_DATA=mock vite build",
     "build:server": "node scripts/build-server.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"

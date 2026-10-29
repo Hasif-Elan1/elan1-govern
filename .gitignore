@@ -16,3 +16,7 @@ test-results
 zap-report.*
 __pycache__/
 *.egg-info
+
+# the console build, copied in by apps/web/scripts/console-assets.mjs
+apps/web/public/
+apps/web/console-dist/

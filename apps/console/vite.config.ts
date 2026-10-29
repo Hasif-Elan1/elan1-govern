@@ -1,6 +1,27 @@
 import { defineConfig, type Plugin } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { livePlan, transformModule } from './scripts/live-transform.mjs';
+
+/**
+ * Where the data comes from (src/api/mode.ts): VITE_DATA=live (the default, for `vite build` and `pnpm dev:console`)
+ * runs the console on the real backend through the same origin; VITE_DATA=mock is the approved demonstration,
+ * standalone, exactly as built.
+ */
+const DATA = (process.env.VITE_DATA ?? 'live').trim().toLowerCase();
+if (DATA !== 'live' && DATA !== 'mock') throw new Error(`VITE_DATA must be "live" or "mock", not "${process.env.VITE_DATA}".`);
+const LIVE = DATA === 'live';
+
+/** The Next.js app that serves the API (and, built, this console). Development only: Vite proxies /api to it. */
+const API = process.env.CONSOLE_API_URL ?? process.env.WEB_URL ?? 'http://localhost:3000';
+
+/**
+ * Written into every script and stylesheet tag of a live build's index.html; the Next.js route that serves the
+ * console (apps/web/src/app/console-shell/route.ts) replaces it with the request's CSP nonce.
+ */
+export const CSP_NONCE_PLACEHOLDER = '__GOVERN_CSP_NONCE__';
+
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 // Third-party code goes into its own long-lived chunks so the app chunk stays small and caches separately.
 const VENDOR_CHUNKS: [string, RegExp][] = [
@@ -30,15 +51,45 @@ function swAssetList(): Plugin {
   };
 }
 
-export default defineConfig({
+/**
+ * Live builds: every operation the server's RPC door runs is rewritten to go through `__live.call`
+ * (scripts/live-transform.mjs, from the server's own operation manifest), so it can be sent to the server.
+ */
+function liveOperations(): Plugin {
+  let plan: Awaited<ReturnType<typeof livePlan>>['plan'] | undefined;
+  return {
+    name: 'eg-live-operations',
+    enforce: 'pre',
+    async buildStart() {
+      plan = (await livePlan(ROOT)).plan;
+    },
+    transform(code, id) {
+      const file = id.split('?')[0];
+      const p = plan?.get(file);
+      if (!p) return undefined;
+      return { code: transformModule(code, p, file), map: null };
+    },
+  };
+}
+
+export default defineConfig(({ command }) => ({
   // JSX is compiled by Vite's built-in esbuild (tsconfig "jsx": "react-jsx"); @vitejs/plugin-react pulls in
   // Babel, whose semver@6 fails the workspace trust policy. Dev edits do a full reload instead of Fast Refresh.
-  plugins: [swAssetList()],
+  plugins: [swAssetList(), ...(LIVE ? [liveOperations()] : [])],
   esbuild: { jsx: 'automatic' },
+  define: { __GOVERN_DATA__: JSON.stringify(DATA) },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: { port: 5190, strictPort: false },
+  // the built console is served by Next.js under its Content-Security-Policy (script-src 'nonce-…' 'strict-dynamic')
+  ...(LIVE && command === 'build' ? { html: { cspNonce: CSP_NONCE_PLACEHOLDER } } : {}),
+  server: {
+    port: 5190,
+    strictPort: false,
+    // same origin in development too: the session cookie, CSRF token and Origin check work as in production.
+    // Server-Sent Events (/api/console/stream) pass through unbuffered.
+    ...(LIVE ? { proxy: { '/api': { target: API, changeOrigin: false, ws: false } } } : {}),
+  },
   build: {
     rollupOptions: {
       output: {
@@ -50,4 +101,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

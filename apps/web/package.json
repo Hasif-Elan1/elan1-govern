@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @gate/console build:server --if-stale",
-    "dev": "next dev -p 3000",
-    "prebuild": "pnpm --filter @gate/console build:server --if-stale",
+    "predev": "pnpm --filter @gate/console build:server --if-stale && node scripts/console-assets.mjs --if-stale",
+    "dev": "next dev",
+    "prebuild": "pnpm --filter @gate/console build:server --if-stale && node scripts/console-assets.mjs --if-stale",
     "build": "next build",
-    "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit"
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "console:assets": "node scripts/console-assets.mjs --if-stale"
   },
   "dependencies": {
     "@gate/console": "workspace:*",

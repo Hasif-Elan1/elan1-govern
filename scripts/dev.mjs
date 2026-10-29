@@ -1,4 +1,5 @@
-// pnpm dev: Elan1 Govern on :4000 and the web app on :3000, with prefixed logs.
+// pnpm dev: Elan1 Govern on :4000, the web app on :3000 (the API, and the console as last built) and the console
+// itself on :5190 (Vite, proxying /api to the web app on the same origin), with prefixed logs.
 import { spawn } from "node:child_process";
 import { ensureServices, loadEnv, root } from "./lib.mjs";
 
@@ -8,6 +9,7 @@ await ensureServices(env);
 const procs = [
   ["gate", ["--filter", "@gate/gate", "dev"], "\x1b[36m"],
   ["web ", ["--filter", "@gate/web", "dev"], "\x1b[35m"],
+  ["cons", ["--filter", "@gate/console", "dev"], "\x1b[33m"],
 ].map(([name, args, color]) => {
   const p = spawn("pnpm", args, { cwd: root, env: { ...process.env, ...env, FORCE_COLOR: "1" } });
   const tag = `${color}${name}\x1b[0m │ `;
@@ -29,7 +31,7 @@ const procs = [
   return p;
 });
 
-console.log(`\n  Web   ${env.WEB_URL || "http://localhost:3000"}\n  Elan1 Govern  ${env.GATE_PUBLIC_URL || "http://localhost:4000"}/mcp\n  Mail  http://localhost:8025\n`);
+console.log(`\n  Console  http://localhost:5190 (live; edits reload)\n  Web   ${env.WEB_URL || "http://localhost:3000"}\n  Elan1 Govern  ${env.GATE_PUBLIC_URL || "http://localhost:4000"}/mcp\n  Mail  http://localhost:8025\n`);
 
 let stopping = false;
 function shutdown(code = 0) {

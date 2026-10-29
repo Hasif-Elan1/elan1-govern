@@ -12,6 +12,10 @@
  *   - per-person TOTP secrets (RFC 6238) — the demo publishes each account's current code,
  *   - single-use password-reset tokens with an expiry, and a demo outbox showing what would be sent.
  * Every change that a real backend would record writes a receipt on the organisation's chain.
+ *
+ * Live builds (src/api/mode.ts) sign in against the real backend instead: nothing here is read from or written to
+ * this browser's storage, no demo account or portal password is published, and the session watcher does not run
+ * (the server's session is the truth; its end reaches the console as a 401).
  */
 import type { LevelId, Org, Role, User } from '@/types';
 import { api, db } from '@/api';
@@ -23,6 +27,7 @@ import { sha1 } from '@noble/hashes/legacy';
 import { orgApi, orgState, PROVIDER_LABEL } from '@/features/settings/orgApi';
 import { markBrowserSession } from './keepSignedIn';
 import { chooseOrg, ssoOnlyIn, type BreakGlassInfo, type Refusal } from './signInPolicy';
+import { LIVE } from '@/api/mode';
 
 const KEY = 'eg:auth:v1';
 const MIN = 60_000;
@@ -110,6 +115,7 @@ export interface LocalInvite { token: string; userId: string; orgId: string; ema
 const EMPTY: Store = { v: 1, accounts: [], users: [], orgs: [], passwords: {}, resets: [], outbox: [], lock: {}, totpUsed: {}, onboarding: {}, invites: [], waCodes: {}, portalSessions: [] };
 
 function load(): Store {
+  if (LIVE) return JSON.parse(JSON.stringify(EMPTY));
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -123,7 +129,7 @@ function load(): Store {
 const store = load();
 
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(store)); } catch { /* storage full or unavailable */ }
+  if (!LIVE) try { localStorage.setItem(KEY, JSON.stringify(store)); } catch { /* storage full or unavailable */ }
   listeners.forEach((l) => l());
 }
 
@@ -133,7 +139,7 @@ export function subscribeRegistry(fn: () => void) { listeners.add(fn); return ()
 
 /* ── Demo accounts beyond the foundation's list (second people for dual control) ── */
 
-const EXTRA: { userId: string; password: string; role: Role; level: LevelId; orgId: string; journey: string }[] = [
+const EXTRA: { userId: string; password: string; role: Role; level: LevelId; orgId: string; journey: string }[] = LIVE ? [] : [
   { userId: 'u_fatima', password: 'Demo-DPO-2026', role: 'admin', level: 'l1', orgId: 'org_demo', journey: 'Second admin and Data Protection Officer: the second person on a rulebook review and on erasure approvals.' },
   { userId: 'u_tom', password: 'Demo-Approver2-2026', role: 'approver', level: 'l1', orgId: 'org_demo', journey: 'Second Finance approver: the backup that escalated approvals re-route to.' },
   { userId: 'u_arjun', password: 'Demo-Approver3-2026', role: 'approver', level: 'l1', orgId: 'org_demo', journey: 'Procurement approver: try a held call outside your group and see it refused.' },
@@ -155,7 +161,7 @@ const EXTRA: { userId: string; password: string; role: Role; level: LevelId; org
 ];
 
 /** Counterparty, regulator and partner accounts. They sign in to a portal, never to the console. */
-export const PORTAL_ACCOUNTS: PortalAccount[] = [
+export const PORTAL_ACCOUNTS: PortalAccount[] = LIVE ? [] : [
   { id: 'p_star', name: 'Nisha Menon', email: 'nisha.menon@starhealth.in', password: 'Demo-Counterparty-2026', kind: 'counterparty', title: 'Claims audit lead', employer: 'Star Health and Allied Insurance', issuerOrgId: 'org_kaveri', counterpartyId: 'cp_star', journey: 'Verify a claim decision Kaveri Health shared: 3 of 11 fields revealed, the rest committed and checkable.' },
   { id: 'p_rbi', name: 'R. Venkataraman', email: 'r.venkataraman@rbi.org.in', password: 'Demo-Regulator-2026', kind: 'regulator', title: 'Department of Supervision, off-site surveillance', employer: 'Reserve Bank of India', issuerOrgId: 'org_deccan', counterpartyId: 'cp_rbi', journey: 'Regulator portal: check an approved action Deccan Cooperative Bank disclosed, with the named approver on record.' },
   { id: 'p_northbank', name: 'Vikram Desai', email: 'vikram.desai@partners.northbank.co.in', password: 'Demo-Partner-2026', kind: 'partner', title: 'Accounts receivable, Northbank (supplier to Kaveri)', employer: 'Northbank Industrial Ltd', issuerOrgId: 'org_kaveri', counterpartyId: 'cp_northbank', journey: 'Partner portal: confirm the payment Kaveri recorded against your bill, without seeing anything else.' },
@@ -193,7 +199,7 @@ function hydrate() {
     if (p) p.password = pw;
   }
 }
-hydrate();
+if (!LIVE) hydrate();
 
 /** Accounts made in this browser (sign-up, invitation, SSO). */
 export function createdAccounts() { return store.accounts.slice(); }
@@ -234,7 +240,7 @@ export function resetSignInState() {
   try { localStorage.removeItem(PORTAL_CURRENT); } catch { /* fine */ }
   save();
 }
-if (typeof window !== 'undefined') db.onResetDemo(resetSignInState);
+if (typeof window !== 'undefined' && !LIVE) db.onResetDemo(resetSignInState);
 
 /* ── Lockout: 5 failures lock the email for 1 minute, doubling, at most 1 hour ── */
 
@@ -448,7 +454,7 @@ function watchSession() {
     }
   }, 10_000);
 }
-if (typeof window !== 'undefined') watchSession();
+if (typeof window !== 'undefined' && !LIVE) watchSession();
 
 /** Why the last session ended, once (shown on the sign-in page). */
 export function takeEndedReason() {

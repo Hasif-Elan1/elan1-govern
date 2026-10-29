@@ -2,7 +2,7 @@
  * The one entry point of every console operation in a live build. scripts/live-transform.mjs rewrites each
  * operation the server's RPC door runs (the operation manifest, built from src/server/entry.ts) so that it reads
  *
- *   export function decide(...a) { return __live.call("work.decide", decide__impl, a, this, 1, 0); }
+ *   export function decide(...__args) { return __live.call("work.decide", decide__impl, __args, this, 1, 0); }
  *
  * and wraps the methods of the operation objects (`api`, `orgApi` …) the same way at the end of their module.
  *
