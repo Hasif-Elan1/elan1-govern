@@ -29,6 +29,14 @@ export const TENANT_MODELS = [
   "RuleSuggestion",
   "BehaviourAlert",
   "Incident",
+  // billing
+  "BillingAccount",
+  "Invoice",
+  "CreditNote",
+  "Discount",
+  "DiscountRequest",
+  "Dispute",
+  "ReconciliationRun",
 ] as const;
 
 const WHERE_OPS = new Set([
