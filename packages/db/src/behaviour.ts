@@ -18,6 +18,7 @@ export async function behaviourEvents(orgId: string, agent: string, since: Date,
     SELECT seq, ts, tool, decision, body->'args_summary' AS summary
     FROM "Receipt"
     WHERE "orgId" = ${orgId} AND agent = ${agent} AND kind = 'decision' AND tool IS NOT NULL AND decision IS NOT NULL
+      AND (body->>'rule_id') IS DISTINCT FROM 'pilot-limit' -- refusals at the pilot's stop are not the agent's behaviour
       AND ts >= (${since}::timestamptz AT TIME ZONE 'UTC')
     ORDER BY seq DESC
     LIMIT ${limit}`;

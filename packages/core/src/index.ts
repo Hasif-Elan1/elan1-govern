@@ -27,3 +27,4 @@ export {
   runTestVectors, sealDigest, sealPreimage, setSealCrypto, verifyBundle6, verifyInclusion, verifySeal,
 } from "./seal";
 export type { BundleProfile, EvidenceBundle, SealCrypto, SealRecord, VerifyBundleOptions, VerifyBundleResult, VerifyCode } from "./seal";
+export * from "./billing";

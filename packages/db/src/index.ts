@@ -8,3 +8,4 @@ export * from "@prisma/client";
 export { behaviourEvents, firstActivity, seenBefore, earlierAmounts, type EventRow } from "./behaviour";
 export { orgForVerifiedDomain, findSamlForDomain, findScimByTokenHash } from "./saml";
 export * from "./egress";
+export { pilotDecisionCount, meterReceipts, storeInvoice, issueInvoice, storeCreditNote } from "./billing";

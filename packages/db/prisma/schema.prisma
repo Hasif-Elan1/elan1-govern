@@ -824,4 +824,174 @@ model UpdateRecord {
   rollbackReason  String?
 
   @@index([status])
+// ── billing ──
+// An internal ledger: meter, GST invoices, discounts, disputes and credit notes. No payment is collected.
+// Money is integer paise (BigInt), never a float; allowance is tenths of an action. The arithmetic is
+// @gate/core billing.ts. An issued or void invoice and every credit note are immutable: a trigger in the
+// billing_ledger migration refuses changes, so a correction is always a credit note.
+
+// One per organisation: the plan billed, the buyer printed on invoices, and the ₹0 pilot.
+model BillingAccount {
+  id               String    @id @default(cuid())
+  orgId            String    @unique
+  plan             String    @default("l1") // l1 | l2 | l3 | sovereign
+  invoicePrefix    String // EG-<prefix>-YYYYMM
+  buyerName        String
+  buyerGstin       String?
+  buyerAddress     String?
+  residency        String? // decides the place of supply (placeOfSupply in core)
+  pilotStartsAt    DateTime? // set: the organisation is (or was) on the pilot
+  pilotEndsAt      DateTime?
+  pilotCap         Int?
+  pilotStoppedAt   DateTime? // recorded once the stop is due (cap reached, 90 days, or ended early)
+  pilotStoppedWhy  String?
+  pilotStoppedSeq  Int? // the billing.pilot_stopped receipt
+  pilotConvertedAt DateTime? // moved to the paid plan: the stop is lifted and billing starts here
+  pilotConvertedTo String?
+  pilotClosedAt    DateTime? // 30 read-only days after the stop
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Invoice {
+  id            String    @id @default(cuid())
+  orgId         String
+  number        String // EG-DEMO-202610, EG-DECC-DEP-2026
+  kind          String    @default("monthly") // monthly | deployment
+  period        String // YYYY-MM (IST)
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        String    @default("draft") // draft | issued | held | void
+  subtotalPaise BigInt
+  gstPaise      BigInt
+  totalPaise    BigInt
+  heldPaise     BigInt    @default(0)
+  payablePaise  BigInt
+  gstPercent    Int       @default(18)
+  placeOfSupply String
+  irn           String
+  lines         Json // InvoiceLine[] from core, amounts in paise
+  fromSeq       Int?
+  toSeq         Int?
+  events        Int       @default(0)
+  heldByRunId   String?
+  issuedAt      DateTime?
+  dueAt         DateTime?
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([orgId, number])
+  @@index([orgId, period])
+}
+
+model CreditNote {
+  id            String   @id @default(cuid())
+  orgId         String
+  number        String // CN-<invoice without EG->-<dispute seq>
+  invoiceNumber String
+  line          String
+  disputeId     String?
+  outcome       String // upheld | partly_upheld
+  amountPaise   BigInt // the credit before GST, positive
+  gstPaise      BigInt
+  totalPaise    BigInt
+  irn           String
+  note          String
+  issuedAt      DateTime @default(now())
+
+  @@unique([orgId, number])
+  @@index([orgId, invoiceNumber])
+}
+
+// An offer from elan1 on governed actions beyond the allowance, and what an owner did with it.
+model Discount {
+  id             String    @id @default(cuid())
+  orgId          String
+  pctBasisPoints Int // 1500 = 15%
+  fromDay        String // YYYY-MM-DD, IST, inclusive (moved to the acceptance day if later)
+  untilDay       String // every discount has an end date
+  status         String    @default("offered") // offered | accepted | declined | lapsed
+  offeredBy      String // elan1 staff id
+  offeredByRole  String // lead | founder | billing
+  reference      String?
+  validUntil     String // the offer lapses after this day
+  requestId      String?
+  offerSeq       Int?
+  acceptedBy     String?
+  acceptedAt     DateTime?
+  acceptedSeq    Int?
+  declinedReason String?
+  endedAt        DateTime? // ended early by an owner
+  endedReason    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, status])
+}
+
+// An owner's request for a discount. A request is never a discount: elan1 answers with an offer, or not.
+model DiscountRequest {
+  id             String    @id @default(cuid())
+  orgId          String
+  pctBasisPoints Int
+  months         Int
+  reason         String
+  requestedBy    String
+  needs          String // lead | founder
+  status         String    @default("with_elan1") // with_elan1 | offered | withdrawn | declined
+  offerId        String?
+  declinedReason String?
+  declinedBy     String?
+  seq            Int?
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([orgId, status])
+}
+
+// An owner disputes one invoice line: it is held while the rest proceeds. Only elan1 settles it.
+model Dispute {
+  id               String    @id @default(cuid())
+  orgId            String
+  invoiceNumber    String
+  line             String
+  reason           String
+  fromSeq          Int?
+  toSeq            Int?
+  openedBy         String
+  seq              Int?
+  status           String    @default("open") // open | withdrawn | settled
+  outcome          String? // upheld | partly_upheld | rejected
+  linePaise        BigInt? // the line's amount when it was settled
+  creditPaise      BigInt?
+  creditNoteNumber String?
+  note             String?
+  decidedBy        String?
+  decidedByRole    String?
+  approvedBy       String? // a founder, for a credit above ₹1,00,000
+  settleSeq        Int?
+  closedAt         DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([orgId, invoiceNumber, line])
+  @@index([orgId, status])
+}
+
+// A two-way run for a period: the meter against the chain. The latest unmatched run holds that period's invoice.
+model ReconciliationRun {
+  id             String   @id @default(cuid())
+  orgId          String
+  period         String // YYYY-MM
+  meterEvents    Int
+  chainDecisions Int
+  meterTenths    Int // allowance in tenths of an action
+  chainTenths    Int
+  matched        Boolean
+  note           String?
+  runBy          String
+  seq            Int?
+  createdAt      DateTime @default(now())
+
+  @@index([orgId, period, createdAt])
 }
