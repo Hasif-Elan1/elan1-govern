@@ -57,7 +57,10 @@ describe("POST /api/console/rpc", () => {
     const refused = await rpc({ op: "api.setFramework", args: [ORG, "hipaa", true, OWNER] });
     expect(refused.status).toBe(400);
     expect((await refused.json()).error).toMatch(/Viewers cannot do this/);
-    expect(framework(memory(), "hipaa")).toBe(false);
+    // nothing was saved and memory is back where it was (unbuilt, if membership came from the Membership table)
+    const before = await consoleState.load(ORG);
+    expect(before ? framework(JSON.parse(before.json) as Doc, "hipaa") : false).toBe(false);
+    expect(framework(memory(), "hipaa") ?? false).toBe(false);
 
     // an admin naming the viewer: the receipt says the admin did it
     state.userId = ADMIN;
@@ -65,7 +68,8 @@ describe("POST /api/console/rpc", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { result: { id: string; enabled: boolean }; version: number };
     expect(body.result).toMatchObject({ id: "hipaa", enabled: true });
-    const last = memory()!.receipts.at(-1)!;
+    // (open-time seeds may write after it when this call built the document, so look it up by action)
+    const last = memory()!.receipts.findLast((r) => r.action === "framework.enabled")!;
     expect(last).toMatchObject({ actor: ADMIN, action: "framework.enabled" });
     // and it is saved, at the version the reply names
     const saved = await consoleState.load(ORG);
