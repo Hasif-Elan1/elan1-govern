@@ -5,5 +5,5 @@ import { consoleMember, stateFor } from "@/server/console-domain";
 export const GET = route({ auth: "user" }, async ({ req, userId }) => {
   const orgId = req.nextUrl.searchParams.get("org") ?? "";
   if (!userId || !(await consoleMember(userId, orgId))) throw new HttpError(403, "You are not a member of this organisation.");
-  return stateFor(orgId);
+  return stateFor(orgId, userId);
 });

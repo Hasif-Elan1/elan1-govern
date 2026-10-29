@@ -408,8 +408,14 @@ async function current(orgId: string): Promise<Stored> {
  * codes and single-use approval-link tokens (and signing seeds, which only documents saved before receipts came
  * from the real chain had). The operation that creates one of these returns it to the person who asked.
  */
-function forBrowser(doc: Record<string, unknown>): Record<string, unknown> {
+function forBrowser(doc: Record<string, unknown>, viewerId?: string): Record<string, unknown> {
   delete doc.keySeeds;
+  // a successor key bound ahead of signing keeps its seed on the server; the emailed sandbox verification token
+  // likewise; and each person's working papers (auditor sampling) are theirs alone
+  delete (doc.keysExt as { bound?: { seed?: string } } | undefined)?.bound?.seed;
+  delete (doc.devpath as { sandbox?: { token?: string } } | undefined)?.sandbox?.token;
+  const papers = doc.workingPapers as Record<string, unknown> | undefined;
+  if (papers) doc.workingPapers = viewerId && papers[viewerId] ? { [viewerId]: papers[viewerId] } : {};
   const settings = doc.orgSettings as { mfa?: Record<string, { secret?: string }>; invites?: { token?: string }[]; whatsapp?: Record<string, { pending?: unknown }> } | undefined;
   for (const m of Object.values(settings?.mfa ?? {})) delete m.secret;
   for (const i of settings?.invites ?? []) delete i.token;
@@ -418,10 +424,10 @@ function forBrowser(doc: Record<string, unknown>): Record<string, unknown> {
   return doc;
 }
 
-/** The organisation's document for the browser (without what forBrowser drops) and its version. */
-export async function stateFor(orgId: string): Promise<{ version: number; doc: Record<string, unknown> }> {
+/** The organisation's document for the browser (without what forBrowser drops, and only the viewer's own working papers) and its version. */
+export async function stateFor(orgId: string, viewerId?: string): Promise<{ version: number; doc: Record<string, unknown> }> {
   const s = await current(orgId);
-  return { version: s.version, doc: forBrowser(JSON.parse(s.json) as Record<string, unknown>) };
+  return { version: s.version, doc: forBrowser(JSON.parse(s.json) as Record<string, unknown>, viewerId) };
 }
 
 /**

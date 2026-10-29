@@ -123,6 +123,24 @@ describe("POST /api/console/rpc", () => {
     expect((doc as unknown as Invites).orgSettings.invites[0]).toMatchObject({ email: stored.orgSettings.invites[0]!.email });
     expect((doc as unknown as Invites).orgSettings.invites[0]).not.toHaveProperty("token");
   });
+
+  it("leaves out a bound successor's seed, the sandbox verification token and other people's working papers", async () => {
+    await consoleDomain.stateFor(ORG); // built and saved
+    const row = (await consoleState.load(ORG))!;
+    const stored = JSON.parse(row.json) as Record<string, unknown>;
+    stored.keysExt = { ...(stored.keysExt as object), bound: { kid: "k2", seed: "secret-seed", fingerprint: "f" } };
+    stored.devpath = { v: 1, runs: [], requests: [], promotions: [], sandbox: { id: "sbx", token: "secret-token", email: "a@b.c" } };
+    stored.workingPapers = { [ADMIN]: { notes: "mine" }, [OWNER]: { notes: "not yours" } };
+    await consoleState.save(ORG, JSON.stringify(stored), row.version);
+    await consoleDomain.forgetConsoleMemory();
+    const { doc } = (await consoleDomain.stateFor(ORG, ADMIN)) as unknown as { doc: { keysExt: { bound: Record<string, unknown> }; devpath: { sandbox: Record<string, unknown> }; workingPapers: Record<string, unknown> } };
+    expect(doc.keysExt.bound).toMatchObject({ kid: "k2" });
+    expect(doc.keysExt.bound).not.toHaveProperty("seed");
+    expect(doc.devpath.sandbox).toMatchObject({ id: "sbx" });
+    expect(doc.devpath.sandbox).not.toHaveProperty("token");
+    expect(doc.workingPapers).toEqual({ [ADMIN]: { notes: "mine" } });
+    expect(JSON.stringify(doc)).not.toMatch(/secret-seed|secret-token|not yours/);
+  });
 });
 
 describe("runOp", () => {
