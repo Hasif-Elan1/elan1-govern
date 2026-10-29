@@ -15,7 +15,11 @@ import { forOrg } from "./tenant";
 
 export type ChainTx = Parameters<Parameters<ReturnType<typeof forOrg>["$transaction"]>[0]>[0];
 type Tx = ChainTx;
-export type Append = (input: ReceiptInput) => Promise<Receipt>;
+/**
+ * Appends one receipt, timed now. `at` is for one caller only: the console's one-time history import
+ * (apps/gate/src/console-chain.ts), which keeps each imported receipt's own time and checks the order itself.
+ */
+export type Append = (input: ReceiptInput, opts?: { at?: string }) => Promise<Receipt>;
 
 /**
  * A signing key and its id (fingerprint) to stamp on what it signs. Either the private key itself,
@@ -65,8 +69,10 @@ export async function withChain<T>(
       await lock(tx, orgId);
       const signer = await resolveKey(key, tx);
       let current = await head(tx);
-      const append: Append = async (input) => {
-        const unsigned = prepareReceipt(input, { org: orgId, ts: new Date().toISOString(), head: current, kid: signer.kid });
+      const append: Append = async (input, opts) => {
+        const ts = opts?.at ?? new Date().toISOString();
+        if (opts?.at !== undefined && !(Date.parse(ts) <= Date.now() && new Date(ts).toISOString() === ts)) throw new Error("a receipt's time must be an ISO time no later than now");
+        const unsigned = prepareReceipt(input, { org: orgId, ts, head: current, kid: signer.kid });
         const receipt: Receipt = { ...unsigned, sig: await signWithKey(signer, unsigned.hash) };
         const amount = receipt.args_summary?.amount_inr;
         await tx.receipt.create({

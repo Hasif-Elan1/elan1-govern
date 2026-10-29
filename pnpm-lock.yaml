@@ -80,6 +80,9 @@ importers:
       '@fontsource/schibsted-grotesk':
         specifier: 5.3.0
         version: 5.3.0
+      '@gate/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@lezer/highlight':
         specifier: 1.2.5
         version: 1.2.5

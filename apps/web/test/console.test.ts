@@ -1,10 +1,12 @@
-import { consoleState, prisma } from "@gate/db";
+import { fromConsoleReceipt, verifyChain, type Receipt } from "@gate/core";
+import { consoleState, orgPublicKeys, prisma } from "@gate/db";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetConsoleOrg, startGate } from "./console-gate";
 
-// The console's domain runs for real (the built bundle, Postgres, the routes' CSRF and validation); only the
-// session lookup is a stand-in. The people are the console's demo members of org_demo (until Phase 1.5 seeds them
-// into Membership they count as members through the document's own member list).
+// The console's domain runs for real (the built bundle, Postgres, the routes' CSRF and validation, and the gate
+// service that writes its receipts to the real chain); only the session lookup is a stand-in. The people are the
+// console's demo members of org_demo, seeded into Membership with the demo organisations.
 const state = vi.hoisted(() => ({ userId: "u_rahul" }));
 
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ get: () => undefined }) }));
@@ -15,6 +17,7 @@ vi.mock("../src/server/session", () => ({
   currentCtx: async () => "no-org",
 }));
 
+const gateService = await startGate();
 const rpcRoute = await import("../src/app/api/console/rpc/route");
 const stateRoute = await import("../src/app/api/console/state/route");
 const streamRoute = await import("../src/app/api/console/stream/route");
@@ -38,14 +41,18 @@ function rpc(body: unknown) {
 }
 const get = (path: string, signal?: AbortSignal) => new NextRequest(`http://localhost:3000${path}`, signal ? { signal } : {});
 
+// the organisations these tests open (org_kaveri: the membership refusal reads its member list); the console's
+// other tests use the other two
 async function clean() {
   await consoleDomain.forgetConsoleMemory();
-  // only this file's organisation: console-ops.test.ts works on Northbank at the same time
-  await prisma.$executeRaw`DELETE FROM "ConsoleState" WHERE "orgId" = ${ORG}`;
+  for (const org of [ORG, "org_kaveri"]) await resetConsoleOrg(org);
 }
 
 beforeAll(clean);
-afterAll(() => prisma.$disconnect());
+afterAll(async () => {
+  await gateService.close();
+  await prisma.$disconnect();
+});
 beforeEach(() => {
   resetRateLimits();
   state.userId = ADMIN;
@@ -106,10 +113,12 @@ describe("POST /api/console/rpc", () => {
     expect(doc.org.id).toBe(ORG);
     expect(doc).not.toHaveProperty("keySeeds");
     expect(doc).not.toHaveProperty("keys");
-    // the seeded invite: its token is stored, and left out of what the browser gets
+    // receipts come from the real chain, so the stored document holds no signing seeds either; the seeded invite:
+    // its token is stored, and left out of what the browser gets
     type Invites = { orgSettings: { invites: { email: string; token?: string }[] } };
-    const stored = JSON.parse((await consoleState.load(ORG))!.json) as Invites & { keySeeds: unknown[] };
-    expect(stored.keySeeds.length).toBeGreaterThan(0);
+    const stored = JSON.parse((await consoleState.load(ORG))!.json) as Invites & { keySeeds?: unknown[] };
+    expect(stored).not.toHaveProperty("keySeeds");
+    expect(stored).not.toHaveProperty("keys");
     expect(stored.orgSettings.invites[0]?.token).toBeTruthy();
     expect((doc as unknown as Invites).orgSettings.invites[0]).toMatchObject({ email: stored.orgSettings.invites[0]!.email });
     expect((doc as unknown as Invites).orgSettings.invites[0]).not.toHaveProperty("token");
@@ -173,6 +182,55 @@ describe("runOp", () => {
     const level = await consoleDomain.runOp(ORG, ADMIN, "api.org", [ORG]);
     expect(level.result).toMatchObject({ name: "Demo Traders (renamed elsewhere)" });
     expect(level.version).toBe(r.version! + 1);
+  });
+});
+
+describe("the real chain", () => {
+  type ChainDoc = {
+    receipts: (Receipt & { approval?: { id: string; status: string } })[];
+    approvals: { id: string; seq: number; resultSeq?: number; agentSlug: string; status: string }[];
+    alerts: { id: string; agentSlug: string; relatedSeqs: number[] }[];
+    publicKeys: Record<string, string>;
+  };
+
+  it("holds org_demo's demo history as real receipts, with every reference to them intact", async () => {
+    await consoleDomain.runOp(ORG, ADMIN, "api.setFramework", [ORG, "colorado", true, ADMIN]);
+    const doc = (await consoleDomain.stateFor(ORG)).doc as unknown as ChainDoc;
+    const rows = await prisma.receipt.findMany({ where: { orgId: ORG }, orderBy: { seq: "asc" } });
+    const chain = rows.map((r) => r.body as Receipt);
+    // the whole chain verifies with the organisation's real keys, and the document is that chain, receipt for receipt
+    expect(verifyChain(chain, await orgPublicKeys(ORG))).toMatchObject({ ok: true, count: chain.length });
+    expect(doc.receipts.map((r) => fromConsoleReceipt(r))).toEqual(chain);
+    expect(Object.keys(doc.publicKeys)).toEqual((await orgPublicKeys(ORG)).map((k) => k.kid));
+
+    // imported once, after the organisation's setup receipts, and said so
+    const marker = chain.find((r) => r.action === "console.history_imported")!;
+    const { from_seq: from, to_seq: to } = marker.details as { from_seq: number; to_seq: number };
+    expect(chain.slice(0, from - 1).every((r) => r.kind === "admin")).toBe(true);
+    expect(marker.seq).toBe(to + 1);
+    const imported = chain.filter((r) => r.seq >= from && r.seq <= to);
+    expect(imported.length).toBeGreaterThan(500);
+    // the demo's key rotations never happened to the real key: recorded under their own name
+    expect(imported.some((r) => r.action === "key.rotated")).toBe(false);
+    expect(imported.some((r) => r.action === "key.rotated.demo")).toBe(true);
+    expect(new Set(chain.map((r) => r.kid)).size).toBe(1);
+
+    // approvals point at their decision and result receipts; alerts at their agent's receipts
+    const bySeq = new Map(doc.receipts.map((r) => [r.seq, r]));
+    expect(doc.approvals.length).toBeGreaterThan(10);
+    for (const a of doc.approvals) {
+      expect(bySeq.get(a.seq)).toMatchObject({ kind: "decision", decision: "ask", agent: a.agentSlug, approval: { id: a.id } });
+      if (a.resultSeq) expect(bySeq.get(a.resultSeq)).toMatchObject({ kind: "approval", ref_seq: a.seq, approval: { id: a.id } });
+    }
+    for (const al of doc.alerts) for (const seq of al.relatedSeqs) expect(bySeq.get(seq)?.agent).toBe(al.agentSlug);
+  });
+
+  it("holds no signing key: what would sign with the organisation's key here is refused, and nothing is written", async () => {
+    const head = await prisma.receipt.findFirst({ where: { orgId: ORG }, orderBy: { seq: "desc" } });
+    const res = await rpc({ op: "api.rotateKey", args: [ORG, ADMIN] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(domain.db.NO_KEY);
+    expect(await prisma.receipt.findFirst({ where: { orgId: ORG }, orderBy: { seq: "desc" } })).toEqual(head);
   });
 });
 

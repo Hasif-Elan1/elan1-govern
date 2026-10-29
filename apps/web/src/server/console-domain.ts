@@ -2,6 +2,7 @@ import "server-only";
 import { consoleState, ConsoleStateConflict, membershipsForUser, type ConsoleSql } from "@gate/db";
 import type { OpEntry, SavedDoc } from "@gate/console/server";
 import { HttpError } from "./api";
+import { ChainRetry, ConsoleChain, fixResult, flushChain, importHistory, realHead, replaceStrings, syncDoc, type ChainDoc, type Fixes, type Head } from "./console-chain";
 import { log } from "./log";
 
 /*
@@ -19,6 +20,13 @@ import { log } from "./log";
  * between refuses the save), and after the commit each change is announced with NOTIFY console_events.
  * When the operation or the save fails, every document in memory goes back to its last saved state, so a
  * refusal halfway through leaves nothing behind.
+ *
+ * Receipts are the organisation's real chain's (console-chain.ts). Before the operation runs, its organisation's
+ * document is brought up to the chain (receipts the gate wrote itself, checkpoints, public keys); the operation's
+ * own receipts are written to the chain after it settles and before anything is saved, and take the provisional
+ * ones' place. If the chain moved meanwhile the write is refused, the operation is undone and runs again on the
+ * new head (up to MAX_ATTEMPTS times). A receipt the chain accepted stays in it even if the save then fails: the
+ * next operation finds it on the chain and adds it to the document.
  */
 
 type Domain = typeof import("@gate/console/server");
@@ -37,6 +45,24 @@ interface Stored {
   version: number;
   json: string;
   members?: SavedDoc["members"];
+  /** The last receipt of the stored document (read from the JSON when first needed). */
+  head?: Head | null;
+  /** Saved before receipts came from the real chain (it holds signing seeds): rebuilt on the chain, never loaded. */
+  legacy?: boolean;
+}
+
+/** How many times an operation runs when the chain keeps moving under it. */
+const MAX_ATTEMPTS = 3;
+
+const isLegacy = (json: string) => json.includes('"keySeeds":');
+
+/** The last receipt of a stored document. */
+function storedHead(s: Stored): Head | null {
+  if (s.head === undefined) {
+    const last = (JSON.parse(s.json) as { receipts?: Head[] }).receipts?.at(-1);
+    s.head = last ? { seq: last.seq, hash: last.hash } : null;
+  }
+  return s.head;
 }
 
 interface Runtime {
@@ -48,6 +74,8 @@ interface Runtime {
   changed: Set<string>;
   /** The last change kind per organisation (receipt, approval …), for the announcement. */
   kinds: Map<string, string>;
+  /** Where the domain's receipts go: the organisations' real chains. */
+  chain: ConsoleChain;
   queue: Promise<unknown>;
 }
 
@@ -62,12 +90,14 @@ async function load(): Promise<Runtime> {
     stored: new Map(),
     changed: new Set(),
     kinds: new Map(),
+    chain: new ConsoleChain(),
     queue: Promise.resolve(),
   };
+  domain.db.setChainWriter(rt.chain, rt.chain.nonce);
   domain.db.setPersistence({
     load: (orgId) => {
       const s = rt.stored.get(orgId);
-      return s ? (JSON.parse(s.json) as SavedDoc) : undefined;
+      return s && !s.legacy ? (JSON.parse(s.json) as SavedDoc) : undefined;
     },
     save: (orgId) => {
       rt.changed.add(orgId);
@@ -117,20 +147,57 @@ async function refresh(rt: Runtime, tx: ConsoleSql) {
     if (!known.has(orgId) || rt.stored.get(orgId)?.version === version) continue;
     const row = await consoleState.load(orgId, tx);
     if (!row) continue;
-    rt.stored.set(orgId, row);
+    const legacy = isLegacy(row.json);
+    rt.stored.set(orgId, { ...row, ...(legacy ? { legacy } : {}) });
     const doc = JSON.parse(row.json) as SavedDoc;
-    if (rt.domain.db.peekDB(orgId)) rt.domain.db.importDoc(orgId, doc);
+    if (legacy) rt.domain.db.dropFromMemory(orgId);
+    else if (rt.domain.db.peekDB(orgId)) rt.domain.db.importDoc(orgId, doc);
     // the organisation switcher's levels, as the browser keeps them for organisations not open yet
-    else rt.domain.db.syncOrgMeta(doc.org);
+    if (!rt.domain.db.peekDB(orgId)) rt.domain.db.syncOrgMeta(doc.org);
+  }
+}
+
+const chainDoc = (rt: Runtime, orgId: string) => rt.domain.db.peekDB(orgId) as unknown as ChainDoc | undefined;
+
+/**
+ * Open an organisation on its real chain: its saved document, or, the first time (or over a document saved before
+ * receipts came from the chain), built from the seed on the chain's head, with a seeded organisation's generated
+ * history written into the chain first and the document built on the real receipts.
+ */
+async function openOnChain(rt: Runtime, orgId: string) {
+  if (rt.domain.db.peekDB(orgId)) return;
+  const s = rt.stored.get(orgId);
+  if (s && !s.legacy) {
+    rt.domain.db.getDB(orgId);
+    return;
+  }
+  if (!rt.chain.hasBase(orgId)) rt.chain.setBase(orgId, await realHead(orgId));
+  try {
+    rt.domain.db.getDB(orgId);
+  } catch (e) {
+    const generated = rt.chain.takeGenerated(orgId);
+    if (!generated) throw e;
+    rt.chain.setHistory(orgId, await importHistory(orgId, rt.chain.base(orgId), generated));
+    rt.domain.db.getDB(orgId);
+  }
+}
+
+/** Bring an open organisation's document up to its real chain; it is saved with the operation when it changed. */
+async function syncOnChain(rt: Runtime, orgId: string) {
+  const d = chainDoc(rt, orgId);
+  if (d && (await syncDoc(orgId, d))) {
+    rt.changed.add(orgId);
+    rt.kinds.set(orgId, "receipt");
   }
 }
 
 /** Put every document in memory back to its last saved state (or forget it if it was never saved). */
 function rollBack(rt: Runtime) {
   rt.domain.cancelPending();
+  rt.chain.reset();
   for (const orgId of inMemory(rt)) {
     const s = rt.stored.get(orgId);
-    if (!s) rt.domain.db.dropFromMemory(orgId);
+    if (!s || s.legacy) rt.domain.db.dropFromMemory(orgId);
     else if (docJson(rt, orgId) !== s.json) rt.domain.db.importDoc(orgId, JSON.parse(s.json) as SavedDoc);
   }
   rt.changed.clear();
@@ -141,10 +208,37 @@ function rollBack(rt: Runtime) {
 class OpFailed extends Error {}
 
 /**
- * Run `fn` on current documents under the lock of `lockOrg`, then save what changed (`lockOrg` is compared even
- * if the domain reported no change). Returns fn's value and `lockOrg`'s saved version after the commit.
+ * Run `fn` on current documents under the lock of `lockOrg`, write the receipts it recorded to the real chain, then
+ * save what changed (`lockOrg` is compared even if the domain reported no change). `finish` turns fn's value into
+ * the result inside the lock, once the real receipts are in place. Returns it and `lockOrg`'s saved version after
+ * the commit. When the chain moved under the operation it is undone and run again, up to MAX_ATTEMPTS times.
  */
-async function locked<T>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T): Promise<{ value: T; version: number | null }> {
+async function locked<T, R = T>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish?: (value: T, fixes: Fixes) => R): Promise<{ value: R; version: number | null }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await lockedOnce(rt, lockOrg, fn, finish ?? ((v: T) => v as unknown as R));
+    } catch (e) {
+      await keepImported(rt);
+      if (!(e instanceof ChainRetry)) throw e;
+      if (attempt >= MAX_ATTEMPTS) throw new HttpError(409, "Elan1 Govern kept recording other activity for this organisation at the same moment. Nothing was changed; try again.");
+      log("info", "console.chain_retry", { orgId: lockOrg, attempt, reason: e.message });
+    }
+  }
+}
+
+/**
+ * A document whose demo history went into its chain is saved even when the operation that first opened it failed:
+ * the history cannot be imported twice. It is built again from the history this process kept, without the
+ * operation, and saved on its own.
+ */
+async function keepImported(rt: Runtime) {
+  for (const orgId of rt.chain.importedOrgs()) {
+    if (rt.stored.has(orgId)) continue;
+    await lockedOnce(rt, orgId, () => undefined, (v) => v).catch((e: Error) => log("warn", "console.keep_imported", { orgId, err: e.message }));
+  }
+}
+
+async function lockedOnce<T, R>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T, finish: (value: T, fixes: Fixes) => R): Promise<{ value: R; version: number | null }> {
   return exclusive(rt, async () => {
     const commits: { orgId: string; stored: Stored; kind: string }[] = [];
     try {
@@ -152,25 +246,50 @@ async function locked<T>(rt: Runtime, lockOrg: string, fn: () => Promise<T> | T)
         await refresh(rt, tx);
         rt.changed.clear();
         rt.kinds.clear();
+        rt.chain.reset();
+        // the organisation's document on its real chain, with what the gate wrote itself since; and any
+        // organisation whose write was refused last time because its chain moved. The domain's deferred writes
+        // (open-time seeds) wait until the document is on its chain.
+        const release = rt.domain.holdTimers();
+        try {
+          for (const orgId of new Set([lockOrg, ...rt.chain.stale])) {
+            await openOnChain(rt, orgId);
+            await syncOnChain(rt, orgId);
+            rt.chain.stale.delete(orgId);
+          }
+        } finally {
+          release();
+        }
         let value: T;
         try {
           value = await fn();
         } catch (e) {
+          // it opened an organisation for the first time: prepare that organisation's chain, then run it again
+          if (await rt.chain.prepareNeeds()) throw new ChainRetry();
           throw new OpFailed(e instanceof Error ? e.message : "The operation failed.");
         }
         if (!(await rt.domain.settle())) throw new Error("The console's deferred work did not finish.");
-        const candidates = new Set([...rt.changed, lockOrg, ...inMemory(rt).filter((o) => !rt.stored.has(o))]);
+        // a first open the domain caught and carried on from would leave a document off its chain: run it again
+        if (await rt.chain.prepareNeeds()) throw new ChainRetry();
+        // the operation's receipts and checkpoints, written to the real chain; the real ones take their place
+        const fixes = await flushChain(rt.chain, (orgId) => chainDoc(rt, orgId), lockOrg);
+        for (const orgId of inMemory(rt)) replaceStrings(rt.domain.db.peekDB(orgId), fixes.strings);
+        const result = finish(value, fixes);
+        const candidates = new Set([...rt.changed, lockOrg, ...inMemory(rt).filter((o) => !rt.stored.has(o) || rt.stored.get(o)?.legacy)]);
         for (const orgId of candidates) {
           const json = docJson(rt, orgId);
           const before = rt.stored.get(orgId);
           if (json === undefined || json === before?.json) continue;
+          // a value derived from a receipt before the chain wrote it (a slice of its pending hash) cannot be fixed
+          if (json.includes(rt.chain.nonce)) throw new Error(`The operation kept a value from a receipt before Elan1 Govern wrote it (${orgId}), so nothing was saved.`);
           const version = await consoleState.save(orgId, json, before?.version ?? 0, tx);
           commits.push({ orgId, stored: { version, json }, kind: rt.kinds.get(orgId) ?? "update" });
         }
-        return value;
+        return result;
       });
       for (const c of commits) rt.stored.set(c.orgId, c.stored);
       rt.changed.clear();
+      rt.chain.reset();
       for (const c of commits) {
         await consoleState.notify({ orgId: c.orgId, kind: c.kind, version: c.stored.version }).catch((e: Error) => log("warn", "console.notify", { orgId: c.orgId, err: e.message }));
       }
@@ -249,13 +368,21 @@ export async function runOp(orgId: string | null, actorUserId: string, opName: s
   }
   // as in the browser, the organisation is open (and the active one) before its operations run; the result is
   // copied inside the lock, since it may share objects with the documents
-  const { value, version } = await locked(rt, orgId, async () => {
-    rt.domain.db.getDB(orgId);
-    rt.domain.db.setActiveOrg(orgId);
-    return jsonSafe(await (fn as (...a: unknown[]) => unknown).apply(parent, prepared));
-  });
+  const { value, version } = await locked(
+    rt,
+    orgId,
+    async () => {
+      rt.domain.db.getDB(orgId);
+      rt.domain.db.setActiveOrg(orgId);
+      return (fn as (...a: unknown[]) => unknown).apply(parent, prepared);
+    },
+    // copied once the real receipts are in place (it may share objects with the documents)
+    (raw, fixes) => fixResult(jsonSafe(raw), fixes),
+  );
   return { result: value, version };
 }
+
+const sameHead = (a: Head | null, b: Head) => (a ? a.seq === b.seq && a.hash === b.hash : b.seq === 0);
 
 /** The organisation's last saved document, building (and saving) it from the seed the first time. */
 async function current(orgId: string): Promise<Stored> {
@@ -263,7 +390,8 @@ async function current(orgId: string): Promise<Stored> {
   if (!(await knownConsoleOrg(orgId))) throw new HttpError(404, "There is no such organisation.");
   const version = await consoleState.version(orgId);
   const s = rt.stored.get(orgId);
-  if (s && s.version === version) return s;
+  // up to date when nobody saved since and the real chain has nothing the document lacks
+  if (s && s.version === version && !s.legacy && sameHead(storedHead(s), await realHead(orgId))) return s;
   await locked(rt, orgId, () => {
     rt.domain.db.getDB(orgId);
   });
@@ -273,9 +401,9 @@ async function current(orgId: string): Promise<Stored> {
 }
 
 /**
- * The document minus what no browser should hold: the chain's signing seeds (keySeeds), every person's TOTP
- * secret, invite tokens, pending WhatsApp codes and single-use approval-link tokens. The operation that creates
- * one of these returns it to the person who asked.
+ * The document minus what no browser should hold: every person's TOTP secret, invite tokens, pending WhatsApp
+ * codes and single-use approval-link tokens (and signing seeds, which only documents saved before receipts came
+ * from the real chain had). The operation that creates one of these returns it to the person who asked.
  */
 function forBrowser(doc: Record<string, unknown>): Record<string, unknown> {
   delete doc.keySeeds;
@@ -313,5 +441,6 @@ export async function forgetConsoleMemory() {
     for (const orgId of inMemory(rt)) rt.domain.db.dropFromMemory(orgId);
     rt.stored.clear();
     rt.changed.clear();
+    rt.chain.forget();
   });
 }

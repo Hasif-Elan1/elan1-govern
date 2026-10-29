@@ -4,7 +4,7 @@
  * The browser globals the domain touches come from ./shims (injected by the bundler, never put on globalThis).
  * Operations take the caller as an argument; the server fills it in (see dist-server/ops.json).
  */
-export { settle, cancelPending } from './shims';
+export { settle, cancelPending, holdTimers } from './shims';
 export { api } from '@/api';
 export * as db from '@/mock/db';
 export * as orgApi from '@/features/settings/orgApi';
@@ -29,3 +29,5 @@ export * as ops from '@/mock/ops';
 export * as notices from '@/mock/tenantNotices';
 export * as consoleOps from '@/features/console/ops';
 export type { OrgDB } from '@/mock/db';
+// the browser's own chain verifier, so the server's tests check the real chain with the code the console runs
+export * as chainVerifier from '@/lib/crypto';

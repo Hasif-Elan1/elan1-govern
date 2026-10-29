@@ -15,3 +15,5 @@ export * from "./behaviour";
 export * as seal6 from "./seal";
 export { detectBundleProfile, readEvidenceFile6, reportSections, setSealCrypto, verifyBundle6 } from "./seal";
 export type { BundleProfile, EvidenceBundle, SealCrypto, VerifyBundleOptions, VerifyBundleResult, VerifyCode } from "./seal";
+// ── chain ── the console's receipt shape and core's format, both ways: the console verifies real chain receipts with it
+export * from "./console-receipt";
