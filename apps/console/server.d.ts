@@ -90,6 +90,8 @@ export interface DomainDb {
   readonly NO_KEY: string;
   /** Record an admin action (a receipt) in an open organisation. */
   logAdmin(orgId: string, userId: string, action: string, details: Record<string, string | number | boolean>, agent?: string): DocReceipt;
+  /** Tell the screens an organisation changed (the kind they refetch on). */
+  touch(orgId: string, kind?: string): void;
   setPersistence(p: Persistence | undefined): void;
   exportDoc(orgId: string): SavedDoc | undefined;
   importDoc(orgId: string, doc: SavedDoc): void;

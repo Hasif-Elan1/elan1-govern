@@ -120,3 +120,13 @@ describe("govern keygen and sign", () => {
     expect(await main(["nope"], c.out, c.err)).toBe(2);
   });
 });
+
+describe("govern staff", () => {
+  it("refuses anything but add <email>, remove <email> or list, before it reads any database", async () => {
+    for (const args of [["staff"], ["staff", "add"], ["staff", "add", "not-an-email"], ["staff", "promote", "a@b.in"], ["staff", "add", "a@b.in", "extra"], ["staff", "list", "a@b.in"]]) {
+      const c = capture();
+      expect(await main(args, c.out, c.err)).toBe(2);
+      expect(c.errs.join("\n")).toMatch(/^Usage: govern staff add <email>/);
+    }
+  });
+});

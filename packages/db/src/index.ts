@@ -10,3 +10,5 @@ export { behaviourEvents, firstActivity, seenBefore, earlierAmounts, type EventR
 export { orgForVerifiedDomain, findSamlForDomain, findScimByTokenHash } from "./saml";
 export * from "./egress";
 export { pilotDecisionCount, meterReceipts, storeInvoice, issueInvoice, storeCreditNote } from "./billing";
+// ── wiring ──
+export { setPlatformStaff, platformStaff, isPlatformStaff, type StaffAccount } from "./staff";

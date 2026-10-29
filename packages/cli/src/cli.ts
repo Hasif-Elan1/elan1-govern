@@ -27,7 +27,46 @@ const HELP = `govern — offline tools for Elan1 Govern evidence and rulebooks
                                                 Validate and sign a rulebook
   govern keygen [--out-dir dir]                   Create an Ed25519 key pair
 
-No account or network needed.`;
+No account or network needed.
+
+On the server only (reads DATABASE_URL, or the .env in this folder):
+  govern staff add <email>                        Make an account Elan1 platform staff (the billing desk)
+  govern staff remove <email>                     Take platform staff away from an account
+  govern staff list                               List platform staff`;
+
+const STAFF_USAGE = "Usage: govern staff add <email> | govern staff remove <email> | govern staff list";
+
+/** Platform staff are set only here, on the server, never from the app (packages/db/src/staff.ts). */
+async function staff(args: string[], out: Out, err: Out): Promise<number> {
+  const [action, email, extra] = args;
+  const valid = (action === "list" && email === undefined) || ((action === "add" || action === "remove") && !!email && extra === undefined && /^[^\s@]+@[^\s@]+$/.test(email));
+  if (!valid) {
+    err(STAFF_USAGE);
+    return 2;
+  }
+  if (!process.env.DATABASE_URL && existsSync(".env")) process.loadEnvFile(".env");
+  if (!process.env.DATABASE_URL) {
+    err("DATABASE_URL is not set. Run this on the server, from the folder with its .env.");
+    return 1;
+  }
+  const db = await import("@gate/db");
+  try {
+    if (action === "list") {
+      const all = await db.platformStaff();
+      out(all.length ? all.map((u) => `${u.email}  ${u.name}`).join("\n") : "No platform staff yet.");
+      return 0;
+    }
+    const u = await db.setPlatformStaff(email!, action === "add");
+    if (!u) {
+      err(`No account has the email ${email}. They sign up (or are invited) first.`);
+      return 1;
+    }
+    out(action === "add" ? `${u.email} is now Elan1 platform staff: they can use the billing desk.` : `${u.email} is no longer platform staff.`);
+    return 0;
+  } finally {
+    await db.prisma.$disconnect();
+  }
+}
 
 type Out = (line: string) => void;
 
@@ -160,6 +199,8 @@ export async function main(argv: string[], out: Out = console.log, err: Out = co
     out(`Fingerprint: ${keyFingerprint(k.publicKeyPem)}`);
     return 0;
   }
+
+  if (cmd === "staff") return staff(rest, out, err);
 
   out(HELP);
   return cmd === undefined || cmd === "help" || cmd === "--help" ? 0 : 2;

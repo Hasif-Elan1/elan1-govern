@@ -129,7 +129,8 @@ describe("POST /api/console/rpc", () => {
     const row = (await consoleState.load(ORG))!;
     const stored = JSON.parse(row.json) as Record<string, unknown>;
     stored.keysExt = { ...(stored.keysExt as object), bound: { kid: "k2", seed: "secret-seed", fingerprint: "f" } };
-    stored.devpath = { v: 1, runs: [], requests: [], promotions: [], sandbox: { id: "sbx", token: "secret-token", email: "a@b.c" } };
+    // seeded: the path-to-production seed would otherwise replace this sandbox when the document opens
+    stored.devpath = { v: 1, seeded: true, runs: [], requests: [], promotions: [], sandbox: { id: "sbx", token: "secret-token", email: "a@b.c" } };
     stored.workingPapers = { [ADMIN]: { notes: "mine" }, [OWNER]: { notes: "not yours" } };
     await consoleState.save(ORG, JSON.stringify(stored), row.version);
     await consoleDomain.forgetConsoleMemory();

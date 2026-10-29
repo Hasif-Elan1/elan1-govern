@@ -1,5 +1,6 @@
 import {
   chatApprovalAllowed,
+  CONSOLE_DETAIL_KEYS,
   decide,
   durationMs,
   hashCanonical,
@@ -25,6 +26,8 @@ import { orgKey, raiseAlert, type Deps } from "./deps";
 export interface AgentIdentity {
   orgId: string;
   agentId: string;
+  /** The key's environment (ApiKey.environment): a sandbox key's calls are metered at ₹0 and never stopped by the pilot. */
+  environment?: string;
 }
 
 /** execute: Elan1 Govern runs the tool (MCP). check: Elan1 Govern only decides; the agent runs it (SDK). */
@@ -67,7 +70,9 @@ function argsHashOf(tool: string, args: unknown): string {
 export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArgs: unknown, mode: GuardMode = "execute"): Promise<GuardResult> {
   const { orgId, agentId } = who;
   const args_hash = argsHashOf(tool, rawArgs);
-  let base: ReceiptInput = { kind: "decision", tool, args_hash };
+  const sandbox = who.environment === "sandbox";
+  // a sandbox call says so on its receipt, where the console's receipts carry it (packages/core/src/console-receipt.ts)
+  let base: ReceiptInput = { kind: "decision", tool, args_hash, ...(sandbox ? { details: { [CONSOLE_DETAIL_KEYS.environment]: "sandbox" } } : {}) };
 
   try {
     const db = forOrg(orgId, deps.db);
@@ -83,7 +88,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     };
 
     // The free pilot's hard stop comes first: once it is stopped, no call runs for any agent.
-    const stop = await pilotGate(deps, orgId);
+    const stop = sandbox ? undefined : await pilotGate(deps, orgId);
     if (stop) return refuse(stop.ruleId, stop.reason);
     if (agent.status === "paused") return refuse("agent-paused", "This agent is paused. Every action is refused until someone resumes it.");
 
