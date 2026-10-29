@@ -261,6 +261,20 @@ Suggestions are learned from approvals, so they are a way for history to change 
 | **T** | Two operators apply or roll back at once | Apply and rollback run in one transaction under a Postgres advisory lock, with status-conditioned updates | `apps/gate/src/updates.ts` |
 | **S** | A usage or chain-head statement handed to Elan1 is forged or edited | Signed with the organisation's own key over the SHA-256 of the canonical statement (like checkpoints); it verifies with `@gate/core` alone against the org's public keys, including after a key rotation; each one is a `statement.signed` receipt | `gate/updates.test.ts` "signed statements" |
 
+### The console driving the guard (guardsync)
+
+The approved console's documents hold the governance configuration (agents, keys, rulebooks, tools and tags, approver groups, the stop). After each console operation saves, and before its transaction commits, the web app sends that configuration to the gate (`POST /internal/orgs/:org/console-sync`, signed like every internal route) and the gate applies it to its own tables by the console's ids. What the guard refuses is refused in the console too: the operation's transaction rolls back.
+
+| | Threat | Mitigation | Tested in |
+|---|---|---|---|
+| **S** | A console-issued key is stolen from the console's store | The secret goes only to the person who issued it, in the operation's result; the document keeps a 12-character prefix and the gate a SHA-256 of it. The web app sends the hash, never the secret, and only for a key that is new in that operation and whose prefix the secret starts with | `web/guardsync.guard.ts` "issuing a sandbox key…"; `core/console-sync.test.ts` "attaches the secret's hash only…" |
+| **T** | The console's rules are signed as something looser than they say | The translator (`packages/core/src/console-rules.ts`) refuses, with a reason, anything the engine cannot say the same way (a `fields_include` check, a recipient domain on another field, a missing or empty approver group, bad durations); the gate's own publish checks (high-risk ask rules, chat approval) still run. A version the operation published that cannot be applied refuses the publish; any other version the guard cannot apply leaves the agent with no rulebook, so every call is refused | `core/console-rules.test.ts` (unit and property against the console's evaluator); `gate/console-sync.test.ts` "publishing a new version…"; `web/guardsync.guard.ts` "a version the guard cannot express…" |
+| **E** | A console decision lets someone the guard would not accept decide a held call | The gate calls `resolveApproval`, which checks a real active owner, admin or approver membership. Who may decide comes from the console's groups (re-routes and escalations included); an owner deciding outside the group counts only when the gate sees an owner | `gate/console-sync.test.ts` "an owner deciding outside the group…" |
+| **E** | A sync resumes an agent the guard paused itself (an auto-pause) | A pause always applies; a resume only when the console resumed that agent in the same operation | `gate/console-sync.test.ts` "pausing an agent refuses its next call…" |
+| **E** | A console agent reaches the built-in Gmail and Zoho Books tools | For agents the console made, the guard's registry and `tools/list` hold the console's tools only; anything else is unknown and refused | `web/guardsync.guard.ts` "an MCP call with it…" |
+| **I** | One organisation's message touches another's rows | The route works on its `:org` through `forOrg`; console ids are unique per organisation; a key hash already in use anywhere is refused | `gate/console-sync.test.ts` "organisations stay apart"; `web/guardsync.guard.ts` "organisations stay apart" |
+| **D** | The gate writing a held call into the console document deadlocks with a console operation | It takes the console's lock with `pg_try_advisory_xact_lock` and retries, holding no connection while it waits | `apps/gate/src/console-approvals.ts` |
+
 ## Configuration safety
 
 - All secrets come from the environment. `.env` is git-ignored; `.env.example` holds **dev-only** sample values so a fresh clone runs.

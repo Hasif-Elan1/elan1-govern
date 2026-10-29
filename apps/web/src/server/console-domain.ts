@@ -3,6 +3,7 @@ import { consoleState, ConsoleStateConflict, membershipsForUser, type ConsoleSql
 import type { OpEntry, SavedDoc } from "@gate/console/server";
 import { HttpError } from "./api";
 import { ChainRetry, ConsoleChain, fixResult, flushChain, importHistory, realHead, replaceStrings, syncDoc, type ChainDoc, type Fixes, type Head } from "./console-chain";
+import { syncAfterOp } from "./console-sync";
 import { log } from "./log";
 
 /*
@@ -285,6 +286,8 @@ async function lockedOnce<T, R>(rt: Runtime, lockOrg: string, fn: () => Promise<
           const version = await consoleState.save(orgId, json, before?.version ?? 0, tx);
           commits.push({ orgId, stored: { version, json }, kind: rt.kinds.get(orgId) ?? "update" });
         }
+        // guardsync: the real guard applies what was just saved, before the commit, so what it refuses is not saved (console-sync.ts)
+        await syncAfterOp({ domain: rt.domain, before: rt.stored, commits, result });
         return result;
       });
       for (const c of commits) rt.stored.set(c.orgId, c.stored);

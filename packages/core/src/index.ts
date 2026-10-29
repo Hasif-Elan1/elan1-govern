@@ -30,3 +30,6 @@ export type { BundleProfile, EvidenceBundle, SealCrypto, SealRecord, VerifyBundl
 export * from "./billing";
 // ── chain ── the console's receipt shape and core's format, both ways (the console's verifier uses it from ./browser)
 export * from "./console-receipt";
+// ── guardsync ── the console's rules as a signed rulebook, and what the console document tells the guard
+export * from "./console-rules";
+export * from "./console-sync";

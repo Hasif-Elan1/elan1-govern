@@ -61,6 +61,13 @@ export const QuotaSchema = z
     max_count: z.number().int().positive().optional(),
     max_sum: z.object({ field: fieldName, value: z.number().finite().positive() }).strict().optional(),
     approver: slug.optional(),
+    /** Over the limit a person decides (ask, the default) or the call is refused (refuse, which takes no approver). */
+    on_breach: z.enum(["ask", "refuse"]).optional(),
+    /**
+     * A limit on one allow rule (as the console sets one): it counts the calls this rule allowed for this agent, and
+     * applies only when this rule decides. Without it a quota counts every completed call of its tool or tag.
+     */
+    rule: slug.optional(),
   })
   .strict();
 export type Quota = z.infer<typeof QuotaSchema>;
@@ -115,6 +122,8 @@ function makeSchema(registry: ToolRegistry) {
         if (q.tool !== undefined && !registry.get(q.tool)) at(`unknown tool "${q.tool}"`);
         if (q.max_count === undefined && q.max_sum === undefined) at("a quota needs max_count or max_sum");
         if (q.approver && !rb.approvers[q.approver]) at(`approver group "${q.approver}" is not defined`);
+        if (q.approver && q.on_breach === "refuse") at("a quota that refuses over its limit takes no approver");
+        if (q.rule !== undefined && !rb.rules.some((r) => r.id === q.rule && r.decide === "allow")) at(`quota rule "${q.rule}" is not an allow rule in this rulebook`);
       });
     });
 }

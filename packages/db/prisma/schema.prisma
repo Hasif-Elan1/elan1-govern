@@ -136,8 +136,11 @@ model Agent {
   createdAt        DateTime    @default(now())
   apiKeys          ApiKey[]
   rulebooks        Rulebook[]
+  // ── guardsync ── the console agent this row mirrors (ag_invoice …); null for agents made outside the console
+  consoleId        String?
 
   @@unique([orgId, slug])
+  @@unique([orgId, consoleId])
 }
 
 model ApiKey {
@@ -151,8 +154,14 @@ model ApiKey {
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
   revokedAt  DateTime?
+  // ── guardsync ── production (gk_) or sandbox (sk_sbx_); an expiry (a console key's lifetime or rotation
+  // grace) after which it no longer authenticates; the console key id (key_…) for keys issued in the console
+  environment String    @default("production")
+  expiresAt   DateTime?
+  consoleId   String?
 
   @@index([orgId])
+  @@unique([orgId, consoleId])
 }
 
 model Rulebook {
@@ -165,6 +174,10 @@ model Rulebook {
   hash       String
   signedBy   String
   createdAt  DateTime @default(now())
+  // ── guardsync ── for a version published from the console: the console rulebook (rb_invoice …) and the
+  // console version's hash (its version number is `version`)
+  consoleId   String?
+  consoleHash String?
 
   @@unique([agentId, version])
   @@index([orgId])
@@ -366,8 +379,11 @@ model UpstreamServer {
   error         String?
   createdAt     DateTime       @default(now())
   tools         UpstreamTool[]
+  // ── guardsync ── "<console connector id>/<slug>" for the servers the console's connectors become
+  consoleId     String?
 
   @@unique([orgId, slug])
+  @@unique([orgId, consoleId])
 }
 
 model UpstreamTool {
@@ -1009,4 +1025,23 @@ model ConsoleState {
   doc       Json     @db.Json
   version   Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+// ── guardsync ──
+// One of the console's approver groups (People and roles › Approver groups), as the guard routes a held call:
+// a rule's `approver` is the group's slug, and the people told and allowed to decide are its members now
+// (not as they were when the rulebook was signed). Rewritten from the console document on every sync;
+// `emails` holds only members who can decide in Elan1 Govern (an active owner, admin or approver).
+model ConsoleApproverGroup {
+  id        String   @id @default(cuid())
+  orgId     String
+  consoleId String // the console group id (finance, owners …)
+  slug      String // the approver name in the signed rulebook
+  name      String // as the console shows it (Finance)
+  memberIds String[]
+  emails    String[]
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, consoleId])
+  @@unique([orgId, slug])
 }

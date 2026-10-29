@@ -4,9 +4,9 @@ import { prisma as defaultClient } from "./client";
 // The few queries that must run before the org is known. Each one starts from a
 // secret (a hashed key or token) or a signed-in user, never from user-supplied ids.
 
-/** Agent API key -> key, agent and org. Revoked keys never match. */
+/** Agent API key -> key, agent and org. Revoked and expired keys never match. */
 export function findApiKeyByHash(keyHash: string, client: PrismaClient = defaultClient) {
-  return client.apiKey.findFirst({ where: { keyHash, revokedAt: null }, include: { agent: true } });
+  return client.apiKey.findFirst({ where: { keyHash, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, include: { agent: true } });
 }
 
 export function findInviteByTokenHash(tokenHash: string, client: PrismaClient = defaultClient) {

@@ -4,6 +4,7 @@ import { dueApprovals, forOrg } from "@gate/db";
 import { background, chain } from "./chain";
 import type { DecisionChannel } from "./chat/common";
 import { chatResolved, notifyChat } from "./chat/outbox";
+import { mirrorApproval } from "./console-approvals";
 import { publicError, resolveConnectorFor, type Resolved } from "./connectors";
 import { registryFor } from "./registry";
 import { raiseAlert, type Deps } from "./deps";
@@ -91,6 +92,8 @@ export async function holdForApproval(
   }
   // Slack and WhatsApp are queued in the background: the guard never waits for them.
   background(deps, notifyChat(deps, orgId, id));
+  // guardsync: the console's Approvals screens show it
+  background(deps, mirrorApproval(deps, orgId, id));
 
   return { status: "pending", ruleId: d.ruleId, reason: d.reason, seq: receipt.seq, approvalId: id, expiresAt: expiresAt.toISOString(), approvalUrl: approvalUrl(deps, id) };
 }
@@ -203,6 +206,7 @@ export async function resolveApproval(
     await raiseAlert(deps, "receipt-write-failed", `Approval ${approvalId} was ${input.result} (${outcome.status}) but its receipt could not be written: ${(e as Error).message}`, orgId);
   }
   background(deps, chatResolved(deps, orgId, approvalId));
+  background(deps, mirrorApproval(deps, orgId, approvalId));
   return { ok: true, status: input.result, outcome, selfApproval };
 }
 
@@ -224,7 +228,10 @@ export async function expireApproval(deps: Deps, orgId: string, approvalId: stri
       return true;
     },
   );
-  if (expired) background(deps, chatResolved(deps, orgId, approvalId));
+  if (expired) {
+    background(deps, chatResolved(deps, orgId, approvalId));
+    background(deps, mirrorApproval(deps, orgId, approvalId));
+  }
   return expired;
 }
 
