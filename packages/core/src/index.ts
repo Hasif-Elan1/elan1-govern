@@ -28,3 +28,6 @@ export {
 } from "./seal";
 export type { BundleProfile, EvidenceBundle, SealCrypto, SealRecord, VerifyBundleOptions, VerifyBundleResult, VerifyCode } from "./seal";
 export * from "./billing";
+// ── guardsync ── the console's rules as a signed rulebook, and what the console document tells the guard
+export * from "./console-rules";
+export * from "./console-sync";

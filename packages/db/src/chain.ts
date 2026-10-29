@@ -123,9 +123,24 @@ export { startOfDayIn };
  * How much of a quota is used: successful calls of these tools since `since`,
  * and the sum of one numeric summary field. One parameterised query; scoped by orgId.
  */
-export async function quotaUsage(orgId: string, tools: string[], since: Date, field?: string, client: PrismaClient = defaultClient): Promise<{ count: number; sum: number }> {
+/**
+ * What a quota has used since `since`: completed calls of these tools, or, for a quota on one rule (`rule`), the
+ * calls that rule allowed for that agent (as the console counts them).
+ */
+export async function quotaUsage(orgId: string, tools: string[], since: Date, field?: string, client: PrismaClient = defaultClient, rule?: { agent: string; ruleId: string }): Promise<{ count: number; sum: number }> {
   if (!tools.length) return { count: 0, sum: 0 };
   const f = field ?? "";
+  if (rule) {
+    const rows = await client.$queryRaw<{ count: number; sum: number }[]>`
+      SELECT COUNT(*)::int AS count,
+             COALESCE(SUM(CASE WHEN (body->'args_summary'->>${f}) ~ '^-?[0-9]+([.][0-9]+)?$'
+                               THEN (body->'args_summary'->>${f})::numeric ELSE 0 END), 0)::float AS sum
+      FROM "Receipt"
+      WHERE "orgId" = ${orgId} AND tool = ANY(${tools}) AND kind = 'decision' AND decision = 'allow'
+        AND agent = ${rule.agent} AND body->>'rule_id' = ${rule.ruleId}
+        AND ts >= (${since}::timestamptz AT TIME ZONE 'UTC')`;
+    return rows[0] ?? { count: 0, sum: 0 };
+  }
   const rows = await client.$queryRaw<{ count: number; sum: number }[]>`
     SELECT COUNT(*)::int AS count,
            COALESCE(SUM(CASE WHEN (body->'args_summary'->>${f}) ~ '^-?[0-9]+([.][0-9]+)?$'

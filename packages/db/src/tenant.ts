@@ -50,6 +50,8 @@ export const TENANT_MODELS = [
   "DiscountRequest",
   "Dispute",
   "ReconciliationRun",
+  // ── guardsync ──
+  "ConsoleApproverGroup",
 ] as const;
 
 const WHERE_OPS = new Set([

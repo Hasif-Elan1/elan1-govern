@@ -14,6 +14,7 @@ import {
 } from "@gate/core";
 import { forOrg, quotaUsage, startOfDayIn } from "@gate/db";
 import { holdForApproval } from "./approvals";
+import { consoleScopedRegistry, routeToConsoleGroup } from "./console-approvals";
 import { pilotGate } from "./billing";
 import { record } from "./chain";
 import { publicError, resolveConnectorFor } from "./connectors";
@@ -42,7 +43,7 @@ export function usesList(rb: Rulebook, tool: string, list: string) {
 }
 
 /** Current usage of every quota that applies to this tool, in each quota's own window. */
-async function usageFor(deps: Deps, orgId: string, rb: Rulebook, tool: string, registry: ToolRegistry): Promise<Record<string, QuotaUsage>> {
+async function usageFor(deps: Deps, orgId: string, rb: Rulebook, tool: string, registry: ToolRegistry, agentSlug: string): Promise<Record<string, QuotaUsage>> {
   const quotas = quotasFor(rb, tool, registry);
   if (!quotas.length) return {};
   const org = await forOrg(orgId, deps.db).org.findFirstOrThrow({ select: { timezone: true } });
@@ -50,7 +51,7 @@ async function usageFor(deps: Deps, orgId: string, rb: Rulebook, tool: string, r
   for (const q of quotas) {
     const tools = q.tool !== undefined ? [q.tool] : registry.list().filter((t) => q.tag && t.tags.includes(q.tag)).map((t) => t.name);
     const since = q.window === "day" ? startOfDayIn(org.timezone) : new Date(Date.now() - durationMs(q.window));
-    out[q.id] = await quotaUsage(orgId, tools, since, q.max_sum?.field, deps.db);
+    out[q.id] = await quotaUsage(orgId, tools, since, q.max_sum?.field, deps.db, q.rule ? { agent: agentSlug, ruleId: q.rule } : undefined);
   }
   return out;
 }
@@ -88,7 +89,7 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
 
     const rbRow = agent.activeRulebookId ? await db.rulebook.findFirst({ where: { id: agent.activeRulebookId } }) : null;
     if (!rbRow) return refuse("no-rulebook", "This agent has no published rulebook, so nothing is allowed.");
-    const registry = await registryFor(deps, orgId);
+    const registry = consoleScopedRegistry(agent, await registryFor(deps, orgId));
     const loaded = loadSignedRulebook(rbRow.yaml, key.publicKeyPem, registry);
     if (!loaded.ok) {
       await raiseAlert(deps, "rulebook-invalid", `Agent ${agent.slug}: ${loaded.reason}`, orgId);
@@ -105,10 +106,11 @@ export async function guard(deps: Deps, who: AgentIdentity, tool: string, rawArg
     const args = v.args;
 
     const conn = await resolveConnectorFor(deps, orgId, spec);
-    const ctx: DecideContext = { registry, usage: await usageFor(deps, orgId, rb, tool, registry) };
+    const ctx: DecideContext = { registry, usage: await usageFor(deps, orgId, rb, tool, registry, agent.slug) };
     if (conn.ok && usesList(rb, tool, "vendor_domains")) ctx.lists = { vendor_domains: await conn.connector.vendorDomains(conn.ctx) };
 
-    const d = decide(rb, tool, args, ctx);
+    // a held call goes to the console's approver group as it is now (guardsync)
+    const d = await routeToConsoleGroup(deps, orgId, decide(rb, tool, args, ctx));
     const display = conn.ok ? await conn.connector.describe(tool, args, conn.ctx).catch(() => ({})) : {};
     const common: ReceiptInput = { ...base, args_summary: { ...d.argsSummary, ...display }, rulebook, rule_id: d.ruleId, reason: d.reason };
     // The replay store: the validated arguments, encrypted, so a draft rulebook can be tested on this call later.

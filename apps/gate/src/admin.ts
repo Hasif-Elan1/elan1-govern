@@ -10,6 +10,7 @@ import {
   rulebookHash,
   rulebookToYaml,
   type ReceiptInput,
+  type ToolRegistry,
 } from "@gate/core";
 import { packById, starterRulebook } from "@gate/core/frameworks";
 import { addMembership, createOrgRow, forOrg, type RiskTier } from "@gate/db";
@@ -82,8 +83,20 @@ export async function setAgentStatus(deps: Deps, orgId: string, agentId: string,
 
 export type PublishResult = { ok: true; version: number; hash: string; yaml: string } | { ok: false; errors: string[] };
 
-export async function publishRulebook(deps: Deps, orgId: string, agentId: string, yaml: string, actor: string): Promise<PublishResult> {
-  const registry = await registryFor(deps, orgId);
+/**
+ * `opts` is for rulebooks published from the console (console-sync.ts): the version is the console's own number
+ * (it must be new for the agent), the registry also knows the agent's switched-off console tools, and the row
+ * records which console rulebook and version hash it is.
+ */
+export async function publishRulebook(
+  deps: Deps,
+  orgId: string,
+  agentId: string,
+  yaml: string,
+  actor: string,
+  opts: { version?: number; registry?: ToolRegistry; console?: { id: string; hash: string } } = {},
+): Promise<PublishResult> {
+  const registry = opts.registry ?? (await registryFor(deps, orgId));
   const parsed = parseRulebookYaml(yaml, registry);
   if (!parsed.ok) return parsed;
   const db = forOrg(orgId, deps.db);
@@ -91,14 +104,17 @@ export async function publishRulebook(deps: Deps, orgId: string, agentId: string
   if (!agent) return { ok: false, errors: ["No such agent."] };
   return chain(deps, orgId, async (append, tx, key) => {
       const latest = await tx.rulebook.findFirst({ where: { agentId }, orderBy: { version: "desc" }, select: { version: true } });
+      if (opts.version !== undefined && (await tx.rulebook.findFirst({ where: { agentId, version: opts.version }, select: { id: true } }))) {
+        return { ok: false as const, errors: [`Version ${opts.version} of this rulebook is already signed.`] };
+      }
       const { signature: _old, ...rest } = parsed.rulebook;
-      const rb = { ...rest, version: (latest?.version ?? 0) + 1, agent: agent.slug };
+      const rb = { ...rest, version: opts.version ?? (latest?.version ?? 0) + 1, agent: agent.slug };
       const problems = publishProblems(rb, agent.riskTier, registry);
       if (problems.length) return { ok: false as const, errors: problems };
       const signed = await signRulebookWith(rb, key);
       const text = rulebookToYaml(signed);
       const hash = rulebookHash(signed);
-      const row = await tx.rulebook.create({ data: { orgId, agentId, version: rb.version, yaml: text, hash, signedBy: actor } });
+      const row = await tx.rulebook.create({ data: { orgId, agentId, version: rb.version, yaml: text, hash, signedBy: actor, ...(opts.console ? { consoleId: opts.console.id, consoleHash: opts.console.hash } : {}) } });
       await tx.agent.update({ where: { id: agentId }, data: { activeRulebookId: row.id } });
       await append({ kind: "admin", actor, action: "rulebook.signed", agent: agent.slug, rulebook: { version: rb.version, hash }, details: { rules: rb.rules.length } });
       return { ok: true as const, version: rb.version, hash, yaml: text };

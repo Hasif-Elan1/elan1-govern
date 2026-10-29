@@ -158,8 +158,9 @@ export function decide(rb: Rulebook, tool: string, args: Args, ctx: DecideContex
   };
 
   if (winner.decide === "allow") {
-    const breach = quotaBreach(rb, tool, args, ctx, registry);
+    const breach = quotaBreach(rb, tool, args, ctx, registry, winner.id);
     if (breach) {
+      if (breach.quota.on_breach === "refuse") return { ...result, decision: "refuse", quotaId: breach.quota.id, reason: `${breach.message} The rulebook refuses calls over this limit.` };
       const group = breach.quota.approver ?? Object.keys(rb.approvers)[0];
       if (!group) return { ...result, decision: "refuse", quotaId: breach.quota.id, reason: `${breach.message} No approvers are set, so it is refused.` };
       return withApprovers({ ...result, decision: "ask", quotaId: breach.quota.id, reason: `${breach.message} A person needs to approve it.` }, rb, group, DEFAULT_ASK_EXPIRY);
@@ -182,15 +183,18 @@ function usageOf(ctx: DecideContext, q: Quota): QuotaUsage {
   return u ?? { count: 0, sum: 0 };
 }
 
-function quotaBreach(rb: Rulebook, tool: string, args: Args, ctx: DecideContext, registry: ToolRegistry): { quota: Quota; message: string } | null {
-  for (const q of quotasFor(rb, tool, registry)) {
+function quotaBreach(rb: Rulebook, tool: string, args: Args, ctx: DecideContext, registry: ToolRegistry, ruleId: string): { quota: Quota; message: string } | null {
+  // a quota on one rule applies only when that rule decides
+  for (const q of quotasFor(rb, tool, registry).filter((x) => x.rule === undefined || x.rule === ruleId)) {
     const used = usageOf(ctx, q);
     if (q.max_count !== undefined && used.count + 1 > q.max_count) {
       return { quota: q, message: `This would go over the limit of ${q.max_count} per ${q.window === "day" ? "day" : q.window} ("${q.id}").` };
     }
     if (q.max_sum) {
-      const value = args[q.max_sum.field];
-      if (typeof value === "number" && used.sum + value > q.max_sum.value) {
+      // a call with no amount adds nothing; a quota on one rule (the console's) still holds it once the sum is past the limit
+      const raw = args[q.max_sum.field];
+      const value = typeof raw === "number" ? raw : q.rule !== undefined ? 0 : undefined;
+      if (value !== undefined && used.sum + value > q.max_sum.value) {
         return { quota: q, message: q.id === "daily-payments" ? "This would take today's payments past the daily limit." : `This would go over the "${q.id}" limit.` };
       }
     }

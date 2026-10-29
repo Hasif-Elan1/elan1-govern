@@ -62,6 +62,8 @@ All 5 steps behaved as the rulebook says.
 
 **Step 3 waits for you.** Open the link (or the email in Mailpit), check the vendor, the bill and the invoice, and press **Approve**. Elan1 Govern runs the payment and the demo finishes. It works the same on a phone:
 
+**The console's demo organisation.** `pnpm demo --console` does the same for the approved console's Demo Traders (seeded by `pnpm db:seed` with `DEMO_CONSOLE_PASSWORD` set): it issues a sandbox key to `invoice-bot` with the console's own operation, and that agent's calls are decided by the console's published rulebook (allowed by `read-ledger` and `pay-small`, held for Finance by `pay-large`, refused by `no-deletes` and by default). The held payment appears on the console's Approvals screen; approve it there as Venkat Iyer. Add `--no-wait` to not wait for the decision.
+
 <img src="docs/screenshots/14-approval-phone.png" width="300" alt="Approving on a phone">
 
 Then look around:

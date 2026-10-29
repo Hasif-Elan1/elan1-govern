@@ -146,6 +146,31 @@ describe("quotas", () => {
     const solo = book({ approvers: {}, rules: [{ id: "r", tool: "crm.lookup", decide: "allow" }], quotas: [{ id: "q", tool: "crm.lookup", window: "day", max_count: 1 }] });
     expect(decide(solo, "crm.lookup", {}, ctx({ q: { count: 1, sum: 0 } }))).toMatchObject({ decision: "refuse", quotaId: "q" });
   });
+  it("refuses when breached if the quota says so, even with approvers set", () => {
+    const strict = book({ rules: [{ id: "r", tool: "crm.lookup", decide: "allow" }], quotas: [{ id: "q", tool: "crm.lookup", window: "day", max_count: 1, on_breach: "refuse" }] });
+    expect(decide(strict, "crm.lookup", {}, ctx({ q: { count: 1, sum: 0 } }))).toMatchObject({ decision: "refuse", quotaId: "q", reason: expect.stringMatching(/refuses calls over this limit/) });
+    expect(decide(strict, "crm.lookup", {}, ctx({})).decision).toBe("allow");
+    const r = validateRulebook({ ...base, rules: [], quotas: [{ id: "q", tool: "crm.lookup", window: "day", max_count: 1, on_breach: "refuse", approver: "support-leads" }] }, registry);
+    expect(r.ok ? "" : r.errors.join("\n")).toMatch(/takes no approver/);
+  });
+  it("a quota on one rule applies only when that rule decides, and must name an allow rule", () => {
+    const rb = book({
+      rules: [
+        { id: "small", tool: "crm.issue_refund", when: { amount: { lte: 100 } }, decide: "allow" },
+        { id: "vip", tool: "crm.issue_refund", when: { amount: { gt: 100 } }, decide: "allow" },
+      ],
+      quotas: [{ id: "small-quota", tool: "crm.issue_refund", window: "day", max_count: 2, rule: "small", on_breach: "refuse" }],
+    });
+    const used = ctx({ "small-quota": { count: 2, sum: 0 } });
+    expect(decide(rb, "crm.issue_refund", { order_id: "o", amount: 50 }, used)).toMatchObject({ decision: "refuse", quotaId: "small-quota" });
+    expect(decide(rb, "crm.issue_refund", { order_id: "o", amount: 500 }, used)).toMatchObject({ decision: "allow", ruleId: "vip" });
+    const err = (rule: string) => {
+      const r = validateRulebook({ ...base, rules: [{ id: "a", tool: "crm.lookup", decide: "ask", approver: "support-leads" }], quotas: [{ id: "q", tool: "crm.lookup", window: "day", max_count: 1, rule }] }, registry);
+      return r.ok ? "" : r.errors.join("\n");
+    };
+    expect(err("a")).toMatch(/not an allow rule/);
+    expect(err("nope")).toMatch(/not an allow rule/);
+  });
 });
 
 describe("suggested tags", () => {

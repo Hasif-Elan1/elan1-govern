@@ -130,6 +130,21 @@ describe("quotas and time zones", () => {
     expect(await quotaUsage(org.id, ["crm.issue_refund"], new Date(Date.now() + 60_000), "amount")).toEqual({ count: 0, sum: 0 });
     expect(await quotaUsage(org.id, [], new Date(0))).toEqual({ count: 0, sum: 0 });
   });
+  it("for a quota on one rule, counts the calls that rule allowed for that agent", async () => {
+    const { quotaUsage } = await import("../src");
+    const org = await newOrg();
+    const add = (agent: string, rule_id: string, decision: "allow" | "refuse", amount: number, status: "ok" | "error" = "ok") =>
+      appendReceipt(org.id, keys.privateKeyPem, { kind: "decision", agent, tool: "pay.send", rule_id, decision, args_summary: { amount }, outcome: { status } });
+    await add("bot", "small", "allow", 100);
+    await add("bot", "small", "allow", 40, "error"); // allowed, though it did not complete
+    await add("bot", "small", "refuse", 999, "error"); // over the limit: not counted
+    await add("bot", "large", "allow", 5000);
+    await add("other-bot", "small", "allow", 7);
+    const since = new Date(Date.now() - 60_000);
+    expect(await quotaUsage(org.id, ["pay.send"], since, "amount", undefined, { agent: "bot", ruleId: "small" })).toEqual({ count: 2, sum: 140 });
+    expect(await quotaUsage(org.id, ["pay.send"], since, "amount", undefined, { agent: "other-bot", ruleId: "small" })).toEqual({ count: 1, sum: 7 });
+    expect(await quotaUsage(org.id, ["pay.send"], since, "amount")).toEqual({ count: 3, sum: 5107 });
+  });
 });
 
 describe("compliance", () => {

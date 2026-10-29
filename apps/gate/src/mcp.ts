@@ -2,6 +2,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { isKnownTool, TOOLS, TOOL_ARGS, TOOL_NAMES } from "@gate/core";
+import { forOrg } from "@gate/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { waitForApproval } from "./approvals";
@@ -37,13 +38,17 @@ export const MCP_TOOLS = [
   },
 ];
 
-/** Built-in tools, the org's enabled upstream tools (with the upstream's input schemas), and the status tool. */
-async function listTools(deps: Deps, orgId: string) {
-  const upstream = (await registryFor(deps, orgId))
+/**
+ * Built-in tools, the org's enabled upstream tools (with the upstream's input schemas), and the status tool.
+ * An agent from the console sees the console's tools only (console-approvals.ts consoleScopedRegistry).
+ */
+async function listTools(deps: Deps, who: AgentIdentity) {
+  const upstream = (await registryFor(deps, who.orgId))
     .list()
     .filter((s) => !isKnownTool(s.name))
     .map((s) => ({ name: s.name, description: `${s.description} ${CHECKED}`.trim(), inputSchema: { ...s.inputSchema, type: "object" as const } }));
-  return [...MCP_TOOLS.slice(0, -1), ...upstream, MCP_TOOLS[MCP_TOOLS.length - 1]!];
+  const agent = await forOrg(who.orgId, deps.db).agent.findFirst({ where: { id: who.agentId }, select: { consoleId: true } });
+  return [...(agent?.consoleId ? [] : MCP_TOOLS.slice(0, -1)), ...upstream, MCP_TOOLS[MCP_TOOLS.length - 1]!];
 }
 
 const text = (t: string) => [{ type: "text" as const, text: t }];
@@ -68,7 +73,7 @@ export function toMcpResult(r: GuardResult): CallToolResult {
 
 function buildServer(deps: Deps, who: AgentIdentity) {
   const server = new Server({ name: "gate", version: "0.1.0" }, { capabilities: { tools: {} } });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await listTools(deps, who.orgId) }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await listTools(deps, who) }));
   server.setRequestHandler(CallToolRequestSchema, async (req): Promise<CallToolResult> => {
     const { name, arguments: args } = req.params;
     if (name === STATUS_TOOL) {

@@ -1,6 +1,7 @@
 import { CONNECTOR_LABELS, ConnectorError, type Connector, type ConnectorContext, type ConnectorKind, type ConnectorMode, type OAuthTokens } from "@gate/connectors";
-import { decrypt, encrypt, type ToolSpec } from "@gate/core";
+import { decrypt, encrypt, isKnownTool, type ToolSpec } from "@gate/core";
 import { forOrg } from "@gate/db";
+import { consoleConnectorFor } from "./console-approvals";
 import type { Deps } from "./deps";
 import { upstreamConnector, upstreamFor } from "./upstream";
 
@@ -37,10 +38,13 @@ export function publicError(e: unknown): string {
   return e instanceof ConnectorError ? e.message : "the connector did not respond as expected";
 }
 
-/** The connector behind a tool from the registry. */
+/**
+ * The connector behind a tool from the registry: the built-in Gmail and Zoho Books connectors for their own
+ * tools, otherwise the MCP server named by the tool's prefix (a console connector may be answered by the guard).
+ */
 export async function resolveConnectorFor(deps: Deps, orgId: string, spec: ToolSpec): Promise<Resolved> {
-  if (spec.connector === "gmail" || spec.connector === "zoho") return resolveConnector(deps, orgId, spec.connector);
+  if (isKnownTool(spec.name) && (spec.connector === "gmail" || spec.connector === "zoho")) return resolveConnector(deps, orgId, spec.connector);
   const server = await upstreamFor(deps, orgId, spec.connector);
   if (!server) return { ok: false, reason: `No connector is set up for ${spec.connector}` };
-  return { ok: true, connector: upstreamConnector(deps, server), ctx: { orgId } };
+  return { ok: true, connector: consoleConnectorFor(deps, server) ?? upstreamConnector(deps, server), ctx: { orgId } };
 }
