@@ -119,6 +119,16 @@ describe("the rewrite", () => {
     expect(calls.map((c) => c.op.name)).toEqual(["m.alpha", "m.token"]);
   });
 
+  it("wraps an imported function exported again under its own name (no clash with the import, no recursion)", async () => {
+    const lib = join(dir, "lib2.ts");
+    writeFileSync(lib, "export function factor(month) { return month === '2029-04' ? 1.04 : 1; }\n");
+    const code = `import { factor } from ${JSON.stringify(lib)};\nexport { factor };\nexport function price(orgId) { return 100 * factor('2029-04'); }\n`;
+    const { mod } = await load(code, fns(["factor", op("billing.factor", false, null)], ["price", op("billing.price")]));
+    expect((mod.factor as (m: string) => number)("2029-04")).toBe(1.04);
+    expect((mod.price as (o: string) => number)("org_a")).toBe(104);
+    expect(calls.map((c) => c.op.name)).toEqual(["billing.factor", "billing.price"]);
+  });
+
   it("wraps the methods of an operation object, copying a frozen namespace it holds", async () => {
     const code = [
       "const ns = Object.freeze({ __proto__: null, note(token) { return 'noted ' + token; }, keep: 1 });",

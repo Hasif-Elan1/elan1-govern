@@ -72,6 +72,20 @@ function liveOperations(): Plugin {
   };
 }
 
+/**
+ * Development: a request the console makes to this dev server (Origin = the address it was sent to) reaches the API
+ * as one from the API's own origin, which is what it is in production. Any other Origin (another site) is passed on
+ * unchanged, so the API's same-origin check still refuses it.
+ */
+function sameOriginThroughProxy(proxy: { on(event: 'proxyReq', fn: (p: { setHeader(k: string, v: string): void }, req: { headers: Record<string, string | string[] | undefined> }) => void): void }) {
+  const apiOrigin = new URL(API).origin;
+  proxy.on('proxyReq', (p, req) => {
+    const origin = req.headers.origin;
+    const host = req.headers.host;
+    if (typeof origin === 'string' && typeof host === 'string' && (origin === `http://${host}` || origin === `https://${host}`)) p.setHeader('origin', apiOrigin);
+  });
+}
+
 export default defineConfig(({ command }) => ({
   // JSX is compiled by Vite's built-in esbuild (tsconfig "jsx": "react-jsx"); @vitejs/plugin-react pulls in
   // Babel, whose semver@6 fails the workspace trust policy. Dev edits do a full reload instead of Fast Refresh.
@@ -88,7 +102,7 @@ export default defineConfig(({ command }) => ({
     strictPort: false,
     // same origin in development too: the session cookie, CSRF token and Origin check work as in production.
     // Server-Sent Events (/api/console/stream) pass through unbuffered.
-    ...(LIVE ? { proxy: { '/api': { target: API, changeOrigin: false, ws: false } } } : {}),
+    ...(LIVE ? { proxy: { '/api': { target: API, changeOrigin: false, ws: false, configure: sameOriginThroughProxy } } } : {}),
   },
   build: {
     rollupOptions: {

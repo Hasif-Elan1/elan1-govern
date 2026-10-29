@@ -123,6 +123,19 @@ test("a change is saved, survives a reload, reaches another person live, and is 
   for (const p of [rahul, ananya, meera]) await p.context.close();
 });
 
+test("an auditor switches between client organisations, and the server's session follows", async ({ browser }) => {
+  const kavita = await signIn(browser, "kavita.desai@desaico.in");
+  await kavita.page.getByRole("button", { name: "Switch organisation" }).click();
+  await kavita.page.getByRole("menuitem", { name: /Northbank Industrial Ltd/ }).click();
+  await expect(kavita.page.getByRole("button", { name: "Switch organisation" })).toContainText("Northbank Industrial Ltd");
+  await expect.poll(async () => ((await (await kavita.page.request.get("/api/me")).json()) as { activeOrgId: string }).activeOrgId).toBe("org_northbank");
+  // a reload opens the organisation the session now has
+  await kavita.page.reload();
+  await expect(kavita.page.getByRole("button", { name: "Switch organisation" })).toContainText("Northbank Industrial Ltd");
+  expect(kavita.problems).toEqual([]);
+  await kavita.context.close();
+});
+
 test("signing out ends the server's session", async ({ browser }) => {
   const meera = await signIn(browser, MEERA);
   await meera.page.getByRole("button", { name: "Account menu" }).click();

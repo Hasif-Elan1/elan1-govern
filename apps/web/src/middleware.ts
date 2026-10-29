@@ -56,7 +56,9 @@ export function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("content-security-policy", csp);
-  const page = !legacy() && (req.method === "GET" || req.method === "HEAD") && !NOT_A_PAGE.some((r) => r.test(pathname));
+  // (the address as sent, too: Next.js reads /_next/data/… addresses as the page they are data for)
+  const raw = new URL(req.url).pathname;
+  const page = !legacy() && (req.method === "GET" || req.method === "HEAD") && !NOT_A_PAGE.some((r) => r.test(pathname) || r.test(raw));
   const res = page
     ? NextResponse.rewrite(new URL(CONSOLE_SHELL, req.url), { request: { headers: requestHeaders } })
     : NextResponse.next({ request: { headers: requestHeaders } });

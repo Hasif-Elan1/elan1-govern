@@ -98,6 +98,8 @@ describe("GET /api/me", () => {
       activeOrgId: a.id,
       signedInAt: session.createdAt.toISOString(),
       lastAuthAt: session.lastAuthAt.toISOString(),
+      // the session's CSRF token (the readable gate_csrf cookie's value), for the console's writes
+      csrfToken: session.csrfToken,
     });
     expect(Date.parse(body.user.lastSignIn)).toBeGreaterThan(Date.now() - 60_000);
     expect(res.headers.get("cache-control")).toBe("no-store");

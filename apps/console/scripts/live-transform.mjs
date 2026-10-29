@@ -104,8 +104,10 @@ function applyEdits(code, edits) {
 }
 
 const lit = (v) => JSON.stringify(v);
-const wrapper = (exported, impl, op) =>
-  `export function ${exported}(...__args) { return __live.call(${lit(op.name)}, ${impl}, __args, this, ${op.async ? 1 : 0}, ${op.org === null ? 'null' : op.org}); }`;
+const call = (impl, op) => `return __live.call(${lit(op.name)}, ${impl}, __args, this, ${op.async ? 1 : 0}, ${op.org === null ? 'null' : op.org});`;
+const wrapper = (exported, impl, op) => `export function ${exported}(...__args) { ${call(impl, op)} }`;
+/** For `export { local as name }`: the local binding stays (it may be an import of the same name); the export moves. */
+const listWrapper = (exported, impl, op) => `function ${exported}__live(...__args) { ${call(impl, op)} }\nexport { ${exported}__live as ${exported} };`;
 
 /**
  * Rewrite one operation module. `code` is the module's JavaScript or TypeScript; `plan` its entry from
@@ -166,9 +168,9 @@ export function transformModule(code, plan, file = 'module.ts') {
         done.add(exported);
         if (from) {
           imports.push(`import { ${local} as ${exported}__impl } from ${lit(from)};`);
-          appended.push(wrapper(exported, `${exported}__impl`, op));
+          appended.push(listWrapper(exported, `${exported}__impl`, op));
         } else {
-          appended.push(wrapper(exported, local, op));
+          appended.push(listWrapper(exported, local, op));
         }
       }
       if (changed) {
