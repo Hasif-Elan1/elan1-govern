@@ -3,6 +3,7 @@ import { decrypt, encrypt, randomToken } from "@gate/core";
 import { addMembership, findSsoForDomain, forOrg, prisma } from "@gate/db";
 import * as oidc from "openid-client";
 import { env } from "./env";
+import { deactivatedByDirectory } from "./identity";
 
 // OIDC single sign-on (Okta, Microsoft Entra ID, Google Workspace, Auth0, Keycloak…).
 // Authorization code flow with PKCE, state and nonce. The transient values travel in an
@@ -93,6 +94,7 @@ export async function finishSso(currentUrl: URL, cookie: string | undefined): Pr
   // SSO users get an unusable password: argon2 can never verify it.
   const user = (await prisma.user.findUnique({ where: { email } })) ?? (await prisma.user.create({ data: { email, name, passwordHash: `!sso:${randomToken()}` } }));
   const member = await forOrg(conn.orgId).membership.findFirst({ where: { userId: user.id } });
+  if (!member && (await deactivatedByDirectory(conn.orgId, user.id))) throw new SsoError("Your directory has deactivated your account in this organisation. Ask your admin.");
   if (!member) await addMembership({ orgId: conn.orgId, userId: user.id, role: conn.defaultRole });
   await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
   return { userId: user.id, orgId: conn.orgId, next: flow.next };

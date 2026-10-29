@@ -80,6 +80,11 @@ const API: RouteCase[] = [
   { method: "POST", path: "/api/emergency-stop", body: { confirm: "stop" }, allowed: ADMINS },
   { method: "POST", path: "/api/emergency-stop/resume", body: {}, allowed: ADMINS },
   { method: "POST", path: "/api/incidents/none/report", allowed: ["owner", "admin", "auditor"] },
+  // SAML and SCIM: owners and admins read; only owners change them (an IdP or a SCIM token can sign anyone in or out).
+  { method: "GET", path: "/api/settings/saml", allowed: ADMINS },
+  { method: "PUT", path: "/api/settings/saml", body: {}, allowed: ["owner"] },
+  { method: "POST", path: "/api/settings/saml", body: {}, allowed: ["owner"] },
+  { method: "POST", path: "/api/settings/scim/token", body: { nope: 1 }, allowed: ["owner"] },
 ];
 
 test("authz matrix: API routes", async () => {

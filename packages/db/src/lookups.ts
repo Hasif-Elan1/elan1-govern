@@ -59,9 +59,10 @@ export function findSsoForDomain(domain: string, client: PrismaClient = defaultC
   return client.ssoConnection.findFirst({ where: { verifiedDomains: { has: domain.toLowerCase() }, enabled: true } });
 }
 
-/** A domain belongs to the one organisation that verified it (unverified claims don't block anyone). */
-export function domainClaimedElsewhere(domain: string, orgId: string, client: PrismaClient = defaultClient) {
-  return client.ssoConnection.findFirst({ where: { verifiedDomains: { has: domain.toLowerCase() }, orgId: { not: orgId } }, select: { id: true } });
+/** A domain belongs to the one organisation that verified it, for OIDC or SAML (unverified claims don't block anyone). */
+export async function domainClaimedElsewhere(domain: string, orgId: string, client: PrismaClient = defaultClient) {
+  const where = { verifiedDomains: { has: domain.toLowerCase() }, orgId: { not: orgId } };
+  return (await client.ssoConnection.findFirst({ where, select: { id: true } })) ?? (await client.samlConnection.findFirst({ where, select: { id: true } }));
 }
 
 /**

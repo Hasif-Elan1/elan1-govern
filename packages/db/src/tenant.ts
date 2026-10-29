@@ -34,6 +34,10 @@ export const TENANT_MODELS = [
   "KeySuccessor",
   // ── tsa ──
   "AnchorBatch",
+  "SamlConnection",
+  "SamlReplay",
+  "ScimConnection",
+  "ScimUser",
 ] as const;
 
 const WHERE_OPS = new Set([
