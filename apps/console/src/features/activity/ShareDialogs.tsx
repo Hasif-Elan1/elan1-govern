@@ -11,7 +11,8 @@ import { useOrgId, useOrgLevel, useUser } from '@/store/session';
 import { useQuery } from '@/hooks/useQuery';
 import { Banner, Button, Checkbox, CopyButton, Dialog, EmptyState, Field, Input, Select, Skeleton, StatusChip, toast } from '@/components/ui';
 import { downloadText } from './shared';
-import { issueRedactedShare, type RedactedShare } from './redaction';
+import type { RedactedShare } from './redaction';
+import * as consoleOps from '@/features/console/ops';
 import { CheckList } from './VerifyResult';
 import { FirstIssueWarning, useFirstIssue } from '@/features/counterparties/shared';
 
@@ -72,7 +73,7 @@ export function RedactedShareDialog({ open, onClose, r, related }: { open: boole
         setDone({ pkg });
         toast.ok('Disclosure created', `Revealing ${pkg.revealed.length} of ${pkg.committed.length} committed fields. Recorded on the chain.`);
       } else {
-        const share = issueRedactedShare(orgId, r, picked, audience, user.id, related);
+        const share = await consoleOps.issueRedactedShare(orgId, { seq: r.seq, fields: picked, audience, relatedSeq: related?.seq }, user.id);
         setDone({ share, pkg: share.pkg });
         toast.ok('Redacted copy signed', `Revealing ${share.revealed} of ${share.committed} committed fields. Recorded as ${seqLabel(share.seq)}.`);
       }

@@ -139,6 +139,10 @@ let activeOrgId: string | undefined;
 export function setActiveOrg(orgId: string | undefined) {
   activeOrgId = orgId;
 }
+/** The organisation the console has open (the server sets it to the operation's organisation). */
+export function activeOrg(): string | undefined {
+  return activeOrgId;
+}
 setToolTagResolver((tool) => {
   const d = activeOrgId ? dbs.get(activeOrgId) : undefined;
   return d ? toolTagsIn(d, tool) : undefined;

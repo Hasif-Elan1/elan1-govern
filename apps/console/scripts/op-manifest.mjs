@@ -36,7 +36,26 @@ const SOURCES = [
   { prefix: 'assessments', kind: 'module', exportName: 'assessments' },
   { prefix: 'sovereign', kind: 'module', exportName: 'sovereign', flatten: 'sovereignApi' },
   { prefix: 'deployment', kind: 'module', exportName: 'deployment', flatten: 'deploymentApi' },
+  // modules screens call directly; every exported function of each is an operation (a read, or a write that
+  // checks the caller's role itself)
+  { prefix: 'connectors', kind: 'module', exportName: 'connectors' },
+  { prefix: 'tokens', kind: 'module', exportName: 'tokens' },
+  { prefix: 'inventory', kind: 'module', exportName: 'inventory' },
+  { prefix: 'packs', kind: 'module', exportName: 'packs' },
+  { prefix: 'keys', kind: 'module', exportName: 'keys', flatten: 'keysApi' },
+  { prefix: 'devpath', kind: 'module', exportName: 'devpath', flatten: 'devpathApi' },
+  { prefix: 'recordsDecl', kind: 'module', exportName: 'recordsDecl', flatten: 'declApi' },
+  { prefix: 'records', kind: 'module', exportName: 'records' },
+  { prefix: 'billing', kind: 'module', exportName: 'billing' },
+  { prefix: 'approvalsExt', kind: 'module', exportName: 'approvalsExt' },
+  { prefix: 'maintenance', kind: 'module', exportName: 'maintenance' },
+  { prefix: 'ops', kind: 'module', exportName: 'ops' },
+  { prefix: 'notices', kind: 'module', exportName: 'notices' },
+  { prefix: 'consoleOps', kind: 'module', exportName: 'consoleOps' },
 ];
+
+/** Namespaces entry.ts exports that are not operation modules (the document store the server drives itself). */
+const NOT_OPS = ['db'];
 
 function program() {
   const cfgPath = join(ROOT, 'tsconfig.json');
@@ -114,6 +133,19 @@ export function buildManifest() {
   const sf = prog.getSourceFile(ENTRY);
   if (!sf) throw new Error(`Cannot load ${ENTRY}`);
   const exportsOf = new Map(checker.getExportsOfModule(checker.getSymbolAtLocation(sf)).map((s) => [s.name, s]));
+  // every `export * as X` namespace of the entry is an operation module: one left out of SOURCES would reach the
+  // client as a module whose writes never get to the server
+  // (`modules`: which source file each prefix is, for the client's live build, which forwards calls by file)
+  const modules = [];
+  for (const st of sf.statements) {
+    if (!ts.isExportDeclaration(st) || !st.exportClause || !ts.isNamespaceExport(st.exportClause)) continue;
+    const name = st.exportClause.name.text;
+    if (NOT_OPS.includes(name)) continue;
+    const src = SOURCES.find((s) => s.exportName === name);
+    if (!src) throw new Error(`src/server/entry.ts exports the namespace ${name}, which scripts/op-manifest.mjs does not list in SOURCES.`);
+    const spec = ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : '';
+    modules.push({ prefix: src.prefix, file: `${spec.replace(/^@\//, 'src/')}.ts`, ...(src.flatten ? { flatten: src.flatten } : {}) });
+  }
   const ops = [];
   const seen = new Map();
   const add = (name, path, d, overloads) => {
@@ -144,7 +176,7 @@ export function buildManifest() {
     }
   }
   ops.sort((a, b) => a.name.localeCompare(b.name));
-  return { generatedFrom: 'apps/console/src/server/entry.ts', orgParams: ORG_PARAMS, actorParams: ACTOR_PARAMS, ops };
+  return { generatedFrom: 'apps/console/src/server/entry.ts', orgParams: ORG_PARAMS, actorParams: ACTOR_PARAMS, modules, ops };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useOrgId, useUser } from '@/store/session';
 import { activeMaintenance, subscribeMaintenance } from '@/mock/opsMaintenance';
-import { ensureOps, noteApprovalLinkOpened, noteApprovalOpened } from '@/mock/ops';
+import { approvalLinkOrg, ensureOps, noteApprovalLinkOpened, noteApprovalOpened } from '@/mock/ops';
 import { isSovereign } from '@/mock/sovereign';
 
 const sovereignOrg = (orgId: string) => { try { return isSovereign(orgId); } catch { return false; } };
@@ -46,16 +46,16 @@ export function SystemWatch() {
     if (sovereign) return;
     const check = () => {
       if (outside(window.location.pathname)) return;
-      if (activeMaintenance()) nav(`/maintenance?next=${encodeURIComponent(here.current)}`, { replace: true });
+      if (activeMaintenance(orgId)) nav(`/maintenance?next=${encodeURIComponent(here.current)}`, { replace: true });
     };
     check();
     const off = subscribeMaintenance(check);
     const t = window.setInterval(check, 15_000);
     return () => { off(); window.clearInterval(t); };
-  }, [nav, sovereign]);
+  }, [nav, sovereign, orgId]);
   useEffect(() => {
-    if (!sovereign && !outside(loc.pathname) && activeMaintenance()) nav(`/maintenance?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true });
-  }, [loc.pathname, loc.search, nav, sovereign]);
+    if (!sovereign && !outside(loc.pathname) && activeMaintenance(orgId)) nav(`/maintenance?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true });
+  }, [loc.pathname, loc.search, nav, sovereign, orgId]);
 
   // an approval's full record opened in the console
   useEffect(() => {
@@ -68,9 +68,12 @@ export function SystemWatch() {
   useEffect(() => {
     const m = /^\/approve\/([^/?#]+)$/.exec(loc.pathname);
     if (!m) return;
-    const t = window.setTimeout(() => { try { noteApprovalLinkOpened(decodeURIComponent(m[1])); } catch { /* never breaks the page */ } }, 0);
+    const token = decodeURIComponent(m[1]);
+    const linkOrg = approvalLinkOrg(token);
+    if (!linkOrg) return;
+    const t = window.setTimeout(() => { try { noteApprovalLinkOpened(linkOrg, token, user?.id); } catch { /* never breaks the page */ } }, 0);
     return () => window.clearTimeout(t);
-  }, [loc.pathname]);
+  }, [loc.pathname, user]);
 
   // the organisation's operations state and seeded history
   useEffect(() => {

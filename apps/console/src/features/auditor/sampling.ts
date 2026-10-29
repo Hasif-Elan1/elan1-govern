@@ -1,15 +1,17 @@
 /**
  * Reproducible sampling and the auditor's working papers, one set per auditor per client organisation.
  *
- * The working papers sit behind an API-shaped store (get, save, export, import). The mock backend keeps
- * every organisation's state in this browser's storage, so the papers do too — under a key outside the
- * demo-data namespace, so "Reset demo data" and a regenerated chain do not wipe an auditor's notes. To hand
- * the papers to a colleague, export them as JSON; importing checks they belong to the same client.
+ * The working papers sit behind an API-shaped store (get, save, export, import). They are kept in the client
+ * organisation's record, in a section per person (`workingPapers`, written only by the operation
+ * consoleOps.saveWorkingPapers as the signed-in person), so they follow the auditor to another device; they are
+ * never written to the client's chain. To hand the papers to a colleague, export them as JSON; importing checks
+ * they belong to the same client.
  */
 import { mulberry32 } from '@/lib/prng';
 import { canonical, sha256Hex } from '@/lib/crypto';
 import type { Receipt, SectionState, VerifyCode } from '@/types';
 import type { LineState, Verdict } from '@/features/activity/verify';
+import * as consoleOps from '@/features/console/ops';
 
 export type Population = 'all' | 'decision' | 'refuse' | 'approval' | 'admin';
 
@@ -61,34 +63,47 @@ export interface WorkingPapers {
 
 export const emptyPapers = (auditorId: string, orgId: string): WorkingPapers => ({ version: 2, auditorId, orgId, sample: [], reviews: {}, results: {}, l2: {}, profileRuns: [], crossOrg: {} });
 
+/** Where earlier versions kept the papers in this browser: read once, and copied into the organisation's record on the next save. */
 const KEY = (auditorId: string, orgId: string) => `elan1-govern:auditor-papers:v2:${auditorId}:${orgId}`;
 const V1 = (orgId: string) => `elan1-govern:auditor-papers:${orgId}`;
 
 const paperDigest = (p: WorkingPapers) => sha256Hex(canonical({ ...p, digest: undefined, updatedAt: undefined })).slice(0, 16);
 const later = <T,>(v: T) => new Promise<T>((res) => window.setTimeout(() => res(v), 60));
 
+function legacyPapers(auditorId: string, orgId: string): WorkingPapers | undefined {
+  try {
+    const raw = localStorage.getItem(KEY(auditorId, orgId));
+    if (raw) return { ...emptyPapers(auditorId, orgId), ...JSON.parse(raw) };
+    const old = localStorage.getItem(V1(orgId));
+    if (old) {
+      const v1 = JSON.parse(old);
+      return { ...emptyPapers(auditorId, orgId), config: v1.config, drawnAt: v1.drawnAt, sample: v1.sample ?? [], population: v1.population, reviews: v1.reviews ?? {}, results: v1.results ?? {} };
+    }
+  } catch { /* storage unavailable: start empty */ }
+  return undefined;
+}
+
 /** Working papers: per auditor, per client. API-shaped so a server can replace the storage without touching the screen. */
 export const papersApi = {
   async get(auditorId: string, orgId: string): Promise<WorkingPapers> {
-    try {
-      const raw = localStorage.getItem(KEY(auditorId, orgId));
-      if (raw) return later({ ...emptyPapers(auditorId, orgId), ...JSON.parse(raw) });
-      const old = localStorage.getItem(V1(orgId));
-      if (old) {
-        const v1 = JSON.parse(old);
-        const migrated: WorkingPapers = { ...emptyPapers(auditorId, orgId), config: v1.config, drawnAt: v1.drawnAt, sample: v1.sample ?? [], population: v1.population, reviews: v1.reviews ?? {}, results: v1.results ?? {} };
-        localStorage.setItem(KEY(auditorId, orgId), JSON.stringify(migrated));
-        return later(migrated);
-      }
-    } catch { /* storage unavailable: start empty */ }
-    return later(emptyPapers(auditorId, orgId));
+    const saved = consoleOps.workingPapersOf(orgId, auditorId);
+    if (saved) return later({ ...emptyPapers(auditorId, orgId), ...saved });
+    return later(legacyPapers(auditorId, orgId) ?? emptyPapers(auditorId, orgId));
   },
-  /** Synchronous save used on every tick or note; returns the stored copy. */
+  /**
+   * Synchronous save used on every tick or note; returns the stored copy. Saved with the organisation; if the save is
+   * refused (no role here any more) the screen keeps the papers for this session and says nothing.
+   */
   save(p: WorkingPapers): WorkingPapers {
-    const v = { ...p, updatedAt: new Date().toISOString() };
-    v.digest = paperDigest(v);
-    try { localStorage.setItem(KEY(p.auditorId, p.orgId), JSON.stringify(v)); } catch { /* storage full: the session keeps them in memory */ }
-    return v;
+    try {
+      const v = consoleOps.saveWorkingPapers(p.orgId, p, p.auditorId);
+      try { localStorage.removeItem(KEY(p.auditorId, p.orgId)); } catch { /* fine */ }
+      return v;
+    } catch {
+      const v = { ...p, updatedAt: new Date().toISOString() };
+      v.digest = paperDigest(v);
+      return v;
+    }
   },
   exportJson(p: WorkingPapers, meta: { auditorName: string; clientName: string }) {
     return JSON.stringify({ format: 'elan1.working-papers.v2', auditor: meta.auditorName, client: meta.clientName, exported_at: new Date().toISOString(), papers: { ...p, digest: paperDigest(p) } }, null, 2);

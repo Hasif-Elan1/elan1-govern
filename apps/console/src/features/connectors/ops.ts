@@ -10,7 +10,7 @@ import type { Connector, ConnectorTool, PackId, RiskTag } from '@/types';
 import { db } from '@/api';
 import { TOOLS } from '@/mock/catalog';
 import { doorState, pause, clone, recordChange } from '@/features/records/ext';
-import { checkUpstreamUrl, serverSlug, upstreamUrlProblem } from './parts';
+import { checkUpstreamUrl, serverSlug, upstreamUrlProblem } from './urls';
 import { guardDestination, isSovereign } from '@/mock/sovereign';
 
 /** Owners and admins of the organisation only (their member record decides: suspended or removed people cannot). */
@@ -37,7 +37,7 @@ function find(orgId: string, id: string) {
  * tools keep their fixed tags). The shared seeded catalogue is never changed, so one organisation's tags never
  * reach another.
  */
-export function registerTools(orgId: string, c: Connector) {
+function registerTools(orgId: string, c: Connector) {
   if (isBuiltIn(c)) return;
   const d = db.getDB(orgId);
   const st = doorState(orgId);
@@ -48,8 +48,8 @@ export function registerTools(orgId: string, c: Connector) {
   }
 }
 
-/** Keep the catalogue in step with this organisation's connectors (call when its connectors load). */
-export function syncCatalogue(orgId: string) {
+/** Keep the catalogue in step with this organisation's connectors (internal: ensureConnectorCatalogue is the operation). */
+function syncCatalogue(orgId: string) {
   for (const c of db.getDB(orgId).connectors) registerTools(orgId, c);
 }
 
@@ -377,8 +377,32 @@ export const PACK_CONNECTORS: Record<PackId, { name: string; purpose: string; to
   },
 };
 
-/** Make sure every installed pack has its connector (demo mode, tools tagged, writes switched off). */
-export function ensurePackConnectors(orgId: string, userId = 'system'): string[] {
+/**
+ * Make sure every installed pack has its connector (demo mode, tools tagged, writes switched off), right after an
+ * owner or admin installs one. The receipt names them.
+ */
+export function ensurePackConnectors(orgId: string, userId: string): string[] {
+  requireManager(orgId, userId);
+  const added = addPackConnectors(orgId, userId);
+  if (added.length) db.touch(orgId, 'receipt');
+  return added;
+}
+
+/**
+ * Bring the connector list in step when it loads (any member may read it): every installed pack has its connector,
+ * and the tool catalogue holds every connector's tools. Idempotent and decided by the organisation's own state (the
+ * caller adds nothing), so it needs no role; a connector added here is recorded as the system's doing, since the
+ * pack install caused it. Writes, and tells the screens, only when something was missing.
+ */
+export function ensureConnectorCatalogue(orgId: string): string[] {
+  const before = JSON.stringify(db.getDB(orgId).toolDefs ?? {});
+  const added = addPackConnectors(orgId, 'system');
+  syncCatalogue(orgId);
+  if (added.length || JSON.stringify(db.getDB(orgId).toolDefs ?? {}) !== before) db.touch(orgId, added.length ? 'receipt' : 'update');
+  return added;
+}
+
+function addPackConnectors(orgId: string, userId: string): string[] {
   const d = db.getDB(orgId);
   const added: string[] = [];
   for (const p of d.platform.packs) {

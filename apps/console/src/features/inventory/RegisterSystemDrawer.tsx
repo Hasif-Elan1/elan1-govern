@@ -157,7 +157,7 @@ export function RegisterSystemDrawer({ open, onClose, prefill, agents, framework
         toast.ok(`${s.name} registered from discovery`, 'Risk tier: Unassessed until a different person approves an assessment.', { label: 'Open the system', onClick: () => nav(`/inventory/${s.id}`) });
       } else {
         s = await api.addAiSystem(orgId, { ...details, lifecycle: f.lifecycle }, user.id);
-        setExtraQuietly(orgId, s.id, extra);
+        setExtraQuietly(orgId, s.id, extra, user.id);
         toast.ok(`${s.name} registered`, 'Risk tier: Unassessed until a different person approves an assessment. The registration is a receipt on the chain.', { label: 'Open the system', onClick: () => nav(`/inventory/${s.id}`) });
       }
       onDone?.(s);

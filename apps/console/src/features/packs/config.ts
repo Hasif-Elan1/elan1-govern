@@ -93,9 +93,12 @@ export function packConfig(orgId: string, pack: PackId) {
 }
 
 /** Save new parameters: a new declaration version and a pack.configured receipt. */
-export async function configurePack(orgId: string, pack: PackId, values: Record<string, number>, userId: string) {
+export async function configurePack(orgId: string, pack: PackId, given: Record<string, number>, userId: string) {
   await pause(300, 600);
   requireManager(orgId, userId);
+  if (!PACK_PARAMS[pack]) throw new Error('There is no such pack.');
+  // only the pack's own parameters are kept (the caller's object may carry anything)
+  const values: Record<string, number> = Object.fromEntries(PACK_PARAMS[pack].map((p) => [p.id, given[p.id]]));
   const installed = (await api.packs(orgId)).find((p) => p.id === pack)?.installed;
   if (!installed) throw new Error(`Install ${pack} before configuring it.`);
   for (const p of PACK_PARAMS[pack]) {

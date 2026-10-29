@@ -40,7 +40,8 @@ const get = (path: string, signal?: AbortSignal) => new NextRequest(`http://loca
 
 async function clean() {
   await consoleDomain.forgetConsoleMemory();
-  await prisma.$executeRaw`DELETE FROM "ConsoleState" WHERE "orgId" = ANY(${domain.db.orgIds()}::text[])`;
+  // only this file's organisation: console-ops.test.ts works on Northbank at the same time
+  await prisma.$executeRaw`DELETE FROM "ConsoleState" WHERE "orgId" = ${ORG}`;
 }
 
 beforeAll(clean);

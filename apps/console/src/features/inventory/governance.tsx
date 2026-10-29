@@ -9,17 +9,18 @@ import type { AiSystem, AssessmentStatus, AssessmentTemplate, Lifecycle, RiskTie
 import { StatusChip, Badge, type Tone } from '@/components/ui';
 import { date } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { LIFECYCLE_LABEL, LIFECYCLE_ORDER } from './lifecycle';
 
 const ic = 'h-3.5 w-3.5 shrink-0';
 
-export const LIFECYCLE_ORDER: Lifecycle[] = ['proposed', 'in_review', 'approved', 'live', 'retired'];
+export { LIFECYCLE_ORDER };
 
 export const LIFECYCLE_META: Record<Lifecycle, { label: string; tone: Tone; icon: ReactNode; help: string }> = {
-  proposed: { label: 'Proposed', tone: 'neutral', icon: <CircleDashed className={ic} aria-hidden />, help: 'Registered as an idea. Not built or bought yet.' },
-  in_review: { label: 'In review', tone: 'held', icon: <Search className={ic} aria-hidden />, help: 'Being assessed before it may go live.' },
-  approved: { label: 'Approved', tone: 'info', icon: <CheckCircle2 className={ic} aria-hidden />, help: 'Assessment signed off; not yet in use.' },
-  live: { label: 'Live', tone: 'ok', icon: <Rocket className={ic} aria-hidden />, help: 'In use in the business.' },
-  retired: { label: 'Retired', tone: 'neutral', icon: <Archive className={ic} aria-hidden />, help: 'No longer in use. Kept for the record.' },
+  proposed: { label: LIFECYCLE_LABEL.proposed, tone: 'neutral', icon: <CircleDashed className={ic} aria-hidden />, help: 'Registered as an idea. Not built or bought yet.' },
+  in_review: { label: LIFECYCLE_LABEL.in_review, tone: 'held', icon: <Search className={ic} aria-hidden />, help: 'Being assessed before it may go live.' },
+  approved: { label: LIFECYCLE_LABEL.approved, tone: 'info', icon: <CheckCircle2 className={ic} aria-hidden />, help: 'Assessment signed off; not yet in use.' },
+  live: { label: LIFECYCLE_LABEL.live, tone: 'ok', icon: <Rocket className={ic} aria-hidden />, help: 'In use in the business.' },
+  retired: { label: LIFECYCLE_LABEL.retired, tone: 'neutral', icon: <Archive className={ic} aria-hidden />, help: 'No longer in use. Kept for the record.' },
 };
 
 export function LifecycleChip({ stage, size = 'sm' }: { stage: Lifecycle; size?: 'sm' | 'md' }) {
@@ -65,7 +66,7 @@ export function ImpactBadge({ impact }: { impact: AiSystem['decisionImpact'] }) 
 export const STATUS_META: Record<AssessmentStatus, { label: string; tone: Tone; icon: ReactNode }> = {
   draft: { label: 'Draft', tone: 'neutral', icon: <CircleDot className={ic} aria-hidden /> },
   submitted: { label: 'Waiting for sign-off', tone: 'held', icon: <CalendarClock className={ic} aria-hidden /> },
-  approved: { label: 'Approved', tone: 'ok', icon: <ShieldCheck className={ic} aria-hidden /> },
+  approved: { label: LIFECYCLE_LABEL.approved, tone: 'ok', icon: <ShieldCheck className={ic} aria-hidden /> },
   changes_requested: { label: 'Changes requested', tone: 'bad', icon: <AlertTriangle className={ic} aria-hidden /> },
 };
 

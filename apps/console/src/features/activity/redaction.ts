@@ -7,7 +7,7 @@
  *
  * The mock has no issuing endpoint below L3 (api.createDisclosure starts at L3 and adds the counterparty
  * portal), so this module stands in for it: it signs with the key that signed the receipt and records a
- * disclosure.exported receipt on the chain. A real backend signs server-side with the key in custody.
+ * disclosure.exported receipt on the chain. On the server it signs with the key the server holds.
  */
 import { sha256 } from '@noble/hashes/sha256';
 import { utf8ToBytes } from '@noble/hashes/utils';
@@ -31,8 +31,12 @@ export interface RedactedShare {
   seq: number;
 }
 
-/** Build, sign and record a redacted share of receipt `r`, revealing `fields` to `audience`. */
-export function issueRedactedShare(orgId: string, r: Receipt, fields: DisclosableField[], audience: string, userId: string, approvalResult?: Receipt, expiresDays = 30): RedactedShare {
+/**
+ * Build, sign and record a redacted share of receipt `r`, revealing `fields` to `audience`. Called by the
+ * operation consoleOps.issueRedactedShare (features/console/ops.ts), which checks the caller and finds the
+ * receipts on the chain; the signing key never leaves the server.
+ */
+export function buildRedactedShare(orgId: string, r: Receipt, fields: DisclosableField[], audience: string, userId: string, approvalResult?: Receipt, expiresDays = 30): RedactedShare {
   if (!fields.length) throw new Error('Choose at least one field to reveal.');
   const d = db.getDB(orgId);
   const key = d.keys.find((k) => k.key.kid === r.kid)?.key ?? d.keys[d.keys.length - 1].key;

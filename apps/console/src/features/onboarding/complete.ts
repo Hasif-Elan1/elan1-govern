@@ -14,6 +14,7 @@ import { STARTER_RULES, frameworksFor, industryById } from './industries';
 import { SOVEREIGN_IDPS, type OnboardingState } from './state';
 import { isInternalName } from '@/mock/sovereign';
 import { firstKeyCeremonyBlock } from '@/mock/platform';
+import * as consoleOps from '@/features/console/ops';
 
 const CUSTODY_LABEL = { aws_kms: 'AWS KMS (ap-south-1)', cloudhsm: 'AWS CloudHSM (customer-held)', luna: 'Thales Luna (customer-held)', nshield: 'Entrust nShield (customer-held)' } as const;
 export { CUSTODY_LABEL };
@@ -84,7 +85,7 @@ export async function completeOnboarding(orgId: string, s: OnboardingState, user
   // 1 Organisation profile
   await ensure(`Organisation profile updated: ${s.company.name.trim() || d.org.name}, ${industryById(s.industry).label}, ${s.regions.join(', ')}, ${s.currency}, ${s.timezone}.`,
     () => orgApi.updateOrg(orgId, { name: s.company.name.trim() || d.org.name, industry: s.industry, regions: s.regions, currency: s.currency, timezone: s.timezone }, userId));
-  if (s.company.legal.trim()) { (d.org as typeof d.org & { legalEntity?: string }).legalEntity = s.company.legal.trim(); applied.push(`Legal entity recorded for invoices: ${s.company.legal.trim()}.`); }
+  if (s.company.legal.trim()) await ensure(`Legal entity recorded for invoices: ${s.company.legal.trim()}.`, () => consoleOps.setLegalEntity(orgId, s.company.legal.trim(), userId));
 
   // 2 Frameworks
   const toEnable = d.frameworks.filter((f) => fw.includes(f.short) && !f.enabled);
@@ -143,12 +144,10 @@ export async function completeOnboarding(orgId: string, s: OnboardingState, user
   }
 
   // 7 Starter rulebook as an unpublished draft, on a draft agent
-  if (!d.rulebooks.some((r) => r.slug === st.slug)) {
-    db.starterFromOnboarding(d, s.industry, userId);
-    db.logAdmin(orgId, userId, 'rulebook.drafted', { rulebook: st.slug, version: 1, rules: st.rules.length, source: 'onboarding' }, st.slug);
-    db.touch(orgId, 'rulebook');
-    applied.push(`Starter rulebook ${st.slug} v1 saved as an unpublished draft with ${st.rules.length} rules.`);
-  } else applied.push(`Starter rulebook ${st.slug} already exists; left as it is.`);
+  try {
+    const made = await consoleOps.draftStarterRulebook(orgId, s.industry, userId);
+    applied.push(made.created ? `Starter rulebook ${st.slug} v1 saved as an unpublished draft with ${st.rules.length} rules.` : `Starter rulebook ${st.slug} already exists; left as it is.`);
+  } catch (e) { skipped.push(`Starter rulebook ${st.slug}: ${(e as Error).message}`); }
 
   // 8 Invitations (single-use links; shown in the demo outbox)
   const byRole = new Map<string, string[]>();
@@ -168,14 +167,7 @@ export async function completeOnboarding(orgId: string, s: OnboardingState, user
   }
   if (invites.length) applied.push(`${invites.length} invitation${invites.length === 1 ? '' : 's'} sent as single-use links (valid 7 days).`);
 
-  // 9 The onboarding receipt
-  const r = db.logAdmin(orgId, userId, 'onboarding.completed', {
-    company: s.company.name.trim() || d.org.name, industry: s.industry, regions: s.regions.join(', '), currency: s.currency, timezone: s.timezone,
-    level: api.levelOf(orgId), residency: s.residency, custody: levelRank(now) >= levelRank('l3') ? s.custody : levelRank(now) >= levelRank('l2') ? 'aws_kms' : 'elan1_held',
-    tsa: levelRank(now) >= levelRank('l2') ? (now === 'sovereign' ? s.localTsas.join(' + ') : `eMudhra + ${s.globalTsa}`) : 'none (L1)',
-    packs: s.packs.join(', ') || 'none', profiles: s.profiles.join(', ') || 'none', dual_control: levelRank(now) >= levelRank('l2') ? 'enforced' : 'recorded',
-    saml: s.identity.saml, scim: s.identity.scim, invites: invites.length, slack: now !== 'sovereign' && s.slack.connected, whatsapp: now !== 'sovereign' && s.whatsapp.verified, // Sovereign: deny-all egress
-    sovereign_checks: now === 'sovereign' ? Object.values(s.sovereign.checks).filter(Boolean).length : 0, starter_rulebook: st.slug,
-  });
+  // 9 The onboarding receipt (what it says is worked out from the organisation as it is now)
+  const r = await consoleOps.recordOnboardingCompleted(orgId, s, invites.length, userId);
   return { receiptSeq: r.seq, rulebookSlug: st.slug, starterYaml: st.yaml, invites, applied, skipped };
 }

@@ -206,10 +206,20 @@ export function claimWord(level: LevelId) {
 
 /* ══ Seeding (once per organisation; a seeded organisation shows every feature) ══ */
 
-/** Fill the demo data this file owns. Safe to call on every read: each part runs once. */
+/**
+ * Fill the demo data this file owns. Safe to call on every read: each part runs once, decided by the organisation's
+ * own state (the caller supplies nothing, so any member may run it). Tells the screens, and so is saved, only when
+ * a part ran.
+ */
 export function ensureRecordsSeed(orgId: string) {
   const d = getDB(orgId);
   const s = st(d);
+  const sig = () => JSON.stringify([d.receipts.length, Object.entries(s).filter(([, v]) => typeof v === 'boolean'), Object.keys(s.plans).length, s.hosting.seeded ?? false]);
+  const before = sig();
+  try { return seedOnce(d, s); } finally { if (sig() !== before) touch(orgId, 'records'); }
+}
+
+function seedOnce(d: OrgDB, s: RecordsLedgerState) {
   // erasure requests opened before plans existed get one, with statutory retention held back (cheap; runs on every read)
   try { reconcileErasures(d, s); } catch { /* never blocks a read */ }
   // declarations other than rulebooks (agent and pack declarations): mock/recordsDecl.ts keeps its own flags

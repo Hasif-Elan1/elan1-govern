@@ -152,7 +152,7 @@ export function noticesView(orgId: string): NoticesView {
   }
   incidents.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
-  const mw = nextMaintenance(now);
+  const mw = nextMaintenance(orgId, now);
   const maintenance: MaintenanceNotice[] = mw ? [{ id: `mn_${mw.id}`, title: mw.title, sentAt: iso(Math.max(created, new Date(mw.from).getTime() - 7 * D)), from: mw.from, to: mw.to, note: mw.note }] : [];
 
   // the daily chain head: the last receipt on or before 23:59:59 IST each day, for the last 14 days
@@ -205,16 +205,22 @@ export function acknowledgeNotice(orgId: string, noticeId: string, title: string
   const contact = contactOf(d, s).userId;
   if (userId !== contact && role !== 'owner' && role !== 'admin') throw new Error('The named contact, owners and admins acknowledge Elan1’s notices.');
   if (s.acks[noticeId]) throw new Error('Already acknowledged.');
-  const r = append(d, { kind: 'admin', actor: userId, action: 'notice.acknowledged', details: { notice: noticeId, title: title.slice(0, 100) } });
+  // only a notice Elan1 sent this organisation, under the title it was sent with
+  const v = noticesView(orgId);
+  const sent = [...v.incidents, ...v.maintenance].find((n) => n.id === noticeId);
+  if (!sent) throw new Error('No such notice.');
+  const r = append(d, { kind: 'admin', actor: userId, action: 'notice.acknowledged', details: { notice: noticeId, title: (sent.title || title).slice(0, 100) } });
   s.acks[noticeId] = { at: r.ts, by: userId, seq: r.seq };
   touch(orgId, 'notice');
   return { seq: r.seq };
 }
 
-/** Check a daily chain-head statement against this organisation's own chain. Writes notice.chain_head_checked. */
+/** Check a daily chain-head statement against this organisation's own chain (the named contact, owners and admins). Writes notice.chain_head_checked. */
 export function checkChainHead(orgId: string, statementId: string, userId: string) {
   const d = getDB(orgId);
-  requireMember(d, userId);
+  const role = requireMember(d, userId);
+  // the screen is for owners and admins (Agents › Notices from Elan1); the named contact checks too, as they acknowledge
+  if (userId !== contactOf(d, state(d)).userId && role !== 'owner' && role !== 'admin') throw new Error('The named contact, owners and admins check Elan1’s chain-head statements.');
   const v = noticesView(orgId);
   const st = v.heads.find((h) => h.id === statementId);
   if (!st) throw new Error('No such statement.');

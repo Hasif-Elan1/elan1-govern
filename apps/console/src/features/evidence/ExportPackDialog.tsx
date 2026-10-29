@@ -16,7 +16,7 @@ import { Banner, Button, Dialog, Field, Hash, Input, LegalDraft, RadioCards, Sel
 import { D } from '@/features/activity/shared';
 import { bundleToZip, downloadBlob, verifyBundleOffThread } from '@/features/verify/bundle';
 import { CLAIM, levelStartMs } from './levelGate';
-import { rememberExportSeq } from './exportSeqs';
+import * as consoleOps from '@/features/console/ops';
 import { GuardsPanel, PreflightResult, firstBreak, gateBlocks, planParts, type GateState, type RangeProblem } from './ExportGuards';
 import { integrityCoverage, integrityProblem } from '@/mock/evidenceGuards';
 import { onDemandAnchorBatches } from '@/mock/platform';
@@ -327,12 +327,11 @@ export function ExportPackDialog({ open, onClose, initialProfile, initialFrom, i
         const blob = ext === 'zip' ? bundleToZip(b) : new Blob([res.json], { type: 'application/json' });
         downloadBlob(filename, blob);
         const seq = res.export.seq;
-        if (seq !== undefined) rememberExportSeq(orgId, res.export.id, seq);
         out.push({ filename, from: res.export.firstSeq, to: res.export.lastSeq, receipts: res.export.receipts, digest: res.export.digest ?? '', fileSha: await sha256OfBlob(blob), seq, sizeKb: Math.max(1, Math.round(blob.size / 1024)), bundle: b });
       }
       let addressedSeq: number | undefined;
       if (recipientLabel && out[0]) {
-        const r = db.logAdmin(orgId, user.id, 'evidence.addressed', { export: last!.export.id, recipient: recipientLabel, recipient_kind: recipient.startsWith('cp:') ? 'counterparty' : recipient, parts: out.length, ...(out[0].seq !== undefined ? { export_seq: out[0].seq } : {}) });
+        const r = await consoleOps.recordExportAddressed(orgId, { exportIds, recipient: recipientLabel, recipientKind: recipient.startsWith('cp:') ? 'counterparty' : recipient }, user.id);
         addressedSeq = r.seq;
       }
       const m = out[0].bundle.manifest;

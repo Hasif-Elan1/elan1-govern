@@ -17,8 +17,9 @@ export const ACTION_LINES: LineKind[] = ['beyond', 'refused_beyond', 'discount']
 
 export async function loadMeter(orgId: string, now = Date.now()) {
   const [packs, cps] = await Promise.all([api.packs(orgId), api.counterparties(orgId)]);
+  // the pilot's stop and closure, recorded once they are due (an operation: it writes only when one is due)
+  try { sweepPilot(orgId); } catch { /* recording the stop or the closure never blocks reading the meter */ }
   const d = db.getDB(orgId);
-  try { sweepPilot(d); } catch { /* recording the stop or the closure never blocks reading the meter */ }
   const cm = chainMeter(d, now);
   const ctx = {
     packs: packs.filter((p) => p.installed).map((p) => ({ id: p.id, name: p.name, installedAt: p.installedAt })),
