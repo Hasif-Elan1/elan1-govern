@@ -3,6 +3,7 @@ import { consoleState, ConsoleStateConflict, membershipsForUser, type ConsoleSql
 import type { OpEntry, SavedDoc } from "@gate/console/server";
 import { HttpError } from "./api";
 import { ChainRetry, ConsoleChain, fixResult, flushChain, importHistory, realHead, replaceStrings, syncDoc, type ChainDoc, type Fixes, type Head } from "./console-chain";
+import { consoleOverride } from "./console-overrides";
 import { syncAfterOp } from "./console-sync";
 import { log } from "./log";
 
@@ -30,7 +31,7 @@ import { log } from "./log";
  * next operation finds it on the chain and adds it to the document.
  */
 
-type Domain = typeof import("@gate/console/server");
+export type Domain = typeof import("@gate/console/server");
 
 /** Operations with no organisation parameter that callers may run. Candidates are listed in the Phase 1.2 notes. */
 const WITHOUT_ORG = new Set<string>([]);
@@ -377,6 +378,10 @@ export async function runOp(orgId: string | null, actorUserId: string, opName: s
     async () => {
       rt.domain.db.getDB(orgId);
       rt.domain.db.setActiveOrg(orgId);
+      // a feature the real backend serves itself (console-overrides.ts) runs instead of the console's own code,
+      // in the same lock, with the same actor and the same rules for what it saves
+      const override = consoleOverride(op.name);
+      if (override) return override({ domain: rt.domain, orgId, actorUserId, args: prepared, original: (...a: unknown[]) => (fn as (...x: unknown[]) => unknown).apply(parent, a) });
       return (fn as (...a: unknown[]) => unknown).apply(parent, prepared);
     },
     // copied once the real receipts are in place (it may share objects with the documents)
